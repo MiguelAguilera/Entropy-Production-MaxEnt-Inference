@@ -21,7 +21,10 @@ parser.add_argument("--beta_max", type=float, default=4,
                     help="Maximum beta value (default: 4).")
 parser.add_argument("--num_beta", type=int, default=101,
                     help="Number of beta values to simulate (default: 101).")
-                    
+parser.add_argument("--J0", type=float, default=1.0,
+                    help="Mean interaction coupling (default: 1.0).")
+parser.add_argument("--DJ", type=float, default=0.5,
+                    help="Variance of the quenched disorder (default: 0.5).")
 
 # Flags for update mode: sequential or parallel
 parser.add_argument("--sequential", action="store_true", help="Enable sequential update mode.")
@@ -44,14 +47,13 @@ BASE_DIR = os.path.expanduser(args.BASE_DIR)  # Expand user path (e.g., ~)
 DTYPE = 'float32'  # Data type used (if relevant in downstream code)
 
 # Simulation parameters
-J0 = 1.0      # Mean interaction strength
-DJ = 0.5      # Interaction noise
 overwrite = True  # Whether to overwrite existing files
 
 # Generate array of beta values
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 if args.add_critical_beta:
     betas = np.append(betas, args.critical_beta)
+    betas = np.append(args.critical_beta,betas)
 
 # Ensure base directory exists
 if not os.path.exists(BASE_DIR):
@@ -70,7 +72,7 @@ for beta in betas:
     mode = "sequential" if args.sequential else "parallel"
     file_name = (
         f"{BASE_DIR}/{mode}/run_reps_{args.rep}_steps_{args.num_steps}_"
-        f"{args.size:06d}_beta_{beta}_J0_{J0}_DJ_{DJ}.h5"
+        f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
     )
 
     # Handle file existence
@@ -89,8 +91,8 @@ for beta in betas:
         num_steps=args.num_steps,
         rep=args.rep,
         beta=beta,
-        J0=J0,
-        DJ=DJ,
+        J0=args.J0,
+        DJ=args.DJ,
         seed=42,
         sequential=args.sequential
     )
