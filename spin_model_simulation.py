@@ -1,7 +1,8 @@
 import numpy as np
 from numba import njit, prange
-import time
 import h5py
+import hdf5plugin
+import threading
 
 DTYPE = 'float32'  # Default data type for numerical operations
 
@@ -104,8 +105,27 @@ def sample(rep, H, J, num_steps, sequential=True):
     return S, F
 
 
-# --------- Simulation Orchestration Function --------- #
 
+# --------- Simulation Orchestration Functions --------- #
+
+def save_data(file_name, J, H, S, F):
+    with h5py.File(file_name, 'w') as f:
+        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
+        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
+
+    for i in range(F.shape[0]):
+        idxs = np.where(F[i, :] == 1)[0]
+        S_i = S[:, idxs] if len(idxs) > 0 else np.zeros((S.shape[0], 0), dtype=bool)
+        with h5py.File(file_name, 'a') as f:
+#            f.create_dataset(f'S_{i}', data=((S_i + 1) // 2).astype(bool), compression='gzip', compression_opts=5)
+            bool_array = ((S_i + 1) // 2).astype(bool)
+            f.create_dataset(
+                f'S_{i}',
+                data=bool_array,
+                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+            )
+    print(f"[Thread] Data saved to {file_name}")
+    
 def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
                    beta=1.3485, J0=1.0, DJ=0.5, seed=None,
                    onlychanges=None, sequential=True):
@@ -126,7 +146,6 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
     """
     if seed is not None:
         np.random.seed(seed)
-    start_time = time.time()
 
     # Initialize couplings and fields
     rnd = np.random.randn(N, N)
@@ -145,21 +164,24 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
     print('   - magnetization: %f' % np.mean(S.astype(float)))
 
     # Save model parameters
-    with h5py.File(file_name, 'w') as f:
-        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
-        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
+    t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
+    t.start()
+    print("Saving data. Main loop continues...")
+#    with h5py.File(file_name, 'w') as f:
+#        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
+#        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
 
-    # Save spin configurations that led to a flip
-    for i in range(N):
-        idxs = np.where(F[i, :] == 1)[0]
-        if len(idxs) == 0:
-            with h5py.File(file_name, 'a') as f:
-                f.create_dataset(f'S_{i}', data=np.zeros((N, 0), dtype=bool), compression='gzip', compression_opts=5)
-            continue
+#    # Save spin configurations that led to a flip
+#    for i in range(N):
+#        idxs = np.where(F[i, :] == 1)[0]
+#        if len(idxs) == 0:
+#            with h5py.File(file_name, 'a') as f:
+#                f.create_dataset(f'S_{i}', data=np.zeros((N, 0), dtype=bool), compression='gzip', compression_opts=5)
+#            continue
 
-        S_i = S[:, idxs]
-        with h5py.File(file_name, 'a') as f:
-            f.create_dataset(f'S_{i}', data=((S_i + 1) // 2).astype(bool), compression='gzip', compression_opts=5)
+#        S_i = S[:, idxs]
+#        with h5py.File(file_name, 'a') as f:
+#            f.create_dataset(f'S_{i}', data=((S_i + 1) // 2).astype(bool), compression='gzip', compression_opts=5)
 
-    print(f"Data saved to {file_name}, time = %.3f seconds" % (time.time() - start_time))
+#    print(f"Data saved to {file_name}, time = %.3f seconds" % (time.time() - start_time))
 
