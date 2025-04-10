@@ -167,7 +167,7 @@ plt.legend(
     handletextpad=0.5,   # Reduce space between line and label
     loc='best'           # You can adjust the location if needed,
 )
-plt.savefig('img/spin_network_reconstruction.pdf', bbox_inches='tight', pad_inches=0)
+plt.savefig('img/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
 
 plt.show()
 

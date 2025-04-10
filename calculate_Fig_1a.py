@@ -139,5 +139,5 @@ plt.legend(
 )
 
 # Save and show figure
-plt.savefig('img/EP_spin_model.pdf', bbox_inches='tight')
+plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
 plt.show()
