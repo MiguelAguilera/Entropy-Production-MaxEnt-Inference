@@ -84,17 +84,10 @@ for i in range(N):
     if S_i.shape[1] <= 1:
         continue
 
-    # Estimate EP using MTUR
-    sig_MTUR, theta_lin, Da = get_EP_MTUR(S_t, rep, i)
-
-    # Estimate experimental entropy production
+    # Estimate EP using different methods
+    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, rep, i)
     sigma_exp = exp_EP_spin_model(Da, J_t, i)
-
-    # 1-step Newton-based estimation
-    sig_N1, theta_lin, Da = get_EP_Newton(S_t, rep, theta_lin, Da, i)
-
-    # 2-step Newton-based estimation
-    sig_N2, theta_lin2 = get_EP_Newton2(S_t, rep, theta_lin, Da, i)
+    sig_N2, theta2 = get_EP_Newton2(S_t, rep, theta1, Da, i)
 
     # Accumulate results
     S_Exp += sigma_exp
