@@ -100,8 +100,12 @@ EPR = np.zeros((4, args.num_beta))  # Rows: Experimental, MTUR, Newton-1, Newton
 
 for ib, beta in enumerate(np.round(betas, 8)):
     EPR[:, ib] = calc(args.size, args.rep)
-    filename = f'data/spin/maxent_beta_{beta}_r_{args.rep}_N_{args.size}.npz'
-    np.savez(filename, EPR=EPR[:, ib])
+    
+# -------------------------------
+# Save results
+# -------------------------------
+filename = f'data/spin/data_Fig_1a.npz'
+np.savez(filename, EPR=EPR, betas=betas)
 
 # -------------------------------
 # Plot Results

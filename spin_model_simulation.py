@@ -5,7 +5,6 @@ import h5py
 
 DTYPE = 'float32'  # Default data type for numerical operations
 
-
 # --------- Glauber Dynamics Core Functions --------- #
 
 @njit('int32(float32, float32[::1], int32[::1])', inline='always')

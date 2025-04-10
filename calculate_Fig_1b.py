@@ -101,7 +101,8 @@ for i in range(N):
 # -------------------------------
 # Save results
 # -------------------------------
-np.savez('data/spin_th.npz', th1=th1.copy(), th2=th2.copy(), dJ=dJ)
+filename=f'data/spin/data_Fig_1b.npz'
+np.savez(filename, th1=th1.copy(), th2=th2.copy(), dJ=dJ)
 
 # -------------------------------
 # Helper function to expand off-diagonal matrix
