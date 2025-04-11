@@ -10,7 +10,7 @@ from methods_EP_multipartite import *
 # -------------------------------
 # Argument Parsing
 # -------------------------------
-parser = argparse.ArgumentParser(description="Entropy production simulation for spin systems.")
+parser = argparse.ArgumentParser(description="Estimate EP for the spin model with varying beta values.")
 
 parser.add_argument("--num_steps", type=int, default=2**7,
                     help="Number of simulation steps (default: 128)")
@@ -32,6 +32,9 @@ parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5)")
 
 args = parser.parse_args()
+
+N = args.size
+rep = args.rep
 
 # -------------------------------
 # Global Setup
@@ -56,7 +59,6 @@ def calc(N, rep):
     """
     print(f"\n** PROCESSING SYSTEM SIZE {N} WITH BETA {beta:.2f} **", flush=True)
 
-import hdf5plugin  # IMPORTANT: this must be imported first to register Blosc
     file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
     print(file_name, flush=True)
 
@@ -66,6 +68,8 @@ import hdf5plugin  # IMPORTANT: this must be imported first to register Blosc
 
     # Initialize accumulators
     S_Exp = S_TUR = S_N1 = S_N2 = 0
+    
+    T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
 
     # Loop over each spin in the system
     for i in range(N):
@@ -77,9 +81,9 @@ import hdf5plugin  # IMPORTANT: this must be imported first to register Blosc
             continue
 
         # Estimate entropy production using various methods
-        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, rep, i)
+        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, T, i)
         sigma_exp = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2 = get_EP_Newton2(S_t, rep, theta1, Da, i)
+        sig_N2, theta2 = get_EP_Newton2(S_t, T, theta1, Da, i)
 
         # Aggregate results
         S_Exp += sigma_exp
@@ -101,7 +105,7 @@ import hdf5plugin  # IMPORTANT: this must be imported first to register Blosc
 EPR = np.zeros((4, args.num_beta))  # Rows: Experimental, MTUR, Newton-1, Newton-2
 
 for ib, beta in enumerate(np.round(betas, 8)):
-    EPR[:, ib] = calc(args.size, args.rep)
+    EPR[:, ib] = calc(N, rep)
     
 # -------------------------------
 # Save results
@@ -130,10 +134,10 @@ colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
 plt.figure(figsize=(4, 4))
 
 # Plot each EPR estimator
-plt.plot(betas[0], args.size * EPR[0, 0], 'k', linestyle=(0, (1, 3)), label=labels[0], lw=2)  # Reference line
+plt.plot(betas[0], args.size * EPR[0, 0], 'k', linestyle=(0, (1, 3)), label=labels[0], lw=3)  # Reference line
 for i in range(1, 4):
     plt.plot(betas, args.size * EPR[i, :], label=labels[i], color=colors[i-1], lw=2)
-plt.plot(betas, args.size * EPR[0, :], 'k', linestyle=(0, (1, 3)), lw=2)  # Re-plot experimental for clarity
+plt.plot(betas, args.size * EPR[0, :], 'k', linestyle=(0, (1, 3)), lw=3)  # Re-plot experimental for clarity
 
 # Axes and labels
 plt.axis([betas[0], betas[-1], 0, args.size * np.max(EPR) * 1.05])

@@ -11,7 +11,7 @@ from methods_EP_multipartite import *  # Assumes methods.py contains exp_EP_spin
 # -------------------------------
 # Argument parsing
 # -------------------------------
-parser = argparse.ArgumentParser(description="Parse input arguments for the script.")
+parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for the spin model.")
 parser.add_argument("--num_steps", type=int, default=2**7,
                     help="Number of simulation steps (default: 128).")
 parser.add_argument("--rep", type=int, default=1_000_000,
