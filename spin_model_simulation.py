@@ -3,6 +3,7 @@ from numba import njit, prange
 import h5py
 import hdf5plugin
 import threading
+import time
 
 DTYPE = 'float32'  # Default data type for numerical operations
 
@@ -144,8 +145,11 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
         onlychanges (None or bool): Not used.
         sequential (bool): Whether to use sequential or parallel updates.
     """
+
     if seed is not None:
         np.random.seed(seed)
+
+    start_time = time.time()
 
     # Initialize couplings and fields
     rnd = np.random.randn(N, N)
@@ -166,7 +170,7 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
     # Save model parameters
     t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
     t.start()
-    print("Saving data. Main loop continues...")
+    print(f"Saving data. Took {time.time()-start_time:.3f}s. Main loop continues...")
 #    with h5py.File(file_name, 'w') as f:
 #        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
 #        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)

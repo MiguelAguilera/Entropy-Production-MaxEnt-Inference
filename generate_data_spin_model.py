@@ -55,16 +55,12 @@ if args.add_critical_beta:
     betas = np.append(betas, args.critical_beta)
     betas = np.append(args.critical_beta,betas)
 
-mode = "sequential" if args.sequential else "parallel"
+BASE_DIR_MODE = BASE_DIR + '/' + ("sequential" if args.sequential else "parallel")
     
 # Ensure base directory exists
-if not os.path.exists(BASE_DIR):
-    print(f'Creating base directory: {BASE_DIR}')
-    os.makedirs(BASE_DIR)
-
-if not os.path.exists(BASE_DIR + '/' + mode):
-    print(f'Creating base directory: {BASE_DIR}')
-    os.makedirs(BASE_DIR)
+if not os.path.exists(BASE_DIR_MODE):
+    print(f'Creating base directory: {BASE_DIR_MODE}')
+    os.makedirs(BASE_DIR_MODE)
 
 # -------------------------------
 # Run Simulations
@@ -76,7 +72,7 @@ for beta in betas:
 
     # Construct file name based on mode (sequential or parallel)
     file_name = (
-        f"{BASE_DIR}/{mode}/run_reps_{args.rep}_steps_{args.num_steps}_"
+        f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
         f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
     )
 
