@@ -9,7 +9,7 @@ DTYPE = 'float32'  # Default data type for numerical operations
 # --------- Glauber Dynamics Core Functions --------- #
 
 @njit('int32(float32, float32[::1], int32[::1])', inline='always')
-def _GlauberStep(Hi, Ji, s):
+def GlauberStep(Hi, Ji, s):
     """
     Perform a single Glauber update for a given spin.
 
@@ -21,8 +21,8 @@ def _GlauberStep(Hi, Ji, s):
     Returns:
         int: New value of the spin (-1 or 1).
     """
-    JiS = Hi + Ji @ s.astype(np.float32)
-    return int(np.random.rand() * 2 - 1 < np.tanh(JiS)) * 2 - 1
+    h = Hi + Ji @ s.astype(np.float32)
+    return int(np.random.rand() * 2 - 1 < np.tanh(h)) * 2 - 1
 
 
 @njit('int32[:](float32[::1], float32[:,::1], int32[::1],int32)', inline='always')
@@ -42,7 +42,7 @@ def SequentialGlauberStep(H, J, s, T=1):
     size = len(s)
     indices = np.random.randint(0, size, size * T)
     for i in indices:
-        s[i] = _GlauberStep(H[i], J[i, :], s)
+        s[i] = GlauberStep(H[i], J[i, :], s)
     return s
 
 
@@ -64,7 +64,7 @@ def ParallelGlauberStep(H, J, s, T=1):
     for t in range(T):
         s_p = s.copy()
         for i in range(size):
-            s[i] = _GlauberStep(H[i], J[i, :], s_p)
+            s[i] = GlauberStep(H[i], J[i, :], s_p)
     return s
 
 
@@ -99,7 +99,7 @@ def sample(rep, H, J, num_steps, sequential=True):
 
         s1 = np.ones(N, dtype='int32')
         for i in range(N):
-            s1[i] = _GlauberStep(H[i], J[i, :], S[:, r].copy())
+            s1[i] = GlauberStep(H[i], J[i, :], S[:, r].copy())
         F[:, r] = (1 - s1 * s) // 2  # Indicates if spin changed: 1 if flipped, 0 otherwise
 
     return S, F
