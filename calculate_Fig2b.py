@@ -84,6 +84,7 @@ area_names, area_start_indices = np.unique(areas, return_index=True)
 area_end_indices = np.r_[area_start_indices[1:], [len(areas)]]
 area_centers = (area_start_indices + area_end_indices) / 2
 
+print(th)
 # --- Cluster neurons based on θ ---
 th_abs = np.abs(th)
 
@@ -123,8 +124,8 @@ plt.figure(figsize=(5, 4))
 plt.imshow(th, cmap='bwr', aspect='equal', interpolation='nearest', norm=norm)
 
 # Add a label to the left side of the plot as a "title"
-plt.text(-0.35, 0.5, r'$\theta_{ij}$', fontsize=22, 
-         va='center', ha='center', transform=plt.gca().transAxes)
+plt.text(-0.25, 0.5, r'$\theta_{ij}^*-\theta_{ji}^*$', fontsize=18, 
+         va='center', ha='center', rotation=90, transform=plt.gca().transAxes)
 
 # Draw dotted lines to separate different brain areas visually
 for idx in area_start_indices[1:]:  # Skip the first index (0)
