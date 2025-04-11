@@ -1,0 +1,8 @@
+allensdk==2.16.2
+h5py==3.13.0
+hdf5plugin==5.1.0
+matplotlib==3.10.1
+numba==0.61.2
+numpy==1.23.5
+seaborn==0.13.2
+torch==2.6.0
