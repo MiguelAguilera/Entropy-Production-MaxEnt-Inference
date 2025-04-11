@@ -132,8 +132,8 @@ def calc(sizes, session_type, session_id, r):
 
 
 # Run the pipeline
-for session_id in range(103):
-    for session_type in types:
-        for r in range(R):
+for r in range(R):
+    for session_id in range(103):
+        for session_type in types:
             print(f"\n--- Running estimation for session {session_id} | Type: {session_type} | Repetition {r} ---")
             calc(sizes, session_type, session_id, r)
