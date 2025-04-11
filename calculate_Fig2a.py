@@ -97,7 +97,7 @@ def calc(sizes, session_type, session_id, r):
             inds = np.argsort(-np.sum(S, axis=1))[:N]
         S = S[inds, :].astype(DTYPE)
 
-        firing_rate = np.mean(S)
+        spike_sum = np.sum(S)
 
         dS = S[:, 1:] != S[:, :-1]
         num_changes = np.sum(dS, axis=0)
@@ -121,8 +121,8 @@ def calc(sizes, session_type, session_id, r):
         EP_maxent = get_torch(S_t, S1_t, mode=2, tol_per_param=1E-6, lambda_=lambda_)
 
         EP[n] = EP_maxent
-        fr[n] = firing_rate
-        print(f"  [Result] EP: {EP_maxent:.5f} | Mean firing rate: {firing_rate:.5f}")
+        fr[n] = spike_sum
+        print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes: {spike_sum:.5f}")
 
     save_path = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
