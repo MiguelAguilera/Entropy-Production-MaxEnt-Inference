@@ -85,10 +85,12 @@ for i in range(N):
     if S_i.shape[1] <= 1:
         continue
 
+    T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
+    
     # Estimate EP using different methods
-    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, rep, i)
+    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, T, i)
     sigma_exp = exp_EP_spin_model(Da, J_t, i)
-    sig_N2, theta2 = get_EP_Newton2(S_t, rep, theta1, Da, i)
+    sig_N2, theta2 = get_EP_Newton2(S_t, T, theta1, Da, i)
 
     # Accumulate results
     S_Exp += sigma_exp
@@ -143,8 +145,8 @@ colors = [cmap(0.25),cmap(0.5),cmap(0.75)]
 # Scatter plot with Seaborn aesthetics
 sns.scatterplot(x=dJ[upper_indices], y=dth1[upper_indices], color=cmap(0.5), s=10, alpha=0.7,rasterized=True)
 sns.scatterplot(x=dJ[upper_indices], y=dth2[upper_indices], color=cmap(0.75), s=10, alpha=0.7,rasterized=True)
-sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100, label=r'$\hat\Sigma_{\bm g}$', color=cmap(0.5), s=20)
-sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100,label=r'$\Sigma_{\bm g}$', color=cmap(0.75), s=20)
+sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100, label=r'$\bm{\hat\theta}$', color=cmap(0.5), s=20)
+sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100,label=r'$\bm \theta^*$', color=cmap(0.75), s=20)
 
 # Add reference line
 dJ_min, dJ_max = np.min(dJ), np.max(dJ)
@@ -152,7 +154,7 @@ plt.plot([dJ_min, dJ_max], [dJ_min, dJ_max], 'k', linestyle='dashed')
 plt.axis([dJ_min*1.05, dJ_max*1.05,dJ_min*1.05, dJ_max*1.05])
 # Labels and title
 plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
-plt.ylabel(r'$\theta_{ij}^*-\theta_{ji}^*$', rotation=90, labelpad=-5)
+plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=-5)
 #plt.title(r"Comparison of $J_{ij} - J_{ji}$ vs. $\theta_{ij}$", fontsize=18)
 #plt.legend()
 plt.legend(

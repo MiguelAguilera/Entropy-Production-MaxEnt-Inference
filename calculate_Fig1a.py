@@ -134,13 +134,13 @@ colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
 plt.figure(figsize=(4, 4))
 
 # Plot each EPR estimator
-plt.plot(betas[0], args.size * EPR[0, 0], 'k', linestyle=(0, (1, 3)), label=labels[0], lw=3)  # Reference line
+plt.plot(betas[0], EPR[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
 for i in range(1, 4):
-    plt.plot(betas, args.size * EPR[i, :], label=labels[i], color=colors[i-1], lw=2)
-plt.plot(betas, args.size * EPR[0, :], 'k', linestyle=(0, (1, 3)), lw=3)  # Re-plot experimental for clarity
+    plt.plot(betas, EPR[i, :], label=labels[i], color=colors[i-1], lw=2)
+plt.plot(betas, EPR[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot experimental for clarity
 
 # Axes and labels
-plt.axis([betas[0], betas[-1], 0, args.size * np.max(EPR) * 1.05])
+plt.axis([betas[0], betas[-1], 0, np.max(EPR) * 1.05])
 plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
 plt.xlabel(r'$\beta$')
 

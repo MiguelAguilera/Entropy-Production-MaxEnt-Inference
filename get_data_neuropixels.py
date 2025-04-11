@@ -1,22 +1,21 @@
 import numpy as np
 from pathlib import Path
 import argparse
+import h5py
+import hdf5plugin
+import threading
 from allensdk.brain_observatory.behavior.behavior_project_cache import VisualBehaviorNeuropixelsProjectCache
-
 
 # -------------------------------
 # Argument Parsing
 # -------------------------------
 parser = argparse.ArgumentParser(description="Estimate EP for the spin model with varying beta values.")
-
 parser.add_argument("--BASE_DIR", type=str, default="~/Neuropixels",
-                    help="Base directory to store the data (default: '~/NeuroPixels').")
-
-
+                    help="Base directory to store the data (default: '~/Neuropixels').")
 args = parser.parse_args()
 
 # Output directory and cache loading
-output_dir = Path(args.BASE_DIR)
+output_dir = Path(args.BASE_DIR).expanduser()
 cache = VisualBehaviorNeuropixelsProjectCache.from_s3_cache(cache_dir=output_dir)
 cache.load_latest_manifest()
 
@@ -27,6 +26,30 @@ probes_table = cache.get_probe_table()
 behavior_sessions_table = cache.get_behavior_session_table()
 ecephys_sessions_table = cache.get_ecephys_session_table()
 
+# -------------------------------
+# Save data function using HDF5
+# -------------------------------
+def save_data(file_name, areas, S_active, S_passive, S_gabor):
+    with h5py.File(file_name, 'a') as f:
+        for name, data in zip(['S_active', 'S_passive', 'S_gabor'], [S_active, S_passive, S_gabor]):
+            if name in f:
+                del f[name]  # Overwrite if already exists
+            bool_array = ((data + 1) // 2).astype(bool)
+            f.create_dataset(
+                name,
+                data=bool_array,
+                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+            )
+        # Save areas as variable-length UTF-8 strings
+        if "areas" in f:
+            del f["areas"]
+        dt = h5py.string_dtype(encoding='utf-8')
+        f.create_dataset("areas", data=np.array(areas, dtype=dt))
+    print(f"[Thread] Data saved to {file_name}")
+
+# -------------------------------
+# Session download and processing
+# -------------------------------
 def download_session(session, ind):
     """Download and process a session: filter units, bin spikes, extract active/passive epochs."""
 
@@ -105,14 +128,17 @@ def download_session(session, ind):
     S_passive = S[:, passive_mask]
     S_gabor = S[:, gabor_mask]
 
-    # Save processed data
-    filename = output_dir / 'parallel_update' / f'data_binsize_{bin_size}_session_{ind}.npz'
+    # Save in background using HDF5 with Blosc compression
+    filename = output_dir / f'data_binsize_{bin_size}_session_{ind}.h5'
     filename.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(filename, S_active=S_active, S_passive=S_passive, S_gabor=S_gabor, areas=areas)
 
-    print(f"Saved processed data for session {ind} to {filename}")
+    t = threading.Thread(target=save_data, args=(filename, areas, S_active, S_passive, S_gabor))
+    t.start()
+    print(f"Saving data in background to {filename}. Main loop continues...")
 
+# -------------------------------
 # Iterate over all ecephys sessions
+# -------------------------------
 for i in range(ecephys_sessions_table.shape[0]):
     ecephys_session_id = ecephys_sessions_table.index[i]
     print(f"\nProcessing session {i} with ID: {ecephys_session_id}")
