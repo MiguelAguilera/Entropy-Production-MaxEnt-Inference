@@ -57,10 +57,13 @@ def calc(N, rep):
     Returns:
         np.ndarray: EP estimates [experimental, MTUR, Newton-1, Newton-2]
     """
-    print(f"\n** PROCESSING SYSTEM SIZE {N} WITH BETA {beta:.2f} **", flush=True)
+    print()
+    print("=" * 70)
+    print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
+    print("=" * 70)
 
     file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
-    print(file_name, flush=True)
+    print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
     with h5py.File(file_name, 'r') as f:
         J = f['J'][:]
@@ -69,15 +72,15 @@ def calc(N, rep):
     # Initialize accumulators
     S_Exp = S_TUR = S_N1 = S_N2 = 0
     
-    T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
+    T = N * rep  # Total spin-flip attempts
 
-    # Loop over each spin in the system
     for i in range(N):
         with h5py.File(file_name, 'r') as f:
-            S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert binary to ±1 spin values
+            S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
         S_t = torch.from_numpy(S_i)
 
         if S_i.shape[1] <= 1:
+            print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
         # Estimate entropy production using various methods
@@ -91,11 +94,12 @@ def calc(N, rep):
         S_N1  += sig_N1
         S_N2  += sig_N2
 
-    # Display EP values
-    print(f"EP (Experimental):  {S_Exp:.6f}")
-    print(f"EP (MTUR):          {S_TUR:.6f}")
-    print(f"EP (1-step Newton): {S_N1:.6f}")
-    print(f"EP (2-step Newton): {S_N2:.6f}")
+    print("\n[Results]")
+    print(f"  EP (Experimental):     {S_Exp:.6f}")
+    print(f"  EP (MTUR):             {S_TUR:.6f}")
+    print(f"  EP (1-step Newton):    {S_N1:.6f}")
+    print(f"  EP (2-step Newton):    {S_N2:.6f}")
+    print("-" * 70)
 
     return np.array([S_Exp, S_TUR, S_N1, S_N2])
 
@@ -110,7 +114,7 @@ for ib, beta in enumerate(np.round(betas, 8)):
 # -------------------------------
 # Save results
 # -------------------------------
-filename = f'data/spin/data_Fig_1a.npz'
+filename = f"data/spin/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
 np.savez(filename, EP=EP, betas=betas)
 
 # -------------------------------
