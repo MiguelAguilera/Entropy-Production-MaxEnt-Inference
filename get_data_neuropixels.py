@@ -23,7 +23,6 @@ cache.load_latest_manifest()
 units_table = cache.get_unit_table()
 channels_table = cache.get_channel_table()
 probes_table = cache.get_probe_table()
-behavior_sessions_table = cache.get_behavior_session_table()
 ecephys_sessions_table = cache.get_ecephys_session_table()
 
 # -------------------------------
@@ -141,6 +140,8 @@ def download_session(session, ind):
 # -------------------------------
 for i in range(ecephys_sessions_table.shape[0]):
     ecephys_session_id = ecephys_sessions_table.index[i]
+    print(ecephys_sessions_table)
+    exit()
     print(f"\nProcessing session {i} with ID: {ecephys_session_id}")
 
     try:
