@@ -78,11 +78,13 @@ def calc(sizes, session_type, session_id, r):
     for n, N in enumerate(sizes):
         print(f"\n> Processing system size {N} neurons")
 
-        indices = np.arange(S_total.shape[0])
+        
         if mode == 'visual':
             indices = np.where(np.char.startswith(areas, 'V'))[0]
         elif mode == 'nonvisual':
             indices = np.where(~np.char.startswith(areas, 'V'))[0]
+        elif mode == 'all':
+            indices = np.arange(S_total.shape[0])
 
         S = S_total[indices, :]
         N0 = S.shape[0]
