@@ -100,7 +100,7 @@ def sample(rep, H, J, num_steps, sequential=True):
         s1 = np.ones(N, dtype='int32')
         for i in range(N):
             s1[i] = GlauberStep(H[i], J[i, :], S[:, r].copy())
-        F[:, r] = (1 - s1 * s) // 2  # Indicates if spin changed: 1 if flipped, 0 otherwise
+        F[:, r] = - s1 * s // 2  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
     return S, F
 
