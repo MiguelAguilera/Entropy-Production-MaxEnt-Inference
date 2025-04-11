@@ -48,14 +48,14 @@ betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 # -------------------------------
 def calc(N, rep):
     """
-    Compute entropy production rate (EPR) estimates using multiple methods for a spin system.
+    Compute entropy production rate (EP) estimates using multiple methods for a spin system.
 
     Parameters:
         N (int): System size.
         rep (int): Number of repetitions.
 
     Returns:
-        np.ndarray: EPR estimates [experimental, MTUR, Newton-1, Newton-2]
+        np.ndarray: EP estimates [experimental, MTUR, Newton-1, Newton-2]
     """
     print(f"\n** PROCESSING SYSTEM SIZE {N} WITH BETA {beta:.2f} **", flush=True)
 
@@ -91,27 +91,27 @@ def calc(N, rep):
         S_N1  += sig_N1
         S_N2  += sig_N2
 
-    # Display EPR values
-    print(f"EPR (Experimental):  {S_Exp:.6f}")
-    print(f"EPR (MTUR):          {S_TUR:.6f}")
-    print(f"EPR (1-step Newton): {S_N1:.6f}")
-    print(f"EPR (2-step Newton): {S_N2:.6f}")
+    # Display EP values
+    print(f"EP (Experimental):  {S_Exp:.6f}")
+    print(f"EP (MTUR):          {S_TUR:.6f}")
+    print(f"EP (1-step Newton): {S_N1:.6f}")
+    print(f"EP (2-step Newton): {S_N2:.6f}")
 
     return np.array([S_Exp, S_TUR, S_N1, S_N2])
 
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
-EPR = np.zeros((4, args.num_beta))  # Rows: Experimental, MTUR, Newton-1, Newton-2
+EP = np.zeros((4, args.num_beta))  # Rows: Experimental, MTUR, Newton-1, Newton-2
 
 for ib, beta in enumerate(np.round(betas, 8)):
-    EPR[:, ib] = calc(N, rep)
+    EP[:, ib] = calc(N, rep)
     
 # -------------------------------
 # Save results
 # -------------------------------
 filename = f'data/spin/data_Fig_1a.npz'
-np.savez(filename, EPR=EPR, betas=betas)
+np.savez(filename, EP=EP, betas=betas)
 
 # -------------------------------
 # Plot Results
@@ -133,14 +133,14 @@ colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
 
 plt.figure(figsize=(4, 4))
 
-# Plot each EPR estimator
-plt.plot(betas[0], EPR[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
+# Plot each EP estimator
+plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
 for i in range(1, 4):
-    plt.plot(betas, EPR[i, :], label=labels[i], color=colors[i-1], lw=2)
-plt.plot(betas, EPR[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot experimental for clarity
+    plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
+plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot experimental for clarity
 
 # Axes and labels
-plt.axis([betas[0], betas[-1], 0, np.max(EPR) * 1.05])
+plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
 plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
 plt.xlabel(r'$\beta$')
 
