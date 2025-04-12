@@ -19,7 +19,7 @@ parser.add_argument("--mode", type=str, default="visual",
                     help="Brain area mode to filter neurons (default: visual).")
 parser.add_argument("--L2", type=str, default="0",
                     help="L2 regularization type: 0, lin1, lin.1 (default: 0).")
-parser.add_argument("--R", type=int, default="10",
+parser.add_argument("--rep", type=int, default="10",
                     help="Repetitions of neuron sampling for EP estimation (default: 10).")
 parser.add_argument("--bin_size", type=float, default="0.01",
                     help="Bin size for neural spike disretization (default: 10).")
@@ -43,7 +43,7 @@ mode = args.mode                            # Neural areas considered
 L2 = args.L2                                # L2 regularization term
 order = args.order                          # selected neurons
 
-R=10                    # Repetitions of each EP estimation for different neuron samplings
+rep=args.rep                    # Repetitions of each EP estimation for different neuron samplings
 sizes =args.sizes       # Sizes estimated
 
 def calc(sizes, session_type, session_id, r):
@@ -71,7 +71,7 @@ def calc(sizes, session_type, session_id, r):
         return empty_array
 
     EP = np.zeros(len(sizes))
-    fr = np.zeros(len(sizes))
+    R = np.zeros(len(sizes))
     
     
 
@@ -123,19 +123,19 @@ def calc(sizes, session_type, session_id, r):
         EP_maxent = get_torch(S_t, S1_t, mode=2, tol_per_param=1E-6, lambda_=lambda_)
 
         EP[n] = EP_maxent
-        fr[n] = spike_sum
+        R[n] = spike_sum
         print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes: {spike_sum:.5f}")
 
     save_path = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(save_path, fr=fr, EP=EP, sizes=sizes)
+    np.savez(save_path, R=R, EP=EP, sizes=sizes)
     print(f"\n[Saved] Results stored in: {save_path}")
     print("-" * 60)
 
 
 # Run the pipeline
-for r in range(R):
-    for session_id in range(103):
+for r in range(rep):
+    for session_id in range(102):
         for session_type in types:
             print(f"\n--- Running estimation for session {session_id} | Type: {session_type} | Repetition {r} ---")
             calc(sizes, session_type, session_id, r)

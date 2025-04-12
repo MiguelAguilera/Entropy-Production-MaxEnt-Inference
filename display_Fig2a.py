@@ -27,10 +27,10 @@ parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to analyze.")
 
-parser.add_argument("--normalize", action="store_true",
+parser.add_argument("--normalize", action="store_true", default=True, 
                     help="Normalize EP by firing rate.")
 
-parser.add_argument("--remove_outliers", action="store_true",
+parser.add_argument("--remove_outliers", action="store_false", default=False,
                     help="Remove outliers from EP values.")
 
 parser.add_argument("--types", nargs="+", default=["active", "passive", "gabor"],
@@ -59,11 +59,12 @@ def load_ep(size, session_type, session_id, r):
     try:
         data = np.load(filename)
         ep = data['EP']
-        fr = data['fr']
+        rep = data['rep']
         sizes_arr = data['sizes']
         index = list(sizes_arr).index(size)
+        print(args.normalize)
         if args.normalize:
-            return ep[index] / fr[index] if fr[index] > 0 else None
+            return ep[index] / R[index] if R[index] > 0 else None
         else:
             return ep[index]
     except Exception as e:
@@ -81,7 +82,7 @@ def remove_outliers_iqr(data):
 for session_id in range(num_sessions):
     for session_type in types:
         for size in sizes:
-            for r in range(args.R):
+            for r in range(args.rep):
                 ep_value = load_ep(size, session_type, session_id, r)
                 if ep_value is not None and not np.isnan(ep_value):
                     EP[session_type][size].append(ep_value)
