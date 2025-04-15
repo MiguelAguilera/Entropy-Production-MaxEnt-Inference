@@ -130,6 +130,7 @@ def get_torch(S, S1, max_iter=None, tol_per_param=None, mode=2, lambda_=0.0):
     """
     N = int(S.shape[0])
 
+
     # Define negative objective for minimization
     f = lambda theta: -obj_fn(theta, S, S1)
 
