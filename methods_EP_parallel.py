@@ -77,7 +77,7 @@ def get_torchmin_args(S, tol_per_param=None):
         tol_per_param = 1e-4
 
     N = S.shape[0]
-    return dict(x0       = torch.zeros(N * (N - 1)) // 2, dtype=S.dtype),
+    return dict(x0       = torch.zeros(N * (N - 1) // 2, dtype=S.dtype),
                 method   = 'l-bfgs',
                 tol      = tol_per_param/N,
                 max_iter = 50
