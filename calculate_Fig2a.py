@@ -99,7 +99,7 @@ def calc(sizes, session_type, session_id, r):
             inds = np.argsort(-np.sum(S, axis=1))[:N]
         S = S[inds, :].astype(DTYPE)
 
-        spike_sum = np.sum(S)
+        spike_sum = np.mean(S)*N
 
         dS = S[:, 1:] != S[:, :-1]
         num_changes = np.sum(dS, axis=0)
@@ -135,7 +135,7 @@ def calc(sizes, session_type, session_id, r):
 
 # Run the pipeline
 for r in range(rep):
-    for session_id in range(102):
+    for session_id in range(103):
         for session_type in types:
             print(f"\n--- Running estimation for session {session_id} | Type: {session_type} | Repetition {r} ---")
             calc(sizes, session_type, session_id, r)

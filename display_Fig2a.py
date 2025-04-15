@@ -1,9 +1,11 @@
-import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
+import argparse
 
-# --- Argument parser ---
+# ========================
+# Argument Parser
+# ========================
+
 parser = argparse.ArgumentParser(description="Aggregate and plot EP results from Neuropixels data.")
 
 parser.add_argument("--mode", type=str, default="visual",
@@ -28,117 +30,187 @@ parser.add_argument("--sizes", nargs="+", type=int,
                     help="List of population sizes to analyze.")
 
 parser.add_argument("--normalize", action="store_true", default=True, 
-                    help="Normalize EP by firing rate.")
+                    help="Normalize EP by firing rate (default: True).")
 
-parser.add_argument("--remove_outliers", action="store_false", default=False,
-                    help="Remove outliers from EP values.")
+parser.add_argument("--remove_outliers", action="store_true", default=False,
+                    help="Remove outliers from EP values (default: False).")
 
 parser.add_argument("--types", nargs="+", default=["active", "passive", "gabor"],
                     help="Session types to include.")
 
 args = parser.parse_args()
 
-# --- Plot config ---
+
+# ========================
+# Plotting Configuration
+# ========================
+
 plt.rc('text', usetex=True)
-plt.rc('font', size=14, family='serif', serif=['Latin Modern Roman'])
+font = {'size': 14, 'family': 'serif', 'serif': ['latin modern roman']}
+plt.rc('font', **font)
 plt.rc('legend', fontsize=12)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-# --- Configuration ---
-DTYPE = 'float32'
-sizes = args.sizes
-types = args.types
-num_sessions = 102
 
-# Initialize container
-EP = {session_type: {size: [] for size in sizes} for session_type in types}
+# ========================
+# Main Execution
+# ========================
 
-# --- Load EP data ---
-def load_ep(size, session_type, session_id, r):
-    filename = f'data/neuropixels/neuropixels_{args.mode}_{args.order}_{session_type}_id_{session_id}_binsize_{args.bin_size}_L2_{args.L2}_rep_{r}.npz'
-    try:
-        data = np.load(filename)
-        ep = data['EP']
-        rep = data['rep']
-        sizes_arr = data['sizes']
-        index = list(sizes_arr).index(size)
-        print(args.normalize)
-        if args.normalize:
-            return ep[index] / R[index] if R[index] > 0 else None
-        else:
-            return ep[index]
-    except Exception as e:
-        return None
+if __name__ == "__main__":
 
-# --- Outlier removal (IQR) ---
-def remove_outliers_iqr(data):
-    if len(data) < 3:
-        return data
-    q1, q3 = np.percentile(data, 25), np.percentile(data, 75)
-    iqr = q3 - q1
-    return [x for x in data if q1 - 1.5 * iqr <= x <= q3 + 1.5 * iqr]
+    # Use parsed arguments
+    mode = args.mode
+    L2 = args.L2
+    order = args.order
+    bin_size = args.bin_size
+    sizes = args.sizes
+    normalize = args.normalize
+    remove_outliers_flag = args.remove_outliers
+    types = args.types
+    rep = args.R
 
-# --- Aggregate data ---
-for session_id in range(num_sessions):
-    for session_type in types:
-        for size in sizes:
-            for r in range(args.rep):
-                ep_value = load_ep(size, session_type, session_id, r)
-                if ep_value is not None and not np.isnan(ep_value):
-                    EP[session_type][size].append(ep_value)
+    num_sessions = 103
 
-# --- Remove outliers ---
-if args.remove_outliers:
-    EP = {
-        session_type: {
-            size: remove_outliers_iqr(values)
-            for size, values in EP[session_type].items()
+    # Data containers
+    EP = {session_type: {size: [] for size in sizes} for session_type in types}
+    _loaded_sessions = {}
+
+    def load_EP(size, session_type, session_id, r):
+        """
+        Loads EP for the given settings and caches it.
+        """
+        global _loaded_sessions
+        key = (session_type, session_id, r)
+
+        if key not in _loaded_sessions:
+            filename = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
+            try:
+                data = np.load(filename)
+                _loaded_sessions[key] = {
+                    'EP': data['EP'],
+                    'R': data['R'],
+                    'sizes': data['sizes']
+                }
+            except Exception:
+                _loaded_sessions[key] = None
+
+        session_data = _loaded_sessions[key]
+        if session_data is None:
+            return None
+
+        try:
+            index = list(session_data['sizes']).index(size)
+            EP = session_data['EP'][index]
+            R = session_data['R'][index]
+            return EP / R if normalize else EP
+        except:
+            return None
+
+    def remove_outliers(data):
+        """
+        IQR-based outlier removal.
+        """
+        if len(data) < 3:
+            return data
+        q1 = np.percentile(data, 25)
+        q3 = np.percentile(data, 75)
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+        return [x for x in data if lower_bound <= x <= upper_bound]
+
+    # Load EP data
+    for r in range(rep):
+        for session_id in range(num_sessions):
+            for size in sizes:
+                for session_type in types:
+                    EP_value = load_EP(size, session_type, session_id, r)
+                    if EP_value is not None and not np.isnan(EP_value):
+                        EP[session_type][size].append(EP_value)
+
+    # Outlier filtering
+    if remove_outliers_flag:
+        EP = {
+            session_type: {
+                size: remove_outliers(values)
+                for size, values in EP[session_type].items()
+            }
+            for session_type in types
         }
+
+    # Scatter plot
+    plt.figure(figsize=(8, 6))
+    cmap = plt.get_cmap('inferno_r')
+    colors = list(cmap(np.linspace(0, 1, len(types) + 2)[1:-1][::-1]))
+
+    for session_type, color in zip(types, colors):
+        for size in sizes:
+            plt.scatter(
+                [size] * len(EP[session_type][size]),
+                EP[session_type][size],
+                color=color, alpha=0.6,
+                label=f'{session_type.capitalize()} N={size}'
+            )
+
+    plt.xlabel('System Size (N)')
+    plt.ylabel('EP Value')
+
+    # Compute stats
+    mean_EP = {
+        session_type: [0] + [np.mean(EP[session_type][size]) for size in sizes]
         for session_type in types
     }
 
-# --- Prepare plotting ---
-cmap = plt.get_cmap('inferno_r')
-colors = list(cmap(np.linspace(0, 1, len(types) + 2)[1:-1][::-1]))
-markers = ['-s', '-o', '-^']
+    std_EP = {
+        session_type: [0] + [np.std(EP[session_type][size]) for size in sizes]
+        for session_type in types
+    }
 
-mean_EP = {
-    session_type: [0] + [np.mean(EP[session_type][size]) for size in sizes]
-    for session_type in types
-}
-sem_EP = {
-    session_type: [0] + [
-        np.std(EP[session_type][size], ddof=1) / np.sqrt(len(EP[session_type][size]))
-        if len(EP[session_type][size]) > 1 else 0
-        for size in sizes
-    ]
-    for session_type in types
-}
+    sem_EP = {
+        session_type: [0] + [
+            np.std(EP[session_type][size]) / np.sqrt(len(EP[session_type][size]))
+            if len(EP[session_type][size]) > 1 else 0
+            for size in sizes
+        ]
+        for session_type in types
+    }
 
-# --- Plot ---
-plt.figure(figsize=(5, 2))
-for session_type, color, marker in zip(types, colors, markers):
-    x_vals = [0] + sizes
-    y_vals = mean_EP[session_type]
-    y_errs = sem_EP[session_type]
-    
-    plt.errorbar(x_vals, y_vals, yerr=y_errs, color=color, label=f'{session_type.capitalize()}',
-                 fmt=marker, capsize=5)
-    plt.fill_between(x_vals, np.array(y_vals) - np.array(y_errs),
-                     np.array(y_vals) + np.array(y_errs),
-                     color=color, alpha=0.3)
+    # Line plot with SEM
+    plt.figure(figsize=(5, 2))
+    markers = ['-s', '-o', '-^']
 
-# --- Axis and labels ---
-max_y = max(max(mean_EP[st]) + max(sem_EP[st]) for st in types)
-plt.axis([0, max(sizes), 0, 1.2 * max_y])
-plt.xlabel(r'$N$')
-ylabel = r'$\dfrac{\Sigma_{\bm g}}{R}$' if args.normalize else r'$\dfrac{\Sigma_{\bm g}}{N}$'
-plt.ylabel(ylabel, rotation=0, labelpad=20)
-plt.legend(ncol=1, framealpha=1, columnspacing=0.5, handlelength=1., handletextpad=0.5)
+    for session_type, color, marker in zip(types, colors, markers):
+        x_values = [0] + sizes
+        y_values = mean_EP[session_type]
+        y_err = sem_EP[session_type]
 
-# --- Save and show ---
-Path("img").mkdir(exist_ok=True)
-output_name = f'img/EP_neuropixels_{args.mode}_L2_{args.L2}_{"norm" if args.normalize else "raw"}.pdf'
-plt.savefig(output_name, bbox_inches='tight', pad_inches=0)
-plt.show()
+        plt.errorbar(
+            x_values, y_values, yerr=y_err,
+            color=color, label=f'{session_type.capitalize()}',
+            fmt=marker, capsize=5
+        )
+
+        plt.fill_between(
+            x_values,
+            np.array(y_values) - np.array(y_err),
+            np.array(y_values) + np.array(y_err),
+            color=color, alpha=0.3
+        )
+
+    upper_y = max([max(mean_EP[t]) + max(std_EP[t]) for t in types])
+    plt.axis([0, max(sizes), 0, 1.2 * upper_y])
+
+    plt.xlabel(r'$N$')
+    ylabel = r'$\dfrac{\Sigma_{\bm g}}{R}$' if normalize else r'$\dfrac{\Sigma_{\bm g}}{N}$'
+    plt.ylabel(ylabel, rotation=0, labelpad=20)
+
+    plt.legend(
+        ncol=1, framealpha=1,
+        columnspacing=0.5,
+        handlelength=1., handletextpad=0.5,
+        bbox_to_anchor=(0.03, 0.55)
+    )
+
+    plt.savefig('img/Fig2a.pdf', bbox_inches='tight', pad_inches=0)
+    plt.show()
 
