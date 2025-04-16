@@ -136,7 +136,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
         F: Nx[rep] np.array of flips (1) or no flips (0)
     """
 
-    if seed is not None:
+    if seed is not None and seed >= 0:
         np.random.seed(seed)
 
     # Initialize couplings and fields

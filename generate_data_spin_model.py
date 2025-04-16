@@ -54,12 +54,13 @@ parser.set_defaults(sequential=True)  # Default to sequential mode
 # Flags for adding the critical beta
 parser.add_argument("--add_critical_beta", action="store_true", help="Add the value of the critical beta to the list.")
 parser.set_defaults(add_critical_beta=True)  # Default to sequential mode
-parser.add_argument("--critical_beta", type=int, default=1.3484999614126383,
+parser.add_argument("--critical_beta", type=float, default=1.3484999614126383,
                     help="Value of the critical beta (default: 1.3484999614126383).")
 
+parser.add_argument("--seed", type=int, default=42,
+                    help="Seed for random number generator (negative for no seed) (default: 42).")
 
 args = parser.parse_args()
-
 
 # -------------------------------
 # Initialization
@@ -114,7 +115,7 @@ for beta in betas:
         beta=beta,
         J0=args.J0,
         DJ=args.DJ,
-        seed=42,
+        seed=args.seed,
         sequential=args.sequential
     )
 

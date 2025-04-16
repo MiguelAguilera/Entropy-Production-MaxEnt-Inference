@@ -68,6 +68,9 @@ def calc(N, rep):
 
     with h5py.File(file_name, 'r') as f:
         J = f['J'][:]
+        H = f['H'][:]
+        assert(np.all(H==0))  # We do not support local fields in our analysis
+
     J_t = torch.from_numpy(J)
 
     # Initialize accumulators
@@ -79,6 +82,7 @@ def calc(N, rep):
         with h5py.File(file_name, 'r') as f:
             S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
         S_i_t = torch.from_numpy(S_i)
+        print(i,S_i.shape)
 
         if S_i.shape[1] <= 1:
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
