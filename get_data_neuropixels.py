@@ -140,8 +140,6 @@ def download_session(session, ind):
 # -------------------------------
 for i in range(ecephys_sessions_table.shape[0]):
     ecephys_session_id = ecephys_sessions_table.index[i]
-    print(ecephys_sessions_table)
-    exit()
     print(f"\nProcessing session {i} with ID: {ecephys_session_id}")
 
     try:
