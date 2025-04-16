@@ -1,5 +1,8 @@
 import torch
 
+import numpy as np
+import sklearn 
+
 # =======================
 # Spin Model and Correlations
 # =======================
@@ -18,7 +21,12 @@ def correlations(S, T, i):
     """
     N, _ = S.shape
     Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / T
+<<<<<<< HEAD
 #    Da[i] = 0  # zero out self-correlation
+=======
+
+    Da[i] = 0  # zero out self-correlation
+>>>>>>> 47575bd086e08dd74d40c36d3b1ecc90ac463649
     return Da
 
 def correlations4(S, T, i):
@@ -38,6 +46,7 @@ def correlations4(S, T, i):
 def correlations_theta(S, T, theta, i):
     """
     Compute weighted pairwise correlations using theta.
+    THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
     N, _ = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))  # remove spin i
@@ -50,6 +59,7 @@ def correlations_theta(S, T, theta, i):
 def correlations4_theta(S, T, theta, i):
     """
     Compute weighted 4th-order correlations using theta.
+    THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
     N, _ = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
@@ -91,7 +101,9 @@ def remove_i(A, i):
     """
     Remove the i-th element from a 1D tensor A.
     """
-    return torch.cat((A[:i], A[i+1:]))
+    r = torch.cat((A[:i], A[i+1:]))
+    #print(A,i,r)
+    return r
 
 # =======================
 # Linear Solver for Theta Estimation
@@ -101,21 +113,27 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
-    Dai = remove_i(Da, i)
+    Dai    = remove_i(Da, i)
     Dai_th = remove_i(Da_th, i)
     Ks_no_diag_th = K_nodiag(Ks_th, i)
 
     rhs_th = Dai - Dai_th
-    epsilon = 1e-6
-    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
 
-    while True:
-        try:
-            dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
-            break
-        except torch._C._LinAlgError:
-            epsilon *= 10  # Increase regularization if matrix is singular
-            print(f"Matrix is singular, increasing epsilon to {epsilon}")
+    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+    
+    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
+    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
+
+    # epsilon = 1e-6
+    # I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+
+    # while True:
+    #     try:
+    #         dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
+    #         break
+    #     except torch._C._LinAlgError:
+    #         epsilon *= 10  # Increase regularization if matrix is singular
+    #         print(f"Matrix is singular, increasing epsilon to {epsilon}")
 
     return dtheta
 
@@ -145,7 +163,11 @@ def get_EP_Newton(S, T, i):
     sig_MTUR = (theta * Dai).sum()
 
     Dai = remove_i(Da, i)
+<<<<<<< HEAD
     sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))/N
+=======
+    sig_N1 = (theta * Dai).sum() - torch.log(norm_theta(S, T, theta, i))
+>>>>>>> 47575bd086e08dd74d40c36d3b1ecc90ac463649
     return sig_N1, sig_MTUR, theta, Da
 
 def get_EP_Newton2(S, T, theta_lin, Da, i):
