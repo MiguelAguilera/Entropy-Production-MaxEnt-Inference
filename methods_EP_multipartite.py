@@ -12,22 +12,23 @@ def exp_EP_spin_model(Da, J, i):
     correlation matrix Da and interaction matrix J.
     """
     N, _ = J.shape
-    return torch.sum((J[i, :] - J[:, i]) * Da) / 2
+#    return torch.sum((J[i, :]-J[:,i])* Da)/2
+    return torch.sum(J[i, :] * Da) 
 
 def correlations(S, T, i):
     """
     Compute pairwise correlations for spin `i`, averaged over Tetitions.
     """
-    N, _ = S.shape
-    Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / T
+    N, nflips = S.shape
+    Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / nflips
     return Da
 
 def correlations4(S, T, i):
     """
     Compute 4th-order correlation matrix for spin `i`.
     """
-    N, _ = S.shape
-    K = (4 * S) @ S.T / T
+    N, nflips = S.shape
+    K = (4 * S) @ S.T / nflips
     return K
 
 # =======================
@@ -39,11 +40,11 @@ def correlations_theta(S, T, theta, i):
     Compute weighted pairwise correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
-    N, _ = S.shape
+    N, nflips = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))  # remove spin i
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
     S1_S = -(-2 * S[i, :]) * torch.exp(-thf)
-    Da = torch.einsum('r,jr->j', S1_S, S) / T
+    Da = torch.einsum('r,jr->j', S1_S, S) / nflips
 #    Da[i] = 0
     return Da
 
@@ -52,10 +53,10 @@ def correlations4_theta(S, T, theta, i):
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
-    N, _ = S.shape
+    N, nflips = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
-    K = (4 * torch.exp(-thf) * S) @ S.T / T
+    K = (4 * torch.exp(-thf) * S) @ S.T / nflips
 #    K[i, :] = 0
 #    K[:, i] = 0
     return K
@@ -73,7 +74,7 @@ def norm_theta(S, T, theta, i):
     noF = rep - nflips
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
-    Z = (torch.sum(torch.exp(-thf)) / rep + noF / rep)
+    Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
 
 # =======================
@@ -110,21 +111,21 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 
     rhs_th = Dai - Dai_th
 
+#    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+#    
+#    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
+#    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
+
+    epsilon = 1e-6
     I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
-    
-    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
-    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
 
-    # epsilon = 1e-6
-    # I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
-
-    # while True:
-    #     try:
-    #         dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
-    #         break
-    #     except torch._C._LinAlgError:
-    #         epsilon *= 10  # Increase regularization if matrix is singular
-    #         print(f"Matrix is singular, increasing epsilon to {epsilon}")
+    while True:
+        try:
+            dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
+            break
+        except torch._C._LinAlgError:
+            epsilon *= 10  # Increase regularization if matrix is singular
+            print(f"Matrix is singular, increasing epsilon to {epsilon}")
 
     return dtheta
 
@@ -136,7 +137,7 @@ def get_EP_Newton(S, T, i):
     """
     Compute entropy production estimate using the 1-step Newton method and the MTUR method for spin i.
     """
-    N, _ = S.shape
+    N, nflips = S.shape
     Da = correlations(S, T, i)
     Ks = correlations4(S, T, i)
     Ks -= torch.einsum('j,k->jk', Da, Da)
@@ -151,17 +152,16 @@ def get_EP_Newton(S, T, i):
     sig_MTUR = (theta * Dai).sum()
 
     Dai = remove_i(Da, i)
-    sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))/N
+    sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))
     return sig_N1, sig_MTUR, theta, Da
 
 def get_EP_Newton2(S, T, theta_lin, Da, i):
     """
     One iteration of Newton-Raphson to refine theta estimation.
     """
-    N, _ = S.shape
+    N, nflips = S.shape
     Da_th = correlations_theta(S, T, theta_lin, i)
     Ks_th = correlations4_theta(S, T, theta_lin, i)
-
 
     Z = norm_theta(S, T, theta_lin, i)
     Da_th /= Z

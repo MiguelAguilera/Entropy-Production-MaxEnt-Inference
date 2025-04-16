@@ -82,12 +82,13 @@ def calc(N, rep):
         with h5py.File(file_name, 'r') as f:
             S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
         S_i_t = torch.from_numpy(S_i)
-        print(i,S_i.shape)
+#        print(i,S_i.shape)
 
         if S_i.shape[1] <= 1:
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
+        Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
         sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
         sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
@@ -96,10 +97,10 @@ def calc(N, rep):
 #            theta2=theta1.clone()
 #            sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta2.clone(), Da, i)
         # Aggregate results
-        S_Emp += sigma_emp
-        S_TUR += sig_MTUR
-        S_N1  += sig_N1
-        S_N2  += sig_N2
+        S_Emp += Pi*sigma_emp
+        S_TUR += Pi*sig_MTUR
+        S_N1  += Pi*sig_N1
+        S_N2  += Pi*sig_N2
 
     print("\n[Results]")
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
