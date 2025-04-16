@@ -1,6 +1,27 @@
 import os
 import argparse
 import numpy as np
+import h5py
+import hdf5plugin
+import threading
+import spin_model
+
+def save_data(file_name, J, H, S, F):
+    with h5py.File(file_name, 'w') as f:
+        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
+        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
+
+    for i in range(F.shape[0]):
+        idxs = np.where(F[i, :] == 1)[0]
+        S_i = S[:, idxs] if len(idxs) > 0 else np.zeros((S.shape[0], 0), dtype=bool)
+        with h5py.File(file_name, 'a') as f:
+            bool_array = ((S_i + 1) // 2).astype(bool)
+            f.create_dataset(
+                f'S_{i}',
+                data=bool_array,
+                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+            )
+    print(f"[Thread] Data saved to {file_name}")
 
 # -------------------------------
 # Argument Parsing
@@ -36,17 +57,10 @@ parser.set_defaults(add_critical_beta=True)  # Default to sequential mode
 parser.add_argument("--critical_beta", type=int, default=1.3484999614126383,
                     help="Value of the critical beta (default: 1.3484999614126383).")
 
-parser.add_argument("--model_version", type=int, default=1, help="Internal use.")
 
 args = parser.parse_args()
 
-if args.model_version == 1:
-    from spin_model_simulation import run_simulation  
-elif args.model_version == 2:
-    from spin_model_simulation2 import run_simulation  
-else:
-    raise Exception(f'Unknown args.model_version={args.model_version}')
-    
+
 # -------------------------------
 # Initialization
 # -------------------------------
@@ -92,9 +106,7 @@ for beta in betas:
             print(f"File {file_name} exists, overwriting.")
             os.remove(file_name)
 
-    # Run the simulation
-    run_simulation(
-        file_name=file_name,
+    J, H, S, F = spin_model.run_simulation(
         N=args.size,
         num_steps=args.num_steps,
         rep=args.rep,
@@ -104,4 +116,13 @@ for beta in betas:
         seed=42,
         sequential=args.sequential
     )
+
+    print('Sampled states: %d' % S.shape[1])
+    print('   - state changes : %d/%d/%d' % ( (F==1).sum(), F.sum(), F.shape[0]*F.shape[1] ) )
+    print('   - magnetization : %f' % np.mean(S.astype(float)))
+
+    # Save model parameters
+    t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
+    t.start()
+    print(f"Saving data. Took {time.time()-start_time:.3f}s. Main loop continues...")
 
