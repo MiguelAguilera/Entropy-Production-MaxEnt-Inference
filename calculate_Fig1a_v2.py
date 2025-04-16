@@ -5,7 +5,7 @@ import torch
 import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 from matplotlib import pyplot as plt
-from methods_EP_multipartite import *
+from methods_EP_multipartite2 import *
 
 # -------------------------------
 # Argument Parsing
@@ -87,19 +87,16 @@ def calc(N, rep):
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
-        Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
-        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
+        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i)
         sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta1, Da, i)
-#        for r in range(10):
-#            theta2=theta1.clone()
-#            sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta2.clone(), Da, i)
-        # Aggregate results
-        S_Emp += Pi*sigma_emp
-        S_TUR += Pi*sig_MTUR
-        S_N1  += Pi*sig_N1
-        S_N2  += Pi*sig_N2
+        sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i)
+
+        P_i = S_i.shape[1]/T  # probability that spin i changes state
+        S_Emp += P_i*sigma_emp
+        S_TUR += P_i*sig_MTUR
+        S_N1  += P_i*sig_N1
+        S_N2  += P_i*max(sig_N1,sig_N2)
 
     print("\n[Results]")
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")

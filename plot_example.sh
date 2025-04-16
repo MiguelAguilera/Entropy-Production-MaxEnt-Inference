@@ -1,5 +1,8 @@
 #!/bin/sh
 
-python generate_data_spin_model.py --seed -1 --size 10 --num_beta 10 --rep 100000 --BASE_DIR ~/test
-python calculate_Fig1a.py          --size 10 --num_beta 10 --rep 100000 --BASE_DIR ~/test
+rm -rf ~/MaxEntData2
+
+python generate_data_spin_model.py --seed 42 --size 20 --num_beta 5  --BASE_DIR ~/MaxEntData2
+python fig1a.py                              --size 20 --num_beta 5   --BASE_DIR ~/MaxEntData2
+
 
