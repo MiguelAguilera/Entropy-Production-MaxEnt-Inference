@@ -88,7 +88,9 @@ def calc(N, rep):
         sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
         sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
         sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta1, Da, i)
-
+#        for r in range(10):
+#            theta2=theta1.clone()
+#            sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta2.clone(), Da, i)
         # Aggregate results
         S_Emp += sigma_emp
         S_TUR += sig_MTUR

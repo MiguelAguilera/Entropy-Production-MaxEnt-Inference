@@ -18,7 +18,7 @@ def correlations(S, T, i):
     """
     N, _ = S.shape
     Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / T
-    Da[i] = 0  # zero out self-correlation
+#    Da[i] = 0  # zero out self-correlation
     return Da
 
 def correlations4(S, T, i):
@@ -27,8 +27,8 @@ def correlations4(S, T, i):
     """
     N, _ = S.shape
     K = (4 * S) @ S.T / T
-    K[i, :] = 0
-    K[:, i] = 0
+#    K[i, :] = 0
+#    K[:, i] = 0
     return K
 
 # =======================
@@ -44,7 +44,7 @@ def correlations_theta(S, T, theta, i):
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
     S1_S = -(-2 * S[i, :]) * torch.exp(-thf)
     Da = torch.einsum('r,jr->j', S1_S, S) / T
-    Da[i] = 0
+#    Da[i] = 0
     return Da
 
 def correlations4_theta(S, T, theta, i):
@@ -55,8 +55,8 @@ def correlations4_theta(S, T, theta, i):
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
     K = (4 * torch.exp(-thf) * S) @ S.T / T
-    K[i, :] = 0
-    K[:, i] = 0
+#    K[i, :] = 0
+#    K[:, i] = 0
     return K
 
 # =======================
@@ -68,10 +68,11 @@ def norm_theta(S, T, theta, i):
     Estimate normalization constant Z from the partition function under theta.
     """
     N, nflips = S.shape
-    noF = T - nflips
+    rep=T/N
+    noF = rep - nflips
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
-    Z = torch.sum(torch.exp(-thf)) / T + noF / T
+    Z = (torch.sum(torch.exp(-thf)) / rep + noF / rep)
     return Z
 
 # =======================
@@ -129,15 +130,22 @@ def get_EP_Newton(S, T, i):
     N, _ = S.shape
     Da = correlations(S, T, i)
     Ks = correlations4(S, T, i)
-    Ks -= torch.einsum('j,k->jk', Da, Da) / N
+    Ks -= torch.einsum('j,k->jk', Da, Da)
 
+
+    
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
+    
+    Z = norm_theta(S, T, theta, i)
+    if i ==N-1:
+        print(Da*N)
+        print(Z)
 
     sig_MTUR = (theta * Dai).sum()
 
     Dai = remove_i(Da, i)
-    sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))
+    sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))/N
     return sig_N1, sig_MTUR, theta, Da
 
 def get_EP_Newton2(S, T, theta_lin, Da, i):
@@ -148,14 +156,19 @@ def get_EP_Newton2(S, T, theta_lin, Da, i):
     Da_th = correlations_theta(S, T, theta_lin, i)
     Ks_th = correlations4_theta(S, T, theta_lin, i)
 
+
     Z = norm_theta(S, T, theta_lin, i)
+    if i ==N-1:
+        print(Da_th*N)
+        print(Ks_th[-1,:]*N)
+        print(Z)
     Da_th /= Z
-    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th) / N
+    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)
 
     theta_lin2 = solve_linear_theta(Da, Da_th, Ks_th, i)
     theta = theta_lin + theta_lin2
 
     Dai = remove_i(Da, i)
-    sig_N2 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))
+    sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, T, theta, i))/N
     return sig_N2, theta_lin2
 
