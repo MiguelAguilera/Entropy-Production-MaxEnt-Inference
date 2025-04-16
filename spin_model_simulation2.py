@@ -9,7 +9,7 @@ DTYPE = 'float32'  # Default data type for numerical operations
 
 # --------- Glauber Dynamics Core Functions --------- #
 
-@njit('int32(float32, float32[::1], int32[::1])', inline='always')
+@njit('float32(float32, float32[::1], float32[::1])', inline='always')
 def GlauberStep(Hi, Ji, s):
     """
     Perform a single Glauber update for a given spin.
@@ -22,11 +22,11 @@ def GlauberStep(Hi, Ji, s):
     Returns:
         int: New value of the spin (-1 or 1).
     """
-    h = Hi + Ji @ s.astype(np.float32)
-    return int(np.random.rand() * 2 - 1 < np.tanh(h)) * 2 - 1
+    h = Hi + Ji @ s
+    return float(int(np.random.rand() * 2 - 1 < np.tanh(h)) * 2 - 1)
 
 
-@njit('int32[:](float32[::1], float32[:,::1], int32[::1],int32)', inline='always')
+@njit('float32[:](float32[::1], float32[:,::1], float32[::1], int32)', inline='always')
 def SequentialGlauberStep(H, J, s, T=1):
     """
     Sequential Glauber dynamics: spins are updated using a random order.
@@ -47,7 +47,7 @@ def SequentialGlauberStep(H, J, s, T=1):
     return s
 
 
-@njit('int32[:](float32[::1], float32[:,::1], int32[::1],int32)', inline='always')
+@njit('float32[:](float32[::1], float32[:,::1], float32[::1], int32)', inline='always')
 def ParallelGlauberStep(H, J, s, T=1):
     """
     Parallel Glauber dynamics: all spins are updated simultaneously.
@@ -92,16 +92,19 @@ def sample(rep, H, J, num_steps, sequential=True):
     F = np.ones_like(S)
 
     for r in prange(rep):
-        s = np.ones(N, dtype='int32')
-        if sequential:
-            S[:, r] = SequentialGlauberStep(H, J, s, T=num_steps)
-        else:
-            S[:, r] = ParallelGlauberStep(H, J, s, T=num_steps)
+        s   = np.ones(N, dtype='float32')
 
-        s1 = np.ones(N, dtype='int32')
+        if sequential:
+            out = SequentialGlauberStep(H, J, s, T=num_steps)
+        else:
+            out = ParallelGlauberStep(H, J, s, T=num_steps)
+
+        s1 = np.ones(N, dtype='float32')
         for i in range(N):
-            s1[i] = GlauberStep(H[i], J[i, :], S[:, r].copy())
-        F[:, r] = - s1 * s // 2  # Indicates if spin changed: 1 if flipped, -1 otherwise
+            s1[i] = GlauberStep(H[i], J[i, :], out)
+
+        S[:, r] = out.astype('int32')
+        F[:, r] = (- s1 * s).astype('int32') // 2  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
     return S, F
 
@@ -164,8 +167,8 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
     S, F = sample(rep, H, J, num_steps, sequential=sequential)
 
     print('Sampled states: %d' % S.shape[1])
-    print('   - state changes : %d' % F.sum())
-    print('   - magnetization: %f' % np.mean(S.astype(float)))
+    print('   - state changes : %d' % (F==1).sum())
+    print('   - magnetization : %f' % np.mean(S.astype(float)))
 
     # Save model parameters
     t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
@@ -188,3 +191,4 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
 #            f.create_dataset(f'S_{i}', data=((S_i + 1) // 2).astype(bool), compression='gzip', compression_opts=5)
 
 #    print(f"Data saved to {file_name}, time = %.3f seconds" % (time.time() - start_time))
+

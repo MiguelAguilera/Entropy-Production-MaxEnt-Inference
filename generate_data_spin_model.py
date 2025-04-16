@@ -1,7 +1,6 @@
 import os
 import argparse
 import numpy as np
-from spin_model_simulation import run_simulation  # Assumes a custom simulation function
 
 # -------------------------------
 # Argument Parsing
@@ -37,9 +36,17 @@ parser.set_defaults(add_critical_beta=True)  # Default to sequential mode
 parser.add_argument("--critical_beta", type=int, default=1.3484999614126383,
                     help="Value of the critical beta (default: 1.3484999614126383).")
 
+parser.add_argument("--model_version", type=int, default=1, help="Internal use.")
 
 args = parser.parse_args()
 
+if args.model_version == 1:
+    from spin_model_simulation import run_simulation  
+elif args.model_version == 2:
+    from spin_model_simulation2 import run_simulation  
+else:
+    raise Exception(f'Unknown args.model_version={args.model_version}')
+    
 # -------------------------------
 # Initialization
 # -------------------------------
