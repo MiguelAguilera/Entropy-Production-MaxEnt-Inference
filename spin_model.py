@@ -3,7 +3,6 @@ from numba import njit, prange
 import h5py
 import hdf5plugin
 import threading
-import time
 
 DTYPE = 'float32'  # Default data type for numerical operations
 
@@ -104,7 +103,7 @@ def sample(rep, H, J, num_steps, sequential=True):
             s1[i] = GlauberStep(H[i], J[i, :], out)
 
         S[:, r] = out.astype('int32')
-        F[:, r] = -( (s1 * s).astype('int32') // 2 )  # Indicates if spin changed: 1 if flipped, -1 otherwise
+        F[:, r] = -(s1 * s).astype('int32')  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
     return S, F
 
@@ -136,8 +135,6 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
 
     if seed is not None:
         np.random.seed(seed)
-
-    start_time = time.time()
 
     # Initialize couplings and fields
     rnd = np.random.randn(N, N)

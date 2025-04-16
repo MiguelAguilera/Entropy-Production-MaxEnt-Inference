@@ -1,10 +1,10 @@
-import os
-import argparse
+import os, time, argparse
 import numpy as np
 import h5py
 import hdf5plugin
 import threading
 import spin_model
+
 
 def save_data(file_name, J, H, S, F):
     with h5py.File(file_name, 'w') as f:
@@ -106,6 +106,7 @@ for beta in betas:
             print(f"File {file_name} exists, overwriting.")
             os.remove(file_name)
 
+    start_time = time.time()
     J, H, S, F = spin_model.run_simulation(
         N=args.size,
         num_steps=args.num_steps,
