@@ -109,7 +109,7 @@ area_centers = (area_start_indices + area_end_indices) / 2
 # Define symmetric logarithmic normalization for better contrast,
 # especially helpful when θ values vary widely around zero.
 norm = mcolors.SymLogNorm(
-    linthresh=0.01,    # Linear range around zero
+    linthresh=0.012,    # Linear range around zero
     linscale=0.05,     # Controls the size of the linear region
     vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
     vmax=np.max(np.abs(th))

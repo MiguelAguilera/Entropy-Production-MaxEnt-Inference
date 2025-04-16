@@ -100,15 +100,23 @@ class MaxEntObjective(torch.nn.Module):
             Scalar objective value
         """
         N, rep = S.shape
+        
+        # Load upper triange
         th = torch.zeros((N, N), dtype=theta.dtype)
         triu_indices = torch.triu_indices(N, N, offset=1)
         th[triu_indices[0], triu_indices[1]] = theta
-        th1= th - th.T
-        thS = (th1 - th1.T) @ S
+        
+        # Compute the product of antisymmetric couplings by sample matrix
+        thS = (th - th.T) @ S
+        
+        # Element-wise multiply with S1 and sum over rows (axis=0) to get one value per sample
         thf_odd =torch.sum(S1 * thS, axis=0) 
+        
+        # Compute the log-sum-exp trick to stabilize exponential averaging
         thf_min = torch.min(thf_odd)
         sig = torch.mean(thf_odd) + thf_min - torch.log(torch.mean(torch.exp(-thf_odd + thf_min)))
-        return sig
+        
+        return sig/N        # Scale by N to normalize for tolerance calculation
 
 # Create a global instance of the objective function
 obj_fn = MaxEntObjective()
@@ -142,5 +150,5 @@ def get_torch(S, S1, max_iter=None, tol_per_param=None, mode=2, lambda_=0.0):
     res = minimize2(f, **args)
 
     print('     max_theta', torch.max(torch.abs(res.x)))
-    return -res.fun  # Return original (positive) objective value
+    return -res.fun*N  # Return original (positive) objective value
 
