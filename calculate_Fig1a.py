@@ -56,7 +56,7 @@ def calc(N, rep):
         rep (int): Number of repetitions.
 
     Returns:
-        np.ndarray: EP estimates [experimental, MTUR, Newton-1, Newton-2]
+        np.ndarray: EP estimates [empirical, MTUR, Newton-1, Newton-2]
     """
     print()
     print("=" * 70)
@@ -71,43 +71,43 @@ def calc(N, rep):
     J_t = torch.from_numpy(J)
 
     # Initialize accumulators
-    S_Exp = S_TUR = S_N1 = S_N2 = 0
+    S_Emp = S_TUR = S_N1 = S_N2 = 0
     
     T = N * rep  # Total spin-flip attempts
 
     for i in range(N):
         with h5py.File(file_name, 'r') as f:
             S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
-        S_t = torch.from_numpy(S_i)
+        S_i_t = torch.from_numpy(S_i)
 
         if S_i.shape[1] <= 1:
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
         # Estimate entropy production using various methods
-        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, T, i)
-        sigma_exp = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2 = get_EP_Newton2(S_t, T, theta1, Da, i)
+        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
+        sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
+        sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta1, Da, i)
 
         # Aggregate results
-        S_Exp += sigma_exp
+        S_Emp += sigma_emp
         S_TUR += sig_MTUR
         S_N1  += sig_N1
         S_N2  += sig_N2
 
     print("\n[Results]")
-    print(f"  EP (Experimental):     {S_Exp:.6f}")
+    print(f"  EP (Empirical)    :    {S_Emp:.6f}")
     print(f"  EP (MTUR):             {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
     print(f"  EP (2-step Newton):    {S_N2:.6f}")
     print("-" * 70)
 
-    return np.array([S_Exp, S_TUR, S_N1, S_N2])
+    return np.array([S_Emp, S_TUR, S_N1, S_N2])
 
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
-EP = np.zeros((4, args.num_beta))  # Rows: Experimental, MTUR, Newton-1, Newton-2
+EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
 
 for ib, beta in enumerate(np.round(betas, 8)):
     EP[:, ib] = calc(N, rep)
@@ -115,10 +115,15 @@ for ib, beta in enumerate(np.round(betas, 8)):
 # -------------------------------
 # Save results
 # -------------------------------
-filename = f"data/spin/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
+SAVE_DATA_DIR = 'ep_data/spin'
+if not os.path.exists(SAVE_DATA_DIR):
+    print(f'Creating base directory: {SAVE_DATA_DIR}')
+    os.makedirs(SAVE_DATA_DIR)
+filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
 np.savez(filename, EP=EP, betas=betas)
+print(f'Saved calculations to {filename}')
 
-if args.do_plot:
+if not args.no_plot:
     # -------------------------------
     # Plot Results
     # -------------------------------
@@ -143,7 +148,7 @@ if args.do_plot:
     plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
     for i in range(1, 4):
         plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
-    plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot experimental for clarity
+    plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
     # Axes and labels
     plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])

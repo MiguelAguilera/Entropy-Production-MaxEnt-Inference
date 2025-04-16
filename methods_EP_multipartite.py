@@ -6,7 +6,8 @@ import torch
 
 def exp_EP_spin_model(Da, J, i):
     """
-    Compute expected entropy production contribution from spin `i` using Da and interaction matrix J.
+    Compute empirical entropy production contribution from spin `i` using 
+    correlation matrix Da and interaction matrix J.
     """
     N, _ = J.shape
     return torch.sum((J[i, :] - J[:, i]) * Da) / 2
