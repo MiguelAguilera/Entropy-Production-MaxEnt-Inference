@@ -119,7 +119,7 @@ for beta in betas:
     )
 
     print('Sampled states: %d' % S.shape[1])
-    print('   - state changes : %d/%d/%d' % ( (F==1).sum(), F.sum(), F.shape[0]*F.shape[1] ) )
+    print('   - state changes : %d/%d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
     print('   - magnetization : %f' % np.mean(S.astype(float)))
 
     # Save model parameters
