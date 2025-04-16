@@ -164,8 +164,8 @@ def run_simulation(file_name, N, num_steps=128, rep=1_000_000,
     S, F = sample(rep, H, J, num_steps, sequential=sequential)
 
     print('Sampled states: %d' % S.shape[1])
-    print('   - state changes : %d' % F.sum())
-    print('   - magnetization: %f' % np.mean(S.astype(float)))
+    print('   - state changes : %d/%d/%d' % ( (F==1).sum(), F.sum(), N*rep ) )
+    print('   - magnetization : %f' % np.mean(S.astype(float)))
 
     # Save model parameters
     t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
