@@ -112,7 +112,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 
     I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
     
-    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
+    alpha = 0 # 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
     dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
 
     # epsilon = 1e-6
@@ -151,7 +151,7 @@ def get_EP_Newton(S, T, i):
     sig_MTUR = (theta * Dai).sum()
 
     Dai = remove_i(Da, i)
-    sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))/N
+    sig_N1 = (theta * Dai).sum() - torch.log(norm_theta(S, T, theta, i))/N
     return sig_N1, sig_MTUR, theta, Da
 
 def get_EP_Newton2(S, T, theta_lin, Da, i):
