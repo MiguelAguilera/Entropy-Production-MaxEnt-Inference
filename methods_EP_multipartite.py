@@ -1,7 +1,6 @@
 import torch
 
 import numpy as np
-import sklearn 
 
 # =======================
 # Spin Model and Correlations
@@ -21,12 +20,6 @@ def correlations(S, T, i):
     """
     N, _ = S.shape
     Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / T
-<<<<<<< HEAD
-#    Da[i] = 0  # zero out self-correlation
-=======
-
-    Da[i] = 0  # zero out self-correlation
->>>>>>> 47575bd086e08dd74d40c36d3b1ecc90ac463649
     return Da
 
 def correlations4(S, T, i):
@@ -35,8 +28,6 @@ def correlations4(S, T, i):
     """
     N, _ = S.shape
     K = (4 * S) @ S.T / T
-#    K[i, :] = 0
-#    K[:, i] = 0
     return K
 
 # =======================
@@ -156,18 +147,11 @@ def get_EP_Newton(S, T, i):
     Dai = remove_i(Da, i)
     
     Z = norm_theta(S, T, theta, i)
-    if i ==N-1:
-        print(Da*N)
-        print(Z)
 
     sig_MTUR = (theta * Dai).sum()
 
     Dai = remove_i(Da, i)
-<<<<<<< HEAD
     sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, T, theta, i)))/N
-=======
-    sig_N1 = (theta * Dai).sum() - torch.log(norm_theta(S, T, theta, i))
->>>>>>> 47575bd086e08dd74d40c36d3b1ecc90ac463649
     return sig_N1, sig_MTUR, theta, Da
 
 def get_EP_Newton2(S, T, theta_lin, Da, i):
@@ -180,10 +164,6 @@ def get_EP_Newton2(S, T, theta_lin, Da, i):
 
 
     Z = norm_theta(S, T, theta_lin, i)
-    if i ==N-1:
-        print(Da_th*N)
-        print(Ks_th[-1,:]*N)
-        print(Z)
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)
 
