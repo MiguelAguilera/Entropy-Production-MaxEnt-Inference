@@ -66,8 +66,8 @@ S1_t = torch.from_numpy(S[:, :-1])
 f = lambda theta: -obj_fn(theta, S_t, S1_t)
 
 args = get_torchmin_args(S_t, tol_per_param)
-args['x0'] = torch.zeros((N * (N - 1)) // 2)  # Upper-triangular vector
-args['lambda_'] = 0
+#args['x0'] = torch.zeros((N * (N - 1)) // 2)  # Upper-triangular vector
+#args['lambda_'] = 0
 res = minimize2(f, **args)
 
 # Extract coupling matrix θ
@@ -77,7 +77,7 @@ triu_indices = np.triu_indices(N, k=1)
 th[triu_indices[0], triu_indices[1]] = theta
 th=th-th.T
 sigma = -res.fun
-print("Log-likelihood:", sigma)
+print("EP:", sigma)
 
 # --- Area names ---
 area_names, area_start_indices = np.unique(areas, return_index=True)
@@ -89,7 +89,6 @@ print(th)
 th_abs = np.abs(th)
 
 th_sign = np.sign(th)
-th_custom = np.where(th_sign == th_sign.T, -th_abs, 0)  # Optional: not used directly
 
 condensed_dist = squareform(th_abs)
 linkage_matrix = linkage(condensed_dist, method='average')
@@ -110,7 +109,7 @@ area_centers = (area_start_indices + area_end_indices) / 2
 # Define symmetric logarithmic normalization for better contrast,
 # especially helpful when θ values vary widely around zero.
 norm = mcolors.SymLogNorm(
-    linthresh=0.008,    # Linear range around zero
+    linthresh=0.01,    # Linear range around zero
     linscale=0.05,     # Controls the size of the linear region
     vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
     vmax=np.max(np.abs(th))
@@ -124,8 +123,8 @@ plt.figure(figsize=(5, 4))
 plt.imshow(th, cmap='bwr', aspect='equal', interpolation='nearest', norm=norm)
 
 # Add a label to the left side of the plot as a "title"
-plt.text(-0.25, 0.5, r'$\theta_{ij}^*-\theta_{ji}^*$', fontsize=18, 
-         va='center', ha='center', rotation=90, transform=plt.gca().transAxes)
+plt.text(-0.25, 0.5, r'$\theta_{ij}^*$', fontsize=18, 
+         va='center', ha='center', rotation=0, transform=plt.gca().transAxes)
 
 # Draw dotted lines to separate different brain areas visually
 for idx in area_start_indices[1:]:  # Skip the first index (0)
@@ -144,8 +143,10 @@ plt.tick_params(axis='both', which='major', labelsize=14)
 
 # Add colorbar and adjust colorbar ticks
 cbar = plt.colorbar(shrink=0.85)
-tick_positions = [-1e-1,-0.5e-1,-0.25e-1, 0,0.25e-1,0.5e-1, 1e-1]
-tick_labels = [r'$-0.1$', r'$-0.25$', r'$-0.5$', r'$0$', r'$0.25$', r'$0.5$', r'$0.1$']
+
+tick_positions = [-1.0e-1,-0.5e-1,-0.25e-1, 0.0 ,0.25e-1,0.5e-1,1.e-1]
+tick_labels = [r'$-0.1$', r'$-0.05$', r'$-0.025$', r'$0$', r'$0.025$', r'$0.05$', r'$0.1$']
+
 cbar.set_ticks(tick_positions)              # Only these positions
 cbar.set_ticklabels(tick_labels)            # Custom labels
 cbar.ax.tick_params(length=6, width=1.5)     # Optional: adjust tick bar style
