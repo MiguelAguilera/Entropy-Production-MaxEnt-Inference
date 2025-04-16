@@ -73,7 +73,6 @@ overwrite = True  # Whether to overwrite existing files
 # Generate array of beta values
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 if args.add_critical_beta:
-    betas = np.append(betas, args.critical_beta)
     betas = np.append(args.critical_beta,betas)
 
 BASE_DIR_MODE = BASE_DIR + '/' + ("sequential" if args.sequential else "parallel")
