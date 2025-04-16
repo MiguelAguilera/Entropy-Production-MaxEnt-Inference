@@ -22,7 +22,10 @@ def GlauberStep(Hi, Ji, s):
     Returns:
         int: New value of the spin (-1 or 1).
     """
-    h = Hi + Ji @ s.astype(np.float32)
+    h = Hi + Ji
+    for i in range(len(s)):
+        if s[i]==-1:
+            JiS -= 2*Ji[i]
     return int(np.random.rand() * 2 - 1 < np.tanh(h)) * 2 - 1
 
 
@@ -101,7 +104,7 @@ def sample(rep, H, J, num_steps, sequential=True):
         s1 = np.ones(N, dtype='int32')
         for i in range(N):
             s1[i] = GlauberStep(H[i], J[i, :], S[:, r].copy())
-        F[:, r] = - s1 * s // 2  # Indicates if spin changed: 1 if flipped, -1 otherwise
+        F[:, r] = - s1 * s  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
     return S, F
 
