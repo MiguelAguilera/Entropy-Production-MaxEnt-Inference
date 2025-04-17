@@ -20,14 +20,14 @@ parser.add_argument("--size", type=int, default=100,
                     help="System size (default: 100).")
 parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                     help="Base directory to store simulation results (default: '~/MaxEntData').")
-parser.add_argument("--critical_beta", type=float, default=1.3484999614126383 ,
-                    help="Critical beta value (default: 1.3484999614126383 ).")
-parser.add_argument("--num_beta", type=int, default=101,
-                    help="Number of beta values to simulate (default: 101).")
+parser.add_argument("--beta", type=float, default=1.3484999614126383 ,
+                    help="beta value (default: 1.3484999614126383 ).")
 parser.add_argument("--J0", type=float, default=1.0,
                     help="Mean interaction coupling (default: 1.0).")
 parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5).")
+parser.add_argument("--patterns", type=int, default=None,
+                    help="Hopfield pattern density (default: None).")
 args = parser.parse_args()
 
 # -------------------------------
@@ -46,7 +46,7 @@ DTYPE = 'float32'
 N = args.size
 rep = args.rep
 
-beta = np.round(args.critical_beta, 8) # Inverse temperature (interaction strength)
+beta = np.round(args.beta, 8) # Inverse temperature (interaction strength)
 
 print(f'** DOING SYSTEM SIZE {N} with beta {beta:.6f} **', flush=True)
 
@@ -56,7 +56,12 @@ print(f'** DOING SYSTEM SIZE {N} with beta {beta:.6f} **', flush=True)
 # Load data
 # -------------------------------
 
-file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+if args.patterns is None:
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+else:
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+print(f"[Loading] Reading data from file:\n  → {file_name}\n")
+
 print(file_name, flush=True)
 
 with h5py.File(file_name, 'r') as f:
@@ -77,23 +82,26 @@ dJ = ((J - J.T)[mask]).reshape(N, N - 1)
 S_Exp = S_TUR = S_N1 = S_N2 = 0
 th1 = np.zeros((N,N-1))
 th2 = np.zeros((N,N-1))
+
+T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
+
 for i in range(N):
     with h5py.File(file_name, 'r') as f:
         S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1 spin values
-    S_t = torch.from_numpy(S_i)
+    S_i_t = torch.from_numpy(S_i)
 
     if S_i.shape[1] <= 1:
         continue
-
-    T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
     
     # Estimate EP using different methods
-    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_t, T, i)
-    sigma_exp = exp_EP_spin_model(Da, J_t, i)
-    sig_N2, theta2 = get_EP_Newton2(S_t, T, theta1, Da, i)
+    Pi=S_i.shape[1]/T
+    # Estimate entropy production using various methods
+    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i, Pi)
+    sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
+    sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i, Pi)
 
     # Accumulate results
-    S_Exp += sigma_exp
+    S_Exp += sigma_emp
     S_TUR += sig_MTUR
     S_N1  += sig_N1
     S_N2  += sig_N2
