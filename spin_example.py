@@ -3,7 +3,7 @@ import torch
 import spin_model
 from methods_EP_multipartite import *
 
-J, H, S, F = spin_model.run_simulation(N=10, beta=4, seed=42, sequential=True)
+J, H, S, F = spin_model.run_simulation(N=10, beta=.1, seed=42, sequential=True)
 assert(np.all(H==0))  # We do not support local fields in our analysis
 
 

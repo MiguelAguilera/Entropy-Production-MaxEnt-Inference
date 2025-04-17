@@ -150,7 +150,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
     rnd = np.random.randn(N, N)
     if patterns is None:
         init=0
-        J = beta * (J0 / N + rnd * DJ / np.sqrt(N)).astype(DTYPE)
+        J = (beta * (J0 / N + rnd * DJ / np.sqrt(N))).astype(DTYPE)
     else:
         init=0
         L=patterns
