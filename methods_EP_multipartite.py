@@ -139,8 +139,6 @@ def get_EP_Newton(S, i):
     Da = correlations(S, i)
     Ks = correlations4(S, i)
     Ks -= torch.einsum('j,k->jk', Da, Da)
-
-
     
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
@@ -158,10 +156,10 @@ def get_EP_Newton2(S, theta_lin, Da, i):
     One iteration of Newton-Raphson to refine theta estimation.
     """
     N, nflips = S.shape
-    Da_th = correlations_theta(S, T, theta_lin, i)
-    Ks_th = correlations4_theta(S, T, theta_lin, i)
+    Da_th = correlations_theta(S, theta_lin, i)
+    Ks_th = correlations4_theta(S, theta_lin, i)
 
-    Z = norm_theta(S, T, theta_lin, i)
+    Z = norm_theta(S, theta_lin, i)
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)
 
