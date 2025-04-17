@@ -160,7 +160,7 @@ if not args.no_plot:
     plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
     # Axes and labels
-#    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
+    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
     plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
     plt.xlabel(r'$\beta$')
 
