@@ -183,4 +183,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # Need this to avoid multiprocessing errors on some platforms
     main()
