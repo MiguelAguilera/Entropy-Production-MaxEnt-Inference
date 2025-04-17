@@ -32,6 +32,8 @@ parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5)")
 parser.add_argument('--no_plot', action='store_true', default=False,
                     help='Disable plotting if specified')
+parser.add_argument("--pattern_density", type=float, default=None,
+                    help="Hopfield pattern density (default: None).")
 args = parser.parse_args()
 
 N = args.size
@@ -63,7 +65,10 @@ def calc(N, rep):
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
     print("=" * 70)
 
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    if args.pattern_density is None:
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    else:
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_density_{args.pattern_density}.h5"
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
     with h5py.File(file_name, 'r') as f:
@@ -83,18 +88,16 @@ def calc(N, rep):
             S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
         S_i_t = torch.from_numpy(S_i)
 
-        if S_i.shape[1] <= 1:
+        if S_i.shape[1] <= 1000:
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
         Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
-        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
+        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i)
         sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta1, Da, i)
-#        for r in range(10):
-#            theta2=theta1.clone()
-#            sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta2.clone(), Da, i)
+        sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i)
+
         # Aggregate results
         S_Emp += Pi*sigma_emp
         S_TUR += Pi*sig_MTUR
@@ -157,7 +160,7 @@ if not args.no_plot:
     plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
     # Axes and labels
-    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
+#    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
     plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
     plt.xlabel(r'$\beta$')
 
