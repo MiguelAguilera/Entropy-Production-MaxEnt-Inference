@@ -95,21 +95,20 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
     trial_rep = rep//trials
     for trial in prange(trials):
         if init==1:
-            s0  = np.ones(N, dtype='float32')
+            s0  = np.ones(N, dtype=DTYPE)
         elif init==0:
-            s0  = (((np.random.randint(0, 2, N) * 2) - 1).astype('float32'))
+            s0  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         if sequential:
             s = SequentialGlauberStep(H, J, s0, T=num_steps)
         else:
             s = ParallelGlauberStep(H, J, s0, T=num_steps)
-        
         for r in range(trial_rep):
             if sequential:
                 s = SequentialGlauberStep(H, J, s.copy(), T=1)
             else:
                 s = ParallelGlauberStep(H, J, s.copy(), T=1)
             
-            s1 = np.ones(N, dtype='float32')
+            s1 = np.ones(N, dtype=DTYPE)
             for i in range(N):
                 s1[i] = GlauberStep(H[i], J[i, :], s)
 
@@ -151,20 +150,18 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
     rnd = np.random.randn(N, N)
     if patterns is None:
         init=0
-        J = beta * (J0 / N + rnd.astype('float32') * DJ / np.sqrt(N))
+        J = beta * (J0 / N + rnd * DJ / np.sqrt(N)).astype(DTYPE)
     else:
         init=0
         L=patterns
-        J=np.zeros((N,N), dtype='float32')
-        xi = np.random.randint(0,2,(L,N)).astype('float32')*2-1
+        xi = np.random.randint(0,2,(L,N)).astype(DTYPE)*2-1
         xi_shifted = np.zeros_like(xi)
         for a in range(L-1):
             xi_shifted[a+1,]= xi[a,:]
         xi_shifted[0,:]= -xi[-1,:]
-        J = beta* xi.T @ xi_shifted /N
+        J = (beta * xi.T @ xi_shifted /N).astype(DTYPE)
     np.fill_diagonal(J, 0)
     H = np.zeros(N, dtype=DTYPE)
-
     # Warm-up run (just-in-time compilation trigger)
     _ = sample(rep//100, H, J, num_steps//10, sequential=sequential,init=init,trials=1)
 
