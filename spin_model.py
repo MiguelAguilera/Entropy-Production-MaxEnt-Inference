@@ -27,7 +27,7 @@ def GlauberStep(Hi, Ji, s):
 
 
 
-@njit('float32[:](float32[::1], float32[:,::1], float32[::1], int32)', inline='always')
+@njit('float32[:](float32[::1], float32[:,::1], float32[::1], float32)', inline='always')
 def SequentialGlauberStep(H, J, s, T=1):
     """
     Sequential Glauber dynamics: spins are updated using a random order.
@@ -42,7 +42,7 @@ def SequentialGlauberStep(H, J, s, T=1):
         array: Final spin configuration.
     """
     size = len(s)
-    indices = np.random.randint(0, size, size * T)
+    indices = np.random.randint(0, size, int(size * T))
     for i in indices:
         s[i] = GlauberStep(H[i], J[i, :], s)
     return s
