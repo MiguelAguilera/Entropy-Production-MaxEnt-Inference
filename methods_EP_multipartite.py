@@ -131,14 +131,14 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 # Entropy Production Estimators
 # =======================
 
-def get_EP_Newton(S, i):
+def get_EP_Newton(S, i, Pi):
     """
     Compute entropy production estimate using the 1-step Newton method and the MTUR method for spin i.
     """
     N, nflips = S.shape
     Da = correlations(S, i)
     Ks = correlations4(S, i)
-    Ks -= torch.einsum('j,k->jk', Da, Da)
+    Ks -= torch.einsum('j,k->jk', Da, Da)*Pi
     
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
@@ -151,7 +151,7 @@ def get_EP_Newton(S, i):
     sig_N1 = (theta * Dai).sum() - torch.sum(torch.log(norm_theta(S, theta, i)))
     return sig_N1, sig_MTUR, theta, Da
 
-def get_EP_Newton2(S, theta_lin, Da, i):
+def get_EP_Newton2(S, theta_lin, Da, i, Pi):
     """
     One iteration of Newton-Raphson to refine theta estimation.
     """
@@ -161,7 +161,7 @@ def get_EP_Newton2(S, theta_lin, Da, i):
 
     Z = norm_theta(S, theta_lin, i)
     Da_th /= Z
-    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)
+    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)*Pi
 
     theta_lin2 = solve_linear_theta(Da, Da_th, Ks_th, i)
     theta = theta_lin + theta_lin2
