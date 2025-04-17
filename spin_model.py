@@ -23,7 +23,7 @@ def GlauberStep(Hi, Ji, s):
     """
 
     h = Hi + Ji @ s
-    return float(int(np.random.rand() * 2 - 1 < np.tanh(h)) * 2 - 1)
+    return float(int(np.random.rand() < (np.tanh(h) + 1) / 2) * 2 - 1)
 
 
 
@@ -73,7 +73,7 @@ def ParallelGlauberStep(H, J, s, T=1):
 # --------- Sampling Function --------- #
 
 @njit(parallel=True, fastmath=True, cache=True)
-def sample(rep, H, J, num_steps, sequential=True):
+def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
     """
     Sample spin configurations using Glauber dynamics.
 
@@ -92,21 +92,29 @@ def sample(rep, H, J, num_steps, sequential=True):
     S = np.ones((N, rep), dtype='int32')
     F = np.ones_like(S)
 
-    for r in prange(rep):
-        s   = np.ones(N, dtype='float32')
-
+    trial_rep = rep//trials
+    for trial in prange(trials):
+        if init==1:
+            s0  = np.ones(N, dtype='float32')
+        elif init==0:
+            s0  = (((np.random.randint(0, 2, N) * 2) - 1).astype('float32'))
         if sequential:
-            out = SequentialGlauberStep(H, J, s, T=num_steps)
+            s = SequentialGlauberStep(H, J, s0, T=num_steps)
         else:
-            out = ParallelGlauberStep(H, J, s, T=num_steps)
+            s = ParallelGlauberStep(H, J, s0, T=num_steps)
+        
+        for r in range(trial_rep):
+            if sequential:
+                s = SequentialGlauberStep(H, J, s.copy(), T=1)
+            else:
+                s = ParallelGlauberStep(H, J, s.copy(), T=1)
+            
+            s1 = np.ones(N, dtype='float32')
+            for i in range(N):
+                s1[i] = GlauberStep(H[i], J[i, :], s)
 
-        s1 = np.ones(N, dtype='float32')
-        for i in range(N):
-            s1[i] = GlauberStep(H[i], J[i, :], out)
-
-        S[:, r] = out.astype('int32')
-        F[:, r] = -(s1 * s).astype('int32')  # Indicates if spin changed: 1 if flipped, -1 otherwise
-
+            S[:, trial*trial_rep + r] = s.astype('int32')
+            F[:, trial*trial_rep + r] = -(s1 * s).astype('int32')  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
     return S, F
 
@@ -114,7 +122,7 @@ def sample(rep, H, J, num_steps, sequential=True):
 
 def run_simulation(N, num_steps=128, rep=1_000_000,
                    beta=1.3485, J0=1.0, DJ=0.5, seed=None,
-                   onlychanges=None, sequential=True):
+                   onlychanges=None, sequential=True, patterns=None):
     """
     Run Glauber dynamics simulation and save results.
 
@@ -141,14 +149,26 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
 
     # Initialize couplings and fields
     rnd = np.random.randn(N, N)
-    J = beta * (J0 / N + rnd.astype(DTYPE) * DJ / np.sqrt(N))
+    if patterns is None:
+        init=0
+        J = beta * (J0 / N + rnd.astype('float32') * DJ / np.sqrt(N))
+    else:
+        init=0
+        L=patterns
+        J=np.zeros((N,N), dtype='float32')
+        xi = np.random.randint(0,2,(L,N)).astype('float32')*2-1
+        xi_shifted = np.zeros_like(xi)
+        for a in range(L-1):
+            xi_shifted[a+1,]= xi[a,:]
+        xi_shifted[0,:]= -xi[-1,:]
+        J = beta* xi.T @ xi_shifted /N
     np.fill_diagonal(J, 0)
     H = np.zeros(N, dtype=DTYPE)
 
     # Warm-up run (just-in-time compilation trigger)
-    _ = sample(1, H, J, 1)
+    _ = sample(rep//100, H, J, num_steps//10, sequential=sequential,init=init,trials=1)
 
     # Actual sampling
-    S, F = sample(rep, H, J, num_steps, sequential=sequential)
+    S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=1)
 
     return J, H, S, F

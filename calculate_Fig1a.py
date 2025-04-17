@@ -32,7 +32,7 @@ parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5)")
 parser.add_argument('--no_plot', action='store_true', default=False,
                     help='Disable plotting if specified')
-parser.add_argument("--pattern_density", type=float, default=None,
+parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
 args = parser.parse_args()
 
@@ -65,10 +65,10 @@ def calc(N, rep):
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
     print("=" * 70)
 
-    if args.pattern_density is None:
+    if args.patterns is None:
         file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
     else:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_density_{args.pattern_density}.h5"
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
     with h5py.File(file_name, 'r') as f:
@@ -88,7 +88,7 @@ def calc(N, rep):
             S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
         S_i_t = torch.from_numpy(S_i)
 
-        if S_i.shape[1] <= 1000:
+        if S_i.shape[1] <= 10:
             print(f"  [Warning] Skipping spin {i}: insufficient time steps")
             continue
 
