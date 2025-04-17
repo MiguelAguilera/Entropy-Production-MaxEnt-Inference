@@ -21,9 +21,9 @@ for i in range(N):
 
 
     # Estimate entropy production using various methods
-    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, T, i)
+    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i)
     sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
-    sig_N2, theta2               = get_EP_Newton2(S_i_t, T, theta1, Da, i)
+    sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i)
 
     # Aggregate results
     S_Emp += sigma_emp
