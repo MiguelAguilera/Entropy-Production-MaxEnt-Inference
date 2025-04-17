@@ -94,9 +94,10 @@ def calc(N, rep):
 
         Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
-        sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i, Pi)
-        sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i, Pi)
+        sig_N1, theta1, Da          = get_EP_Newton(S_i_t, i)
+        sig_MTUR                    = get_EP_MTUR(S_i_t, Da, i)
+        sigma_emp                   = exp_EP_spin_model(Da, J_t, i)
+        sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
 
         # Aggregate results
         S_Emp += Pi*sigma_emp
