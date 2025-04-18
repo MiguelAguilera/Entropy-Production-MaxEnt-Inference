@@ -22,7 +22,7 @@ def save_batch_process(args):
             f.create_dataset(
                 f'S_{i}',
                 data=bool_array,
-                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+                **hdf5plugin.Blosc(cname='zstd', clevel=3, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
             )
     return process_file
 
