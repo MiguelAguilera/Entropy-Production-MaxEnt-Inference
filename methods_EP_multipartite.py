@@ -6,14 +6,13 @@ import numpy as np
 # Spin Model and Correlations
 # =======================
 
-def exp_EP_spin_model(Da, J, i):
+def exp_EP_spin_model(Da, J_i, i):
     """
     Compute empirical entropy production contribution from spin `i` using 
     correlation matrix Da and interaction matrix J.
     """
-    N, _ = J.shape
 #    return torch.sum((J[i, :]-J[:,i])* Da)/2
-    return torch.sum(J[i, :] * Da) 
+    return torch.sum(J_i * Da) 
 
 def correlations(S, i):
     """
@@ -194,7 +193,7 @@ def get_EP_MTUR(S, i):
 
 
 
-def get_EP_Newton2(S, theta_lin, Da, i, delta=0.5):
+def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -202,7 +201,7 @@ def get_EP_Newton2(S, theta_lin, Da, i, delta=0.5):
     -----------
     S : torch.Tensor
         Binary spin configurations of shape (N, nflips).
-    theta_lin : torch.Tensor
+    theta_init : torch.Tensor
         Current estimate of the parameter vector theta (with zero at index i).
     Da : torch.Tensor
         Empirical first-order correlations (e.g., ⟨s_j⟩).
@@ -216,32 +215,32 @@ def get_EP_Newton2(S, theta_lin, Da, i, delta=0.5):
     --------
     sig_N2 : float
         Updated estimate of the log-partition function contribution (e.g., entropy production).
-    theta_lin2 : torch.Tensor
+    delta_theta : torch.Tensor
         Computed Newton step (Δθ).
     """
 
     N, nflips = S.shape
 
     # Compute model-averaged first-order and fourth-order statistics (excluding index i)
-    Da_th, Z = correlations_theta(S, theta_lin, i)
-    Ks_th = correlations4_theta(S, theta_lin, i)
+    Da_th, Z = correlations_theta(S, theta_init, i)
+    Ks_th = correlations4_theta(S, theta_init, i)
 
     # Normalize by partition function Z
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
 
     # Compute Newton step: Δθ = H⁻¹ (Da - Da_th)
-    theta_lin2 = solve_linear_theta(Da, Da_th, Ks_th, i)
+    delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
 
     # Optional: constrain the step to be within a trust region
     if delta is not None:
-        max_step = delta * torch.norm(theta_lin)
-        step_norm = torch.norm(theta_lin2)
+        max_step = delta * torch.norm(theta_init)
+        step_norm = torch.norm(delta_theta)
         if step_norm > max_step:
-            theta_lin2 = theta_lin2 * (max_step / step_norm)
+            delta_theta = delta_theta * (max_step / step_norm)
 
     # Apply the update
-    theta = theta_lin + theta_lin2
+    theta = theta_init + delta_theta
 
     # Remove index i from Da for calculating log-partition contribution
     Dai = remove_i(Da, i)
@@ -249,11 +248,11 @@ def get_EP_Newton2(S, theta_lin, Da, i, delta=0.5):
     # Compute surrogate objective (e.g., log-partition or entropy production)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
 
-    return sig_N2, theta_lin2
+    return sig_N2, theta
     
-def get_EP_Adam(S, theta_init, Da, i, num_iters=10, 
-                     beta1=0.9, beta2=0.999, lr=0.02, eps=1e-8, 
-                     tol=1e-3, skip_warm_up=False):
+def get_EP_Adam(S, theta_init, Da, i, num_iters=100, 
+                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
+                     tol=1e-4, skip_warm_up=False):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
