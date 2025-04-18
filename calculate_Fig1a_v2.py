@@ -6,6 +6,9 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
+import gd 
+
+DO_GD = True
 
 # -------------------------------
 # Argument Parsing
@@ -79,7 +82,7 @@ def calc(N, rep):
     J_t = torch.from_numpy(J)
 
     # Initialize accumulators
-    S_Emp = S_TUR = S_N1 = S_N2 = 0
+    S_Emp = S_TUR = S_N1 = S_N2 = S_GD= 0
     
     T = N * rep  # Total spin-flip attempts
 
@@ -99,25 +102,32 @@ def calc(N, rep):
         sigma_emp                   = exp_EP_spin_model(Da, J_t, i)
         sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
 
+        if DO_GD:
+            sig_GD, theta_gd            = gd.get_EP_gd(S_i_t, i, x0=theta1)
+        else:
+            sig_GD = np.nan
+
         # Aggregate results
         S_Emp += Pi*sigma_emp
         S_TUR += Pi*sig_MTUR
         S_N1  += Pi*sig_N1
-        S_N2  += Pi*sig_N2
+        S_N2  += Pi*max(sig_N1,sig_N2)
+        S_GD  += Pi*sig_GD
 
     print("\n[Results]")
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
-    print(f"  EP (MTUR):             {S_TUR:.6f}")
+    print(f"  EP (MTUR)         :    {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
     print(f"  EP (2-step Newton):    {S_N2:.6f}")
+    print(f"  EP (Grad Ascent  ):    {S_GD:.6f}")
     print("-" * 70)
 
-    return np.array([S_Emp, S_TUR, S_N1, S_N2])
+    return np.array([S_Emp, S_TUR, S_N1, S_N2, S_GD])
 
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
-EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
+EP = np.zeros((5, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2, GradientAscent
 
 for ib, beta in enumerate(np.round(betas, 8)):
     EP[:, ib] = calc(N, rep)
@@ -146,22 +156,23 @@ if not args.no_plot:
         r'$\Sigma$', 
         r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
         r'$\widehat{\Sigma}_{\bm g}$', 
-        r'${\Sigma}_{\bm g}$'
+        r'${\Sigma}_{\bm g}$',
+        r'${\Sigma}_{\bm g}^2$',
     ]
 
     cmap = plt.get_cmap('inferno_r')
-    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
+    colors = [cmap(0.25), cmap(0.5), cmap(0.75),cmap(0.95)]
 
     plt.figure(figsize=(4, 4))
 
     # Plot each EP estimator
     plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
-    for i in range(1, 4):
+    for i in range(1, EP.shape[0]):
         plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
     plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
     # Axes and labels
-    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
+    plt.axis([betas[0], betas[-1], 0, np.nanmax(EP) * 1.05])
     plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
     plt.xlabel(r'$\beta$')
 
@@ -177,3 +188,4 @@ if not args.no_plot:
     # Save and show figure
     plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
     plt.show()
+

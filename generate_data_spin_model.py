@@ -129,10 +129,10 @@ def main():
     # -------------------------------
     # Run Simulations
     # -------------------------------
-    for beta in betas:
+    for beta_ix, beta in enumerate(betas):
         beta = np.round(beta, 8)  # Avoid floating-point inconsistencies in filenames
 
-        print(f"\n** Running simulation for system size {args.size} with beta = {beta} **", flush=True)
+        print(f"\n** Running simulation {beta_ix+1}/{len(betas)} for N={args.size}, β={beta} **", flush=True)
 
         # Construct file name based on mode (sequential or parallel)
         if args.patterns is None:
