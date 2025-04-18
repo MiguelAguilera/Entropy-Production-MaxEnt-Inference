@@ -130,6 +130,36 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 # =======================
 # Entropy Production Estimators
 # =======================
+# import gd
+# def get_EP_gd2(S, i, x0=None):
+#     # NEED TO FINISH THIS
+#     N = S.shape[0]
+#     if x0 is None:
+#         x0 = np.zeros(N)
+
+#     g_t = torch.zeros_like(S)
+#     for j in range(N):
+#         g_t[j,:] = -2*S[i,:]*S[j,:]    # these are the observables
+#     g_t_noI = torch.cat((g_t[:i,:], g_t[i+1:,:]))
+#     g_avg=g_t_noI.mean(axis=1)           # conditional averages 
+
+#     def func(theta): 
+#         obj = theta@g_avg - torch.log(norm_theta(S, theta, i))
+#         return -obj
+#     def grad(theta):
+#         m1 = g_avg
+#         Da_th = correlations_theta(S, theta, i)/norm_theta(S, theta, i)
+#         r = m1
+#         r[:i] -= Da_th[:i]
+#         r[i:] -= Da_th[i+1:]
+#         return r
+
+#     optimal_params, obj_values, iterations = gd.adam_optimizer(
+#          func, 
+#          grad,
+#          x0
+#     )
+#     return obj_values[-1], optimal_params
 
 def get_EP_Newton(S, i):
     """

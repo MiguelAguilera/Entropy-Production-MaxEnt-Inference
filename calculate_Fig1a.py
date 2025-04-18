@@ -177,4 +177,3 @@ if not args.no_plot:
     # Save and show figure
     plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
     plt.show()
-
