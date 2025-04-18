@@ -93,7 +93,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
     F = np.ones_like(S)
 
     trial_rep = rep//trials
-    for trial in prange(trials):
+    for trial in range(trials):
         if init==1:
             s0  = np.ones(N, dtype=DTYPE)
         elif init==0:
@@ -104,7 +104,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
             s = ParallelGlauberStep(H, J, s0, T=num_steps)
         for r in range(trial_rep):
             if sequential:
-                s = SequentialGlauberStep(H, J, s.copy(), T=1)
+                s = SequentialGlauberStep(H, J, s.copy(), T=0.2)
             else:
                 s = ParallelGlauberStep(H, J, s.copy(), T=1)
             

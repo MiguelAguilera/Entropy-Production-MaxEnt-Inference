@@ -18,7 +18,11 @@ def save_batch_process(args):
     with h5py.File(process_file, 'w') as f:
         for i in group_indices:
             idxs = np.where(F[i, :] == 1)[0]
-            S_i = S[:, idxs] if len(idxs) > 0 else np.zeros((S.shape[0], 0), dtype=bool)
+            S_i = S[:, idxs]
+#            spike_count = np.sum(S_i == 1, axis=0)
+#            sort_idx = np.lexsort((spike_count**2, spike_count))
+#            S_i_sorted = S_i[:, sort_idx]
+#            S_i_sorted = S_i[:,np.argsort(np.sum(S_i == 1, axis=0))] # Sort rows by magnetization to help compression
             bool_array = ((S_i + 1) // 2).astype(bool)
 
             f.create_dataset(
