@@ -9,10 +9,12 @@ from multiprocessing import Pool
 import os
 
 def save_batch_process(args):
-    group_indices, file_name, F, S = args
-    # Each process gets its own file (to avoid HDF5 lock contention)
-    process_file = file_name.replace('.h5', f'_{os.getpid()}.h5')
+    group_indices, file_name, S_path, F_path, shape_S, shape_F = args
 
+    S = np.memmap(S_path, dtype='int32', mode='r', shape=shape_S)
+    F = np.memmap(F_path, dtype='int32', mode='r', shape=shape_F)
+
+    process_file = file_name.replace('.h5', f'_{os.getpid()}.h5')
     with h5py.File(process_file, 'w') as f:
         for i in group_indices:
             idxs = np.where(F[i, :] == 1)[0]
@@ -22,19 +24,26 @@ def save_batch_process(args):
             f.create_dataset(
                 f'S_{i}',
                 data=bool_array,
-                **hdf5plugin.Blosc(cname='zstd', clevel=3, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
             )
     return process_file
 
-def save_data_multiprocess(file_name, J, H, S, F, num_processes=8):
+def save_data_multiprocess(file_name, J, H, S, F, num_processes=24):
     N = F.shape[0]
     groups = np.array_split(np.arange(N), min(num_processes, N))
 
-    # Use fork-safe way to pass S and F: they must be global or passed via shared memory
-    with Pool(processes=min(num_processes, N)) as pool:
-        results = pool.map(save_batch_process, [(group, file_name, F, S) for group in groups])
+    # Save S and F to memmaps
+    S_path = 'S_tmp.dat'
+    F_path = 'F_tmp.dat'
+    np.memmap(S_path, dtype='int32', mode='w+', shape=S.shape)[:] = S[:]
+    np.memmap(F_path, dtype='int32', mode='w+', shape=F.shape)[:] = F[:]
 
-    # Merge all files into the main file
+    with Pool(processes=min(num_processes, N)) as pool:
+        results = pool.map(
+            save_batch_process,
+            [(group, file_name, S_path, F_path, S.shape, F.shape) for group in groups]
+        )
+
     with h5py.File(file_name, 'w') as f_out:
         f_out.create_dataset('J', data=J, compression='gzip', compression_opts=5)
         f_out.create_dataset('H', data=H, compression='gzip', compression_opts=5)
@@ -42,8 +51,10 @@ def save_data_multiprocess(file_name, J, H, S, F, num_processes=8):
             with h5py.File(partial_file, 'r') as f_in:
                 for key in f_in.keys():
                     f_in.copy(key, f_out)
+            os.remove(partial_file)
 
-            os.remove(partial_file)  # clean up temp file
+    os.remove(S_path)
+    os.remove(F_path)
 
     print(f"[Multiprocessing] Data saved to {file_name}")
 #def save_data(file_name, J, H, S, F):
@@ -172,13 +183,13 @@ def main():
         print('Sampled states: %d' % S.shape[1])
         print('   - state changes : %d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
         print('   - magnetization : %f' % np.mean(S.astype(float)))
-
+    
     #    save_data(file_name, J, H, S, F)
         save_data_multiprocess(file_name, J, H, S, F)
     #    # Save model parameters
     #    t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
     #    t.start()
-        print(f"Saving data. Took {time.time()-start_time:.3f}s. Main loop continues...")
+        print(f"Saving data. Took {time.time()-start_time:.3f}s.")
 
 
 
