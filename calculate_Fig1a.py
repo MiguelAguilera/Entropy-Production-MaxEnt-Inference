@@ -79,7 +79,7 @@ def calc(N, rep):
     J_t = torch.from_numpy(J)
 
     # Initialize accumulators
-    S_Emp = S_TUR = S_N1 = S_N2 = 0
+    S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
     
     T = N * rep  # Total spin-flip attempts
 
@@ -98,26 +98,30 @@ def calc(N, rep):
         sig_MTUR                    = get_EP_MTUR(S_i_t, Da, i)
         sigma_emp                   = exp_EP_spin_model(Da, J_t, i)
         sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
+        sig_Adam, theta3            = get_EP_Adam(S_i_t, theta1, Da, i)
 
         # Aggregate results
         S_Emp += Pi*sigma_emp
         S_TUR += Pi*sig_MTUR
         S_N1  += Pi*sig_N1
         S_N2  += Pi*sig_N2
+        S_Adam  += Pi*sig_Adam
+
 
     print("\n[Results]")
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
     print(f"  EP (MTUR):             {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
     print(f"  EP (2-step Newton):    {S_N2:.6f}")
+    print(f"  EP (Adam):             {S_Adam:.6f}")
     print("-" * 70)
 
-    return np.array([S_Emp, S_TUR, S_N1, S_N2])
+    return np.array([S_Emp, S_TUR, S_N1, S_N2,S_Adam])
 
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
-EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
+EP = np.zeros((5, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
 
 for ib, beta in enumerate(np.round(betas, 8)):
     EP[:, ib] = calc(N, rep)
@@ -146,17 +150,18 @@ if not args.no_plot:
         r'$\Sigma$', 
         r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
         r'$\widehat{\Sigma}_{\bm g}$', 
-        r'${\Sigma}_{\bm g}$'
+        r'${\Sigma}_{\bm g}$',
+        r'${\Sigma^*}_{\bm g}$'
     ]
 
     cmap = plt.get_cmap('inferno_r')
-    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
+    colors = [cmap(0.25), cmap(0.5), cmap(0.75), cmap(1.)]
 
     plt.figure(figsize=(4, 4))
 
     # Plot each EP estimator
     plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
-    for i in range(1, 4):
+    for i in range(1, EP.shape[0]):
         plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
     plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 

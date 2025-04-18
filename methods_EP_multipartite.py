@@ -211,4 +211,58 @@ def get_EP_Newton2(S, theta_lin, Da, i):
     Dai = remove_i(Da, i)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
     return sig_N2, theta_lin2
+    
+def get_EP_Adam(S, theta_init, Da, i, num_iters=100, 
+                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
+                     tol=1e-6):
+    """
+    Performs multiple Adam-style updates to refine theta estimation.
+    
+    Arguments:
+        S         : binary spin samples, shape (N, num_flips)
+        theta_init: initial theta vector
+        Da        : empirical expectation vector
+        i         : index to remove from theta (current spin)
+        num_iters : number of Adam updates
+        beta1, beta2: Adam moment decay parameters
+        lr        : learning rate
+        eps       : epsilon for numerical stability
+        tol       : tolerance for early stopping
+    
+    Returns:
+        sig_N2    : final entropy production estimate
+        delta_all : total change in theta (final - initial)
+        theta     : final updated theta
+    """
+    theta = theta_init.clone()
+    m = torch.zeros_like(theta)
+    v = torch.zeros_like(theta)
+    
+
+    for t in range(1, num_iters + 1):
+        Da_th = correlations_theta(S, theta, i)
+        Z = norm_theta(S, theta, i)
+        Da_th /= Z
+
+        grad = remove_i(Da - Da_th, i)
+
+        # Adam moment updates
+        m = beta1 * m + (1 - beta1) * grad
+        v = beta2 * v + (1 - beta2) * grad.pow(2)
+        m_hat = m / (1 - beta1 ** t)
+        v_hat = v / (1 - beta2 ** t)
+
+        # Compute parameter update
+        delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+
+        # Apply update to full theta
+        theta += delta_theta
+
+        # Optional: early stopping
+        if delta_theta.norm() < tol:
+            break
+
+    Dai = remove_i(Da, i)
+    sig_Adam = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
+    return sig_Adam, theta
 
