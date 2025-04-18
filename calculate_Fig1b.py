@@ -6,7 +6,7 @@ import h5py
 import hdf5plugin
 from matplotlib import pyplot as plt
 import seaborn as sns
-from methods_EP_multipartite import *  # Assumes methods.py contains exp_EP_spin_model, get_MTUR, get_Pert, get_Pert2
+from spin_model_EP import *
 
 # -------------------------------
 # Argument parsing
@@ -64,56 +64,16 @@ print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
 print(file_name, flush=True)
 
-with h5py.File(file_name, 'r') as f:
-    J = f['J'][:]
-J_t = torch.from_numpy(J)
 
-# -------------------------------
-# Extract antisymmetric part of interaction matrix
-# -------------------------------
-
-mask = ~torch.eye(N, dtype=torch.bool)  # Mask for off-diagonal elements
-dJ = ((J - J.T)[mask]).reshape(N, N - 1)
-
-# -------------------------------
-# Compute entropy production and surrogate models
-# -------------------------------
-
-S_Exp = S_TUR = S_N1 = S_N2 = 0
-th1 = np.zeros((N,N-1))
-th2 = np.zeros((N,N-1))
-
-T = N * rep                     # Our sampled data calculates rep*N spin-flip attempts
-
-for i in range(N):
-    with h5py.File(file_name, 'r') as f:
-        S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1 spin values
-    S_i_t = torch.from_numpy(S_i)
-
-    if S_i.shape[1] <= 1:
-        continue
-    
-    # Estimate EP using different methods
-    Pi=S_i.shape[1]/T
-    # Estimate entropy production using various methods
-    sig_N1, sig_MTUR, theta1, Da = get_EP_Newton(S_i_t, i, Pi)
-    sigma_emp                    = exp_EP_spin_model(Da, J_t, i)
-    sig_N2, theta2               = get_EP_Newton2(S_i_t, theta1, Da, i, Pi)
-
-    # Accumulate results
-    S_Exp += sigma_emp
-    S_TUR += sig_MTUR
-    S_N1  += sig_N1
-    S_N2  += sig_N2
-    
-    th1[i,:] = theta1.numpy() 
-    th2[i,:] = theta1.numpy() + theta2.numpy()
+EP, theta_N1,theta_N2,theta_Adam, J = calc(N, rep, file_name, return_parameters=True)
+print(theta_N1.shape)
+dJ = J-J.T
 
 # -------------------------------
 # Save results
 # -------------------------------
 filename=f'data/spin/data_Fig_1b.npz'
-np.savez(filename, th1=th1.copy(), th2=th2.copy(), dJ=dJ)
+np.savez(filename, theta_N1=theta_N1.copy(), theta_N2=theta_N2.copy(), dJ=dJ)
 
 # -------------------------------
 # Helper function to expand off-diagonal matrix
@@ -132,12 +92,11 @@ def expand_offdiag(th):
 # -------------------------------
 # Symmetrize and compute error metrics
 # -------------------------------
-th1 = expand_offdiag(th1)
-th2 = expand_offdiag(th2)
-dJ = expand_offdiag(dJ)
+theta_N1 = expand_offdiag(theta_N1)
+theta_N2 = expand_offdiag(theta_N2)
 
-dth1 = th1 - th1.T
-dth2 = th2 - th2.T
+dtheta_N1 = theta_N1 - theta_N1.T
+dtheta_N2 = theta_N2 - theta_N2.T
 
 # -------------------------------
 # Visualization
@@ -151,8 +110,8 @@ cmap = plt.get_cmap('inferno_r')
 colors = [cmap(0.25),cmap(0.5),cmap(0.75)]
 
 # Scatter plot with Seaborn aesthetics
-sns.scatterplot(x=dJ[upper_indices], y=dth1[upper_indices], color=cmap(0.5), s=10, alpha=0.7,rasterized=True)
-sns.scatterplot(x=dJ[upper_indices], y=dth2[upper_indices], color=cmap(0.75), s=10, alpha=0.7,rasterized=True)
+sns.scatterplot(x=dJ[upper_indices], y=dtheta_N1[upper_indices], color=cmap(0.5), s=10, alpha=0.7,rasterized=True)
+sns.scatterplot(x=dJ[upper_indices], y=dtheta_N2[upper_indices], color=cmap(0.75), s=10, alpha=0.7,rasterized=True)
 sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100, label=r'$\bm{\hat\theta}$', color=cmap(0.5), s=20)
 sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100,label=r'$\bm \theta^*$', color=cmap(0.75), s=20)
 
