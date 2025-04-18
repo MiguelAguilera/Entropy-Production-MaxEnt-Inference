@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 import numpy as np
 import torch
 import h5py
@@ -80,7 +81,7 @@ def calc(N, rep):
 
     # Initialize accumulators
     S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
-    
+    time_emp = time_tur = time_n1 = time_n2 = time_adam = 0
     T = N * rep  # Total spin-flip attempts
 
     for i in range(N):
@@ -94,11 +95,24 @@ def calc(N, rep):
 
         Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
-        sig_N1, theta1, Da          = get_EP_Newton(S_i_t, i)
-        sig_MTUR                    = get_EP_MTUR(S_i_t, Da, i)
-        sigma_emp                   = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
-        sig_Adam, theta3            = get_EP_Adam(S_i_t, theta1, Da, i)
+
+        start = time.time()
+        sig_MTUR = get_EP_MTUR(S_i_t, i)
+        time_tur += time.time() - start
+
+        sigma_emp = exp_EP_spin_model(Da, J_t, i)
+
+        start = time.time()
+        sig_N1, theta1, Da = get_EP_Newton(S_i_t, i)
+        time_n1 += time.time() - start
+
+        start = time.time()
+        sig_N2, theta2 = get_EP_Newton2(S_i_t, theta1, Da, i)
+        time_n2 += time.time() - start
+
+        start = time.time()
+        sig_Adam, theta3 = get_EP_Adam(S_i_t, theta1, Da, i)
+        time_adam += time.time() - start
 
         # Aggregate results
         S_Emp += Pi*sigma_emp
@@ -109,13 +123,13 @@ def calc(N, rep):
 
 
     print("\n[Results]")
-    print(f"  EP (Empirical)    :    {S_Emp:.6f}")
-    print(f"  EP (MTUR):             {S_TUR:.6f}")
-    print(f"  EP (1-step Newton):    {S_N1:.6f}")
-    print(f"  EP (2-step Newton):    {S_N2:.6f}")
-    print(f"  EP (Adam):             {S_Adam:.6f}")
+    print(f"  Empirical       : {S_Emp:.6f}")
+    print(f"  MTUR            : {S_TUR:.6f}   | Time: {time_tur:.2f} s")
+    print(f"  1-step Newton   : {S_N1:.6f}   | Time: {time_n1:.2f} s")
+    print(f"  2-step Newton   : {S_N2:.6f}   | Time: {time_n2:.2f} s")
+    print(f"  Adam            : {S_Adam:.6f}   | Time: {time_adam:.2f} s")
     print("-" * 70)
-
+    
     return np.array([S_Emp, S_TUR, S_N1, S_N2,S_Adam])
 
 # -------------------------------
