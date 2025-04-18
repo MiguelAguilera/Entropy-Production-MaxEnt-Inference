@@ -194,7 +194,7 @@ def get_EP_MTUR(S, i):
 
 
 
-def get_EP_Newton2(S, theta_lin, Da, i, delta=1.0):
+def get_EP_Newton2(S, theta_lin, Da, i, delta=0.5):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -251,7 +251,7 @@ def get_EP_Newton2(S, theta_lin, Da, i, delta=1.0):
 
     return sig_N2, theta_lin2
     
-def get_EP_Adam(S, theta_init, Da, i, num_iters=20, 
+def get_EP_Adam(S, theta_init, Da, i, num_iters=10, 
                      beta1=0.9, beta2=0.999, lr=0.02, eps=1e-8, 
                      tol=1e-3, skip_warm_up=False):
     """

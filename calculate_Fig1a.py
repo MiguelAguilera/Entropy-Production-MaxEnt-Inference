@@ -4,9 +4,11 @@ import time
 import numpy as np
 import torch
 import h5py
+import multiprocessing as mp
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
+
 
 # -------------------------------
 # Argument Parsing
@@ -50,6 +52,44 @@ betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 # -------------------------------
 # Main Entropy Production Calculation Function
 # -------------------------------
+
+def calc_spin(i_args):
+    i, N, T, J_t, file_name = i_args
+    with h5py.File(file_name, 'r') as f:
+        S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1
+    S_i_t = torch.from_numpy(S_i)
+
+    if S_i.shape[1] <= 10:
+        print(f"  [Warning] Skipping spin {i}: insufficient time steps")
+        return None
+
+    Pi = S_i.shape[1] / T
+
+    result = {}
+
+    t0 = time.time()
+    result["MTUR"] = Pi * get_EP_MTUR(S_i_t, i)
+    result["time_tur"] = time.time() - t0
+
+    t0 = time.time()
+    sig_N1, theta1, Da = get_EP_Newton(S_i_t, i)
+    result["N1"] = Pi * sig_N1
+    result["time_n1"] = time.time() - t0
+
+
+    sig_N2, _ = get_EP_Newton2(S_i_t, theta1, Da, i)
+    result["N2"] = Pi * sig_N2
+    result["time_n2"] = time.time() - t0
+
+    t0 = time.time()
+    sig_Adam, _ = get_EP_Adam(S_i_t, theta1, Da, i)
+    result["Adam"] = Pi * sig_Adam
+    result["time_adam"] = time.time() - t0
+    
+    result["Emp"] = Pi * exp_EP_spin_model(Da, J_t, i)
+    return result
+    
+    
 def calc(N, rep):
     """
     Compute entropy production rate (EP) estimates using multiple methods for a spin system.
@@ -84,43 +124,20 @@ def calc(N, rep):
     time_emp = time_tur = time_n1 = time_n2 = time_adam = 0
     T = N * rep  # Total spin-flip attempts
 
-    for i in range(N):
-        with h5py.File(file_name, 'r') as f:
-            S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
-        S_i_t = torch.from_numpy(S_i)
-
-        if S_i.shape[1] <= 10:
-            print(f"  [Warning] Skipping spin {i}: insufficient time steps")
-            continue
-
-        Pi=S_i.shape[1]/T
-        # Estimate entropy production using various methods
-
-        start = time.time()
-        sig_MTUR = get_EP_MTUR(S_i_t, i)
-        time_tur += time.time() - start
-
-        start = time.time()
-        sig_N1, theta1, Da = get_EP_Newton(S_i_t, i)
-        time_n1 += time.time() - start
-
-        sigma_emp = exp_EP_spin_model(Da, J_t, i)
+    # Parallel processing
+    with mp.Pool(processes=mp.cpu_count()) as pool:
+        args_list = [(i, N, T, J_t, file_name) for i in range(N)]
+        results = pool.map(calc_spin, args_list)
         
-        start = time.time()
-        sig_N2, theta2 = get_EP_Newton2(S_i_t, theta1, Da, i)
-        time_n2 += time.time() - start
+    # Aggregate
+    S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
+    time_tur = time_n1 = time_n2 = time_adam = 0
 
-        start = time.time()
-        sig_Adam, theta3 = get_EP_Adam(S_i_t, theta1, Da, i)
-        time_adam += time.time() - start
-
-        # Aggregate results
-        S_Emp += Pi*sigma_emp
-        S_TUR += Pi*sig_MTUR
-        S_N1  += Pi*sig_N1
-        S_N2  += Pi*sig_N2
-        S_Adam  += Pi*sig_Adam
-
+    S_Emp, S_TUR, S_N1, S_N2, S_Adam, time_tur, time_n1, time_n2, time_adam = map(
+        sum, zip(*[(r["Emp"], r["MTUR"], r["N1"], r["N2"], r["Adam"],
+                    r["time_tur"], r["time_n1"], r["time_n2"], r["time_adam"])
+                   for r in results if r is not None])
+)
 
     print("\n[Results]")
     print(f"  Empirical       : {S_Emp:.6f}")
@@ -129,7 +146,7 @@ def calc(N, rep):
     print(f"  2-step Newton   : {S_N2:.6f}   | Time: {time_n2:.2f} s")
     print(f"  Adam            : {S_Adam:.6f}   | Time: {time_adam:.2f} s")
     print("-" * 70)
-    
+
     return np.array([S_Emp, S_TUR, S_N1, S_N2,S_Adam])
 
 # -------------------------------
