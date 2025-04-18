@@ -100,12 +100,12 @@ def calc(N, rep):
         sig_MTUR = get_EP_MTUR(S_i_t, i)
         time_tur += time.time() - start
 
-        sigma_emp = exp_EP_spin_model(Da, J_t, i)
-
         start = time.time()
         sig_N1, theta1, Da = get_EP_Newton(S_i_t, i)
         time_n1 += time.time() - start
 
+        sigma_emp = exp_EP_spin_model(Da, J_t, i)
+        
         start = time.time()
         sig_N2, theta2 = get_EP_Newton2(S_i_t, theta1, Da, i)
         time_n2 += time.time() - start

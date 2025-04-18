@@ -45,8 +45,8 @@ def correlations_theta(S, theta, i):
     thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
     S1_S = -(-2 * S[i, :]) * torch.exp(-thf)
     Da = torch.einsum('r,jr->j', S1_S, S) / nflips
-#    Da[i] = 0
-    return Da
+    Z = torch.sum(torch.exp(-thf)) / nflips
+    return Da, Z
 
 def correlations4_theta(S, theta, i):
     """
@@ -181,10 +181,11 @@ def get_EP_Newton(S, i):
 
 
 
-def get_EP_MTUR(S, Da, i):
+def get_EP_MTUR(S, i):
     """
     Compute entropy production estimate using the MTUR method for spin i.
     """
+    Da = correlations(S, i)
     Ks = correlations4(S, i)
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
@@ -193,28 +194,66 @@ def get_EP_MTUR(S, Da, i):
 
 
 
-def get_EP_Newton2(S, theta_lin, Da, i):
+def get_EP_Newton2(S, theta_lin, Da, i, delta=1.0):
     """
-    One iteration of Newton-Raphson to refine theta estimation.
+    Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
+
+    Parameters:
+    -----------
+    S : torch.Tensor
+        Binary spin configurations of shape (N, nflips).
+    theta_lin : torch.Tensor
+        Current estimate of the parameter vector theta (with zero at index i).
+    Da : torch.Tensor
+        Empirical first-order correlations (e.g., ⟨s_j⟩).
+    i : int
+        Index of the spin being updated (excluded from optimization).
+    delta : float or None, optional
+        If provided, sets a maximum relative norm for the update step 
+        (default: 1.0, meaning ||Δθ|| ≤ delta * ||θ||).
+
+    Returns:
+    --------
+    sig_N2 : float
+        Updated estimate of the log-partition function contribution (e.g., entropy production).
+    theta_lin2 : torch.Tensor
+        Computed Newton step (Δθ).
     """
+
     N, nflips = S.shape
-    Da_th = correlations_theta(S, theta_lin, i)
+
+    # Compute model-averaged first-order and fourth-order statistics (excluding index i)
+    Da_th, Z = correlations_theta(S, theta_lin, i)
     Ks_th = correlations4_theta(S, theta_lin, i)
 
-    Z = norm_theta(S, theta_lin, i)
+    # Normalize by partition function Z
     Da_th /= Z
-    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)
+    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
 
+    # Compute Newton step: Δθ = H⁻¹ (Da - Da_th)
     theta_lin2 = solve_linear_theta(Da, Da_th, Ks_th, i)
+
+    # Optional: constrain the step to be within a trust region
+    if delta is not None:
+        max_step = delta * torch.norm(theta_lin)
+        step_norm = torch.norm(theta_lin2)
+        if step_norm > max_step:
+            theta_lin2 = theta_lin2 * (max_step / step_norm)
+
+    # Apply the update
     theta = theta_lin + theta_lin2
 
+    # Remove index i from Da for calculating log-partition contribution
     Dai = remove_i(Da, i)
+
+    # Compute surrogate objective (e.g., log-partition or entropy production)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
+
     return sig_N2, theta_lin2
     
-def get_EP_Adam(S, theta_init, Da, i, num_iters=100, 
-                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
-                     tol=1e-6):
+def get_EP_Adam(S, theta_init, Da, i, num_iters=20, 
+                     beta1=0.9, beta2=0.999, lr=0.02, eps=1e-8, 
+                     tol=1e-3, skip_warm_up=False):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -240,8 +279,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=100,
     
 
     for t in range(1, num_iters + 1):
-        Da_th = correlations_theta(S, theta, i)
-        Z = norm_theta(S, theta, i)
+        Da_th, Z = correlations_theta(S, theta, i)
         Da_th /= Z
 
         grad = remove_i(Da - Da_th, i)
@@ -249,8 +287,12 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=100,
         # Adam moment updates
         m = beta1 * m + (1 - beta1) * grad
         v = beta2 * v + (1 - beta2) * grad.pow(2)
-        m_hat = m / (1 - beta1 ** t)
-        v_hat = v / (1 - beta2 ** t)
+        if skip_warm_up:
+            m_hat = m
+            v_hat = v
+        else:
+            m_hat = m / (1 - beta1 ** t)
+            v_hat = v / (1 - beta2 ** t)
 
         # Compute parameter update
         delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
