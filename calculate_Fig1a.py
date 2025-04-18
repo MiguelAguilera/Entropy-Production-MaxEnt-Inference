@@ -65,7 +65,11 @@ SAVE_DATA_DIR = 'ep_data/spin'
 if not os.path.exists(SAVE_DATA_DIR):
     print(f'Creating base directory: {SAVE_DATA_DIR}')
     os.makedirs(SAVE_DATA_DIR)
-filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
+    
+if args.patterns is None:
+    filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
+else:
+    filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.npz"
 np.savez(filename, EP=EP, betas=betas)
 print(f'Saved calculations to {filename}')
 
