@@ -3,10 +3,10 @@ import argparse
 import numpy as np
 import torch
 import h5py
-import hdf5plugin
+import hdEP_spinsf5plugin
 from matplotlib import pyplot as plt
 import seaborn as sns
-from spin_model_EP import *
+from EP_spins import *
 
 # -------------------------------
 # Argument parsing

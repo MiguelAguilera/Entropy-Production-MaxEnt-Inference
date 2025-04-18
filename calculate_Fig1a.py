@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from spin_model_EP import *
+from EP_spins import *
 
 # -------------------------------
 # Argument Parsing
