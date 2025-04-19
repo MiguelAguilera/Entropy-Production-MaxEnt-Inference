@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from EP_spins import *
+from get_spin_EP import *
 
 # -------------------------------
 # Argument Parsing
@@ -44,22 +44,8 @@ BASE_DIR = os.path.expanduser(args.BASE_DIR)
 DTYPE = 'float32'
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 
-
 # -------------------------------
-# Run Experiments Across Beta Values
-# -------------------------------
-EP = np.zeros((5, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
-
-for ib, beta in enumerate(np.round(betas, 8)):
-    if args.patterns is None:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
-    else:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
-    print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-    EP[:, ib] = calc(N, rep, file_name)
-    
-# -------------------------------
-# Save results
+# Save results setup
 # -------------------------------
 SAVE_DATA_DIR = 'ep_data/spin'
 if not os.path.exists(SAVE_DATA_DIR):
@@ -67,11 +53,26 @@ if not os.path.exists(SAVE_DATA_DIR):
     os.makedirs(SAVE_DATA_DIR)
     
 if args.patterns is None:
-    filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
+    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.h5"
 else:
-    filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.npz"
-np.savez(filename, EP=EP, betas=betas)
-print(f'Saved calculations to {filename}')
+    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.h5"
+    
+# -------------------------------
+# Run Experiments Across Beta Values
+# -------------------------------
+EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
+
+for ib, beta in enumerate(np.round(betas, 8)):
+    if args.patterns is None:
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    else:
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+    print(f"[Loading] Reading data from file:\n  → {file_name}\n")
+    EP[:, ib] = calc(N, rep, file_name, file_name_out)
+    
+
+#np.savez(file_name_out, EP=EP, betas=betas)
+#print(f'Saved calculations to {file_name_out}')
 
 if not args.no_plot:
     # -------------------------------
@@ -86,12 +87,12 @@ if not args.no_plot:
         r'$\Sigma$', 
         r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
         r'$\widehat{\Sigma}_{\bm g}$', 
-        r'${\Sigma}_{\bm g}$',
-        r'${\Sigma^*}_{\bm g}$'
+        r'${\Sigma}_{\bm g}$'#,
+#        r'${\Sigma^*}_{\bm g}$'
     ]
 
     cmap = plt.get_cmap('inferno_r')
-    colors = [cmap(0.25), cmap(0.5), cmap(0.75), cmap(1.)]
+    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]#, cmap(1.)]
 
     plt.figure(figsize=(4, 4))
 

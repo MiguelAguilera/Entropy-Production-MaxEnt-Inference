@@ -6,7 +6,7 @@ import h5py
 import hdEP_spinsf5plugin
 from matplotlib import pyplot as plt
 import seaborn as sns
-from EP_spins import *
+from get_spin_EP import *
 
 # -------------------------------
 # Argument parsing
