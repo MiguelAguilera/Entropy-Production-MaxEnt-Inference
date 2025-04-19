@@ -15,11 +15,18 @@ from methods_EP_multipartite import *
 # Main Entropy Production Calculation Function
 # -------------------------------
 
+
+def get_spin_data(i, file_name):
+    with h5py.File(file_name, 'r') as f:
+        F_i = f['F'][i]             # loads only 1 row of F
+        S_i = f['S'][:, F_i].astype('float32') * 2 - 1  # convert back to {-1, 1}
+        J_i = f['J'][i, :]          # loads only 1 row of J
+        return S_i, J_i
+
 def calc_spin(i_args):
     i, N, T, file_name, file_name_out, lock = i_args
-    with h5py.File(file_name, 'r') as f:
-        S_i = f[f'S_{i}'][:].astype('float32') * 2 - 1
-        J_i = f['J'][i, :]  # Load just the i-th row
+    S_i, J_i = get_spin_data(i, file_name)
+
     S_i_t = torch.from_numpy(S_i)
     J_i_t = torch.from_numpy(J_i)
 
