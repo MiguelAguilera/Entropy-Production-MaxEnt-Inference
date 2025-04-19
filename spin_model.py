@@ -104,7 +104,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
             s = ParallelGlauberStep(H, J, s0, T=num_steps)
         for r in range(trial_rep):
             if sequential:
-                s = SequentialGlauberStep(H, J, s.copy(), T=0.2)
+                s = SequentialGlauberStep(H, J, s.copy(), T=1)
             else:
                 s = ParallelGlauberStep(H, J, s.copy(), T=1)
             
