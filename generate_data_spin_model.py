@@ -5,71 +5,6 @@ import hdf5plugin
 import spin_model
 
 
-#import threading
-#from multiprocessing import Pool, cpu_count
-#import os
-
-#def save_batch_process(args):
-#    group_indices, file_name, S_path, F_path, shape_S, shape_F = args
-
-#    S_mmap = np.memmap(S_path, dtype='int32', mode='r', shape=shape_S)
-#    F_mmap = np.memmap(F_path, dtype='int32', mode='r', shape=shape_F)
-
-#    S = S_mmap
-#    F = F_mmap
-
-#    process_file = file_name.replace('.h5', f'_{os.getpid()}.h5')
-#    with h5py.File(process_file, 'w') as f:
-#        for i in group_indices:
-#            idxs = np.where(F[i, :] == 1)[0]
-#            S_i = S[:, idxs]
-##            spike_count = np.sum(S_i == 1, axis=0)
-##            sort_idx = np.lexsort((spike_count**2, spike_count))
-##            S_i_sorted = S_i[:, sort_idx]
-##            S_i_sorted = S_i[:,np.argsort(np.sum(S_i == 1, axis=0))] # Sort rows by magnetization to help compression
-#            bool_array = ((S_i + 1) // 2).astype(bool)
-
-#            f.create_dataset(
-#                f'S_{i}',
-#                data=bool_array,
-#                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-#            )
-#    return process_file
-
-#def save_data_multiprocess(file_name, J, H, S, F, num_processes=None):
-#    N = F.shape[0]
-
-#    if num_processes is None:
-#        num_processes = cpu_count()  # Automatically detect number of CPUs
-
-#    groups = np.array_split(np.arange(N), min(num_processes, N))
-
-#    # Save S and F to memmaps
-#    S_path = 'S_tmp.dat'
-#    F_path = 'F_tmp.dat'
-#    np.memmap(S_path, dtype='int32', mode='w+', shape=S.shape)[:] = S[:]
-#    np.memmap(F_path, dtype='int32', mode='w+', shape=F.shape)[:] = F[:]
-
-#    with Pool(processes=min(num_processes, N)) as pool:
-#        results = pool.map(
-#            save_batch_process,
-#            [(group, file_name, S_path, F_path, S.shape, F.shape) for group in groups]
-#        )
-
-#    with h5py.File(file_name, 'w') as f_out:
-#        f_out.create_dataset('J', data=J, compression='gzip', compression_opts=5)
-#        f_out.create_dataset('H', data=H, compression='gzip', compression_opts=5)
-#        for partial_file in results:
-#            with h5py.File(partial_file, 'r') as f_in:
-#                for key in f_in.keys():
-#                    f_in.copy(key, f_out)
-#            os.remove(partial_file)
-
-#    os.remove(S_path)
-#    os.remove(F_path)
-
-#    print(f"[Multiprocessing] Data saved to {file_name}")
-
 def save_data(file_name, J, H, S, F):
     with h5py.File(file_name, 'w') as f:
         # Save global model parameters
@@ -90,23 +25,6 @@ def save_data(file_name, J, H, S, F):
 
     print(f"Data saved to {file_name}")
     
-    
-#def save_data(file_name, J, H, S, F):
-#    with h5py.File(file_name, 'w') as f:
-#        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
-#        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
-
-#    for i in range(F.shape[0]):
-#        idxs = np.where(F[i, :] == 1)[0]
-#        S_i = S[:, idxs] if len(idxs) > 0 else np.zeros((S.shape[0], 0), dtype=bool)
-#        with h5py.File(file_name, 'a') as f:
-#            bool_array = ((S_i + 1) // 2).astype(bool)
-#            f.create_dataset(
-#                f'S_{i}',
-#                data=bool_array,
-#                **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-#            )
-#    print(f"[Thread] Data saved to {file_name}")
 
 # -------------------------------
 # Argument Parsing
@@ -218,11 +136,6 @@ for beta_ix, beta in enumerate(betas):
     print('   - magnetization : %f' % np.mean(S.astype(float)))
     
     save_data(file_name, J, H, S, F)
-#    save_data(file_name, J, H, S, F)
-#        save_data_multiprocess(file_name, J, H, S, F)
-#    # Save model parameters
-#    t = threading.Thread(target=save_data, args=(file_name, J, H, S, F))
-#    t.start()
-    print(f"Data saved. Took {time.time()-start_time:.3f}s.")
+    print(f"Simulation took {time.time()-start_time:.3f}s.")
 
 
