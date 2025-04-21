@@ -6,27 +6,38 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
 import os
-import uuid, tempfile
 from joblib import Parallel, delayed
 from methods_EP_multipartite import *
-
+import gc
 
 # -------------------------------
-# Main Entropy Production Calculation Function
+# Entropy Production Calculation Functions
 # -------------------------------
 
 
+#def get_spin_data(i, file_name):
+#    with h5py.File(file_name, 'r') as f:
+#        F_i = f['F'][i]             # loads only 1 row of F
+#        S_i = f['S'][:, F_i].astype('float32') * 2 - 1  # convert back to {-1, 1}
+#        J_i = f['J'][i, :]          # loads only 1 row of J
+#        return S_i, J_i
 def get_spin_data(i, file_name):
-    with h5py.File(file_name, 'r') as f:
-        F_i = f['F'][i]             # loads only 1 row of F
-        S_i = f['S'][:, F_i].astype('float32') * 2 - 1  # convert back to {-1, 1}
-        J_i = f['J'][i, :]          # loads only 1 row of J
-        return S_i, J_i
+    data = np.load(file_name)
 
+    F_i = data["F"][i]
+    S_i = data["S"][:, F_i].astype("float32") * 2 - 1  # convert {0,1} → {-1,1}
+    J_i = data["J"][i, :]
+
+    return S_i, J_i
+    
 def calc_spin(i_args):
-    i, N, T, file_name, file_name_out, lock = i_args
+    i, N, T, file_name, file_name_out = i_args
     S_i, J_i = get_spin_data(i, file_name)
 
+
+#    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#    S_i_t = torch.from_numpy(S_i).to(device)
+#    J_i_t = torch.from_numpy(J_i).to(device)
     S_i_t = torch.from_numpy(S_i)
     J_i_t = torch.from_numpy(J_i)
 
@@ -36,46 +47,82 @@ def calc_spin(i_args):
 
     Pi = S_i.shape[1] / T
 
-    result = {}
-
     t0 = time.time()
-    result["MTUR"] = Pi * get_EP_MTUR(S_i_t, i)
-    result["time_tur"] = time.time() - t0
+    MTUR = Pi * get_EP_MTUR(S_i_t, i)
+    time_tur = time.time() - t0
 
     t0 = time.time()
     sig_N1, theta_N1, Da = get_EP_Newton(S_i_t, i)
-    result["N1"] = Pi * sig_N1
-    result["time_n1"] = time.time() - t0
+    N1 = Pi * sig_N1
+    theta_N1_np = theta_N1.detach().cpu().numpy()
+    time_n1 = time.time() - t0
 
     sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i)
-    result["N2"] = Pi * sig_N2
-    result["time_n2"] = time.time() - t0
+#    sig_N2, theta_N2 = get_EP_Adam(S_i_t, theta_N1, Da, i)
+    N2 = Pi * sig_N2
+    theta_N2_np = theta_N2.detach().cpu().numpy()
+    time_n2 = time.time() - t0
+    
 
-    t0 = time.time()
+    Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
+    
 #    sig_Adam, theta_Adam = get_EP_Adam(S_i_t, theta_N1, Da, i)
-#    result["Adam"] = Pi * sig_Adam
-#    result["time_adam"] = time.time() - t0
-    
-    result["Emp"] = Pi * exp_EP_spin_model(Da, J_i_t, i)
-    
-    # Save values to HDF5 file
-    with lock:
-        with h5py.File(file_name_out, 'a') as f_out:
-            for name, value in result.items():
-                dataset_name = f"{name}_{i}"
-                if dataset_name in f_out:
-                    del f_out[dataset_name]
-                f_out.create_dataset(dataset_name, data=value)
+#    time_adam = time.time() - t0
 
+    # Modify output file name to include spin index
+    spin_file_name = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+
+    # Save directly to .npz file
+    np.savez(
+        spin_file_name,
+        MTUR=MTUR,
+        time_tur=time_tur,
+        N1=N1,
+        theta_N1=theta_N1_np,
+        time_n1=time_n1,
+        N2=N2,
+        theta_N2=theta_N2_np,
+        time_n2=time_n2,
+        Emp=Emp
+    )
 
 
 def calc_spin_group(group_args):
-    indices, N, T, file_name, file_name_out, lock = group_args
-    results = []
+    indices, N, T, file_name, file_name_out = group_args
     for i in indices:
-        res = calc_spin((i, N, T, file_name, file_name_out, lock))
-        results.append((i, res))
+        calc_spin((i, N, T, file_name, file_name_out))
     
+def merge_spins(file_name_out, N):
+    """
+    Merge individual spin HDF5 files into a single merged file.
+
+    Parameters:
+        file_name_out (str): Base output file (e.g., 'data_N100_beta2.5.h5')
+        N (int): System size (number of spins)
+
+    Returns:
+        str: Path to the merged HDF5 file
+    """
+    import os
+    import h5py
+
+    print(f"[Merging] Target merged file: {file_name_out}")
+    
+    with h5py.File(file_name_out, 'w') as f_out:
+        for i in range(N):
+            spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+            if not os.path.exists(spin_file):
+                print(f"[Error] Spin file not found: {spin_file}")
+                exit()
+
+            data = np.load(spin_file)
+            for key in data:
+                dataset_name = f"{key}_{i}"
+                f_out.create_dataset(dataset_name, data=data[key])
+    for i in range(N):
+        spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+        os.remove(spin_file)
+    return file_name_out
     
 def load_results_from_file(file_name_out, N, return_parameters=False):
     S_Emp = S_TUR = S_N1 = S_N2 = time_tur = time_n1 = time_n2 = 0
@@ -125,37 +172,25 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False):
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
     print("=" * 70)
 
-    with h5py.File(file_name, 'r') as f:
-        J = f['J'][:]
-        H = f['H'][:]
-        assert(np.all(H==0))  # We do not support local fields in our analysis
+#    with h5py.File(file_name, 'r') as f:
+#        J = f['J'][:]
+#        H = f['H'][:]
+#        assert(np.all(H==0))  # We do not support local fields in our analysis
+
+    data = np.load(file_name)
+    J = data["J"]
+    H = data["H"]
+    assert np.all(H == 0), "Non-zero local fields are not supported"
 
     # Initialize accumulators
     S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
     time_emp = time_tur = time_n1 = time_n2 = time_adam = 0
     T = N * rep  # Total spin-flip attempts
 
-    # Parallel processing
-
-#        args_list = [(i, N, T, file_name, temp_dir) for i in range(N)]
-##        with mp.Pool(processes=mp.cpu_count()) as pool:
-##            results = pool.map(calc_spin, args_list)
-
-##        results = Parallel(n_jobs=mp.cpu_count())(
-##            delayed(calc_spin)(args) for args in args_list
-##        )
-#        results = Parallel(
-#            n_jobs=mp.cpu_count(),
-#            backend="multiprocessing",  # Or "threading" if I/O bound
-#            prefer="processes"
-#        )(
-#            delayed(calc_spin)(args) for args in args_list
-#        )
-    lock = mp.Manager().Lock()
-    num_processes = mp.cpu_count()
+    num_processes = min(mp.cpu_count(),6)
     group_size = int(np.ceil(N / num_processes))
     grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
-    args_list = [(indices, N, T, file_name, file_name_out, lock) for indices in grouped_indices]
+    args_list = [(indices, N, T, file_name, file_name_out) for indices in grouped_indices]
 
     Parallel(
         n_jobs=num_processes,
@@ -163,6 +198,9 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False):
         prefer="processes"
     )(delayed(calc_spin_group)(args) for args in args_list)
 
+
+    # Merge individual spin HDF5 files into a single merged file.
+    merge_spins(file_name_out, N)
     # Aggregate results from HDF5
     results = load_results_from_file(file_name_out, N, return_parameters)
 
@@ -185,3 +223,61 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False):
         theta_N1 = np.array(theta_N1_list)
         theta_N2 = np.array(theta_N2_list)
         return np.array([S_Emp, S_TUR, S_N1, S_N2]), theta_N1, theta_N2, J
+        
+        
+# -------------------------------
+# Main script for individual spin EP calculation (for cluster computation)
+# -------------------------------
+
+if __name__ == "__main__":
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="Compute EP for one spin at a given beta, or merge all spins for that beta.")
+    parser.add_argument("i", type=int, help="Spin index i (0-based). Ignored if --merge is used.")
+    parser.add_argument("beta", type=float, help="Beta value")
+    parser.add_argument("N", type=int, help="System size")
+    parser.add_argument("rep", type=int, help="Number of repetitions")
+    parser.add_argument("--base_dir", type=str, default="~/MaxEntData",
+                        help="Base directory where input files are stored (default: ~/MaxEntData)")
+    parser.add_argument("--out_dir", type=str, default="ep_data/spin",
+                        help="Directory to store output data (default: ep_data/spin)")
+    parser.add_argument("--J0", type=float, default=1.0, help="Mean coupling J0 (default: 1.0)")
+    parser.add_argument("--DJ", type=float, default=0.5, help="Variance DJ (default: 0.5)")
+    parser.add_argument("--num_steps", type=int, default=128, help="Number of time steps (default: 128)")
+    parser.add_argument("--patterns", type=int, default=None,
+                        help="Hopfield pattern density (optional)")
+    parser.add_argument("--merge", action="store_true", help="If set, merge all spin outputs for the given beta")
+
+    args = parser.parse_args()
+    beta = round(args.beta, 8)
+    T = args.N * args.rep
+
+    # Expand user paths
+    base_dir = os.path.expanduser(args.base_dir)
+    out_dir = os.path.expanduser(args.out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Construct file paths
+    if args.patterns is None:
+        file_in = f"{base_dir}/sequential/run_reps_{args.rep}_steps_{args.num_steps}_{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
+        file_out = f"{out_dir}/results_N_{args.N}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    else:
+        file_in = f"{base_dir}/sequential/run_reps_{args.rep}_steps_{args.num_steps}_{args.N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+        file_out = f"{out_dir}/results_N_{args.N}_beta_{beta}_patterns_{args.patterns}.h5"
+
+    if args.merge:
+        print("=" * 70)
+        print(f"[MERGE MODE] Merging spin results for beta = {beta}")
+        print(f"Output merged file: {file_out}")
+        print("=" * 70)
+        merge_spins(file_out, args.N)
+    else:
+        print("=" * 70)
+        print(f"Running single spin calculation for i = {args.i}, beta = {beta:.4f}")
+        print(f"Input:  {file_in}")
+        print(f"Output: {file_out}")
+        print("=" * 70)
+        calc_spin((args.i, args.N, T, file_in, file_out))
+
+

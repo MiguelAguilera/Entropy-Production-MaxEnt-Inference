@@ -5,26 +5,51 @@ import hdf5plugin
 import spin_model
 
 
+#def save_data(file_name, J, H, S, F):
+#    with h5py.File(file_name, 'w') as f:
+#        # Save global model parameters
+#        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
+#        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
+
+#        # Save full S and F once
+#        f.create_dataset(
+#            'S',
+#            data=((S + 1) // 2).astype(bool),
+#            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+#        )
+#        f.create_dataset(
+#            'F',
+#            data=((F + 1) // 2).astype(bool),
+#            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
+#        )
+
+#    print(f"Data saved to {file_name}")
+
 def save_data(file_name, J, H, S, F):
-    with h5py.File(file_name, 'w') as f:
-        # Save global model parameters
-        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
-        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
+    """
+    Save model data to a compressed .npz file.
 
-        # Save full S and F once
-        f.create_dataset(
-            'S',
-            data=((S + 1) // 2).astype(bool),
-            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-        )
-        f.create_dataset(
-            'F',
-            data=((F + 1) // 2).astype(bool),
-            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-        )
+    Parameters:
+        file_name (str): Path to the output .npz file.
+        J, H : np.ndarray
+            Global model parameters.
+        S, F : np.ndarray
+            Spin states and flip indices.
+    """
+    # Convert to {0,1} as in original HDF5 version
+    S_bin = ((S + 1) // 2).astype(bool)
+    F_bin = ((F + 1) // 2).astype(bool)
 
-    print(f"Data saved to {file_name}")
-    
+    # Save all data compressed
+    np.savez(
+        file_name,
+        J=J,
+        H=H,
+        S=S_bin,
+        F=F_bin
+    )
+
+    print(f"Compressed data saved to {file_name}")
 
 # -------------------------------
 # Argument Parsing
@@ -100,12 +125,12 @@ for beta_ix, beta in enumerate(betas):
     if args.patterns is None:
         file_name = (
             f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-            f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+            f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
         )
     else:
         file_name = (
             f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-            f"{args.size:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+            f"{args.size:06d}_beta_{beta}_patterns_{args.patterns}.npz"
         )
 
 

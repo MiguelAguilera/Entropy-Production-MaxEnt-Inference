@@ -52,11 +52,11 @@ if not os.path.exists(SAVE_DATA_DIR):
     print(f'Creating base directory: {SAVE_DATA_DIR}')
     os.makedirs(SAVE_DATA_DIR)
     
-if args.patterns is None:
-    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.h5"
-else:
-    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.h5"
-    
+#if args.patterns is None:
+#    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.h5"
+#else:
+#    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.h5"
+#    
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
@@ -64,9 +64,11 @@ EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
 
 for ib, beta in enumerate(np.round(betas, 8)):
     if args.patterns is None:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
+        file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
     else:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+        file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_patterns_{args.patterns}.h5"
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     EP[:, ib] = calc(N, rep, file_name, file_name_out)
     

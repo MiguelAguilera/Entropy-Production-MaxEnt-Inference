@@ -2,7 +2,7 @@ import os
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
-
+from get_spin_EP import *
 # -------------------------------
 # Argument Parsing
 # -------------------------------
@@ -26,16 +26,30 @@ parser.add_argument("--J0", type=float, default=1.0,
                     help="Mean interaction coupling (default: 1.0)")
 parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5)")
-
+parser.add_argument('--no_plot', action='store_true', default=False,
+                    help='Disable plotting if specified')
+parser.add_argument("--patterns", type=int, default=None,
+                    help="Hopfield pattern density (default: None).")
 args = parser.parse_args()
 
 # -------------------------------
 # Load results
 # -------------------------------
-filename = f"data/spin/data_Fig_1a_rep_{args.rep}_steps_{args.num_steps}_N_{args.size}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
-data = np.load(filename)
-EP = data["EP"]
-betas = data["betas"]
+SAVE_DATA_DIR = 'ep_data/spin'
+betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
+
+N=args.size
+EP=np.zeros((4,args.num_beta))
+for ib, beta in enumerate(np.round(betas, 8)):
+    if args.patterns is None:
+        file_name = f"{SAVE_DATA_DIR}/results_N{N}_beta{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    else:
+        file_name = f"{SAVE_DATA_DIR}/results_N{N}_beta{beta}_patterns_{args.patterns}.h5"
+    S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2 = load_results_from_file(file_name, args.size)
+    EP[:,ib] = np.array([S_Emp, S_TUR, S_N1, S_N2])
+#data = np.load(file_name)
+#EP = data["EP"]
+#betas = data["betas"]
 
 # -------------------------------
 # Plot Results

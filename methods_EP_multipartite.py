@@ -13,10 +13,10 @@ def exp_EP_spin_model(Da, J_i, i):
     """
 #    return torch.sum((J[i, :]-J[:,i])* Da)/2
     return torch.sum(J_i * Da) 
-
+    
 def correlations(S, i):
     """
-    Compute pairwise correlations for spin `i`, averaged over Tetitions.
+    Compute pairwise correlations for spin `i`
     """
     N, nflips = S.shape
     Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / nflips
@@ -41,7 +41,7 @@ def correlations_theta(S, theta, i):
     """
     N, nflips = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))  # remove spin i
-    thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
+    thf = (-2 * S[i, :]) * (theta @ S_without_i)
     S1_S = -(-2 * S[i, :]) * torch.exp(-thf)
     Da = torch.einsum('r,jr->j', S1_S, S) / nflips
     Z = torch.sum(torch.exp(-thf)) / nflips
@@ -54,7 +54,7 @@ def correlations4_theta(S, theta, i):
     """
     N, nflips = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
-    thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
+    thf = (-2 * S[i, :]) * (theta @ S_without_i)
     K = (4 * torch.exp(-thf) * S) @ S.T / nflips
 #    K[i, :] = 0
 #    K[:, i] = 0
@@ -70,7 +70,7 @@ def norm_theta(S, theta, i):
     """
     N, nflips = S.shape
     S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
-    thf = (-2 * S[i, :]) * torch.matmul(theta, S_without_i)
+    thf = (-2 * S[i, :]) * (theta @ S_without_i)
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
 
