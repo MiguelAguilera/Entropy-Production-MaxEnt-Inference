@@ -98,6 +98,9 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
             s0  = np.ones(N, dtype=DTYPE)
         elif init==0:
             s0  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
+        else:
+            raise Exception('unknown init')
+            
         if sequential:
             s = SequentialGlauberStep(H, J, s0, T=num_steps)
         else:
