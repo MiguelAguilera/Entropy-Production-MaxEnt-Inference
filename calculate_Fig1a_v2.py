@@ -108,9 +108,9 @@ def calc(N, rep):
 
         S_i_t = torch.from_numpy(S_i)
 
-        if S_i.shape[1] <= 10:
-            print(f"  [Warning] Skipping spin {i}: insufficient time steps")
-            continue
+        #if S_i.shape[1] <= 10:
+        #    print(f"  [Warning] Skipping spin {i}: insufficient time steps")
+        #    continue
 
         Pi=S_i.shape[1]/T
         # Estimate entropy production using various methods
@@ -127,6 +127,7 @@ def calc(N, rep):
                 sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1,  num_iters=1000)
             else:
                 raise Exception('Uknown GD_MODE')
+            # print(theta_gd)
             time_gd += time.time() - start_time_gd_i
                 
         else:
@@ -148,7 +149,7 @@ def calc(N, rep):
     print(f"  EP (Grad Ascent  ):    {S_GD:.6f}   {time_gd:3f}s")
     print("-" * 70)
 
-    return np.array([S_Emp, S_TUR, S_N1, S_N2, S_GD])
+    return np.array([S_Emp, S_TUR, S_N1, S_GD])
 
 # -------------------------------
 # Run Experiments Across Beta Values

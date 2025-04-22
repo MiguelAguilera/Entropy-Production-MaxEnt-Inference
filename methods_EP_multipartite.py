@@ -404,9 +404,9 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 
 
-def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100, 
-                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
-                     tol=1e-2, skip_warm_up=False):
+def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=10000, 
+                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
+                     tol=1e-3, skip_warm_up=False):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -426,6 +426,15 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100,
         delta_all : total change in theta (final - initial)
         theta     : final updated theta
     """
+
+    DO_HOLDOUT = False
+
+    if DO_HOLDOUT:
+        nflips = int(S_i.shape[1]/2)
+        S_i_tst = S_i[:,nflips+1:]
+        S_i     = S_i[:,:nflips]
+        theta_init = torch.zeros_like(theta_init)
+
     nflips = S_i.shape[1]
     theta = theta_init.clone()
     m = torch.zeros_like(theta)
@@ -435,9 +444,17 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100,
     S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
     S_onlyi = S_i[i,:]
 
+    Da = correlations(S_i, i)
     Da_noi = remove_i(Da, i)
 
     last_val = None
+
+    # def log_mean_exp_neg(X):
+    #     # Compute maximum value for stability
+    #     max_val = torch.max(-X)
+        
+    #     # Compute in a numerically stable way
+    #     return max_val + torch.log(torch.mean(torch.exp(-X - max_val)))    
 
     for t in range(1, num_iters + 1):
         thf = (-2 * S_onlyi) * (theta @ S_without_i)
@@ -449,7 +466,7 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100,
 
         cur_val = theta @ Da_noi - torch.log(Z) 
         # Early stopping
-        if last_val is not None and np.abs(last_val - cur_val) < tol:
+        if last_val is not None and np.abs((last_val - cur_val)/last_val) < tol:
             break
         last_val = cur_val
 
@@ -475,7 +492,18 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100,
 
             theta += delta_theta
 
+    if DO_HOLDOUT:    
+        # Get test values
+        Da = correlations(S_i_tst, i)
+        Da_noi = remove_i(Da, i)
+        S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
+        S_onlyi = S_i_tst[i,:]
 
+        thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        Z = torch.mean(torch.exp(-thf))
+        cur_val = theta @ Da_noi - torch.log(Z) 
+    # print(Z,nflips)
+        
     return cur_val, theta
 
 

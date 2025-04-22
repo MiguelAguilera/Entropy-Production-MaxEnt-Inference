@@ -59,6 +59,8 @@ parser.add_argument("--num_steps", type=int, default=2**7,
                     help="Number of simulation steps (default: 128).")
 parser.add_argument("--rep", type=int, default=1_000_000,
                     help="Number of repetitions for the simulation (default: 1000000).")
+parser.add_argument("--trials", type=int, default=1,
+                    help="Number of restarts (default: 1).")
 parser.add_argument("--size", type=int, default=100,
                     help="System size (default: 100).")
 parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
@@ -148,6 +150,7 @@ for beta_ix, beta in enumerate(betas):
         N=args.size,
         num_steps=args.num_steps,
         rep=args.rep,
+        trials=args.trials,
         beta=beta,
         J0=args.J0,
         DJ=args.DJ,

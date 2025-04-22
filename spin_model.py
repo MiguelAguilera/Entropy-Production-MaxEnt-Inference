@@ -93,6 +93,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
     F = np.ones_like(S)
 
     trial_rep = rep//trials
+    
     for trial in range(trials):
         if init==1:
             s0  = np.ones(N, dtype=DTYPE)
@@ -100,7 +101,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
             s0  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         else:
             raise Exception('unknown init')
-            
+
         if sequential:
             s = SequentialGlauberStep(H, J, s0, T=num_steps)
         else:
@@ -122,9 +123,10 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
 
 
 
-def run_simulation(N, num_steps=128, rep=1_000_000,
+def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
                    beta=1.3485, J0=1.0, DJ=0.5, seed=None,
-                   onlychanges=None, sequential=True, patterns=None):
+                   onlychanges=None, sequential=True, 
+                   patterns=None):
     """
     Run Glauber dynamics simulation and save results.
 
@@ -132,6 +134,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
         N (int): Number of spins.
         num_steps (int): Number of Glauber steps per sample.
         rep (int): Number of repetitions/samples.
+        trials (int): How many restarts
         beta (float): Inverse temperature.
         J0 (float): Mean coupling.
         DJ (float): Coupling variability.
@@ -169,6 +172,6 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
     _ = sample(rep//100, H, J, num_steps//10, sequential=sequential,init=init,trials=1)
 
     # Actual sampling
-    S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=1)
+    S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=trials)
 
     return J, H, S, F
