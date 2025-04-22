@@ -13,7 +13,7 @@ def exp_EP_spin_model(Da, J_i, i):
     """
 #    return torch.sum((J[i, :]-J[:,i])* Da)/2
     assert J_i.dim() == 1, f"Tensor must be 1D, but got {J_i.dim()}D"
-    return torch.sum(J_i * Da) 
+    return (J_i @ Da).item()
     
 def correlations(S, i):
     """
@@ -115,18 +115,20 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 #    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
 #    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
 
-    epsilon = 1e-6
-    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
-    while True:
-        try:
-            dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
-            break
-        except torch._C._LinAlgError:
-            epsilon *= 10  # Increase regularization if matrix is singular
-            print(f"Matrix is singular, increasing epsilon to {epsilon}")
+    # epsilon = 1e-6
+    # I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
 
-    return dtheta
+    # while True:
+    #     try:
+    #         dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
+    #         break
+    #     except torch._C._LinAlgError:
+    #         epsilon *= 10  # Increase regularization if matrix is singular
+    #         print(f"Matrix is singular, increasing epsilon to {epsilon}")
+
+    # return dtheta
 
 # =======================
 # Entropy Production Estimators
@@ -192,6 +194,25 @@ def get_EP_MTUR(S, i):
     sig_MTUR = theta @ Dai
     return sig_MTUR.item()
 
+
+def get_EP_Newton_MTUR(S, i):
+    """
+    Compute entropy production estimate using the 1-step Newton method for spin i.
+    """
+    N, nflips = S.shape
+    Da = correlations(S, i)
+    Ks = correlations4(S, i)
+    Ks -= torch.einsum('j,k->jk', Da, Da)
+    
+    theta = solve_linear_theta(Da, -Da, Ks, i)
+    Dai = remove_i(Da, i)
+    
+    Z = norm_theta(S, theta, i)
+
+    Dai = remove_i(Da, i)
+    sig_N1 = theta @ Dai - torch.log(norm_theta(S, theta, i))
+    sig_MTUR = theta @ Dai
+    return sig_N1.item(), sig_MTUR.item(), theta, Da
 
 
 def get_EP_Newton2(S, theta_init, Da, i, delta=0.25):
@@ -404,7 +425,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 
 
-def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=10000, 
+def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-3, skip_warm_up=False):
     """
@@ -466,7 +487,7 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=10000,
 
         cur_val = theta @ Da_noi - torch.log(Z) 
         # Early stopping
-        if last_val is not None and np.abs((last_val - cur_val)/last_val) < tol:
+        if last_val is not None and torch.abs((last_val - cur_val)/last_val) < tol:
             break
         last_val = cur_val
 
@@ -504,7 +525,7 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=10000,
         cur_val = theta @ Da_noi - torch.log(Z) 
     # print(Z,nflips)
         
-    return cur_val, theta
+    return cur_val.item(), theta
 
 
 

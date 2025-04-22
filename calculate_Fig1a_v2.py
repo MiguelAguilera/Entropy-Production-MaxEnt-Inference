@@ -1,5 +1,9 @@
 import os, argparse, time
 import numpy as np
+
+import os
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
+
 import torch
 import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
@@ -8,8 +12,32 @@ from methods_EP_multipartite import *
 import gd 
 
 
+def set_default_device():
+    """
+    Determines the best available device for PyTorch operations and sets it as default.
+    Returns:
+        torch.device: The device that was set as default ('mps', 'cuda', or 'cpu')
+    """
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        # Set MPS as default device
+        torch.set_default_device(device)
+        print(f"Set MPS as default device: {device}")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        # Set CUDA as default device
+        torch.set_default_device(device)
+        print(f"Set CUDA as default device: {device}")
+    else:
+        device = torch.device("cpu")
+        # CPU is already the default, but we can set it explicitly
+        torch.set_default_device(device)
+        print("Set CPU as default device")
+    return device
 
+device = set_default_device()
 
+DO_NEWTON2 = True
 GD_MODE = 2  # 0 for no GD
              # 1 for pytorch Adam
              # 2 for our Adam
@@ -89,11 +117,10 @@ def calc(N, rep):
     #     H = f['H'][:]
     #     assert(np.all(H==0))  # We do not support local fields in our analysis
 
-    J_t = torch.from_numpy(J)
+    J_t = torch.from_numpy(J).to(device)
 
     # Initialize accumulators
-    S_Emp = S_TUR = S_N1 = S_GD= 0
-    # S_N2 = 0
+    S_Emp = S_TUR = S_N1 = S_GD = S_N2 = 0
     
     T = N * rep  # Total spin-flip attempts
 
@@ -106,19 +133,27 @@ def calc(N, rep):
         F_i = data["F"][i]
         S_i = data["S"][:, F_i].astype("float32") * 2 - 1  # convert {0,1} → {-1,1}
 
-        S_i_t = torch.from_numpy(S_i)
+        S_i_t = torch.from_numpy(S_i).to(device)
 
         #if S_i.shape[1] <= 10:
         #    print(f"  [Warning] Skipping spin {i}: insufficient time steps")
         #    continue
 
         Pi=S_i.shape[1]/T
-        # Estimate entropy production using various methods
-        sig_N1, theta1, Da          = get_EP_Newton(S_i_t, i)
-        sig_MTUR                    = get_EP_MTUR(S_i_t, i)
-        sigma_emp                   = exp_EP_spin_model(Da, J_t[i,:], i)
-        # sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
 
+        start_time_i = time.time()
+
+        # Estimate entropy production using various methods
+        sig_N1, sig_MTUR, theta1, Da  = get_EP_Newton_MTUR(S_i_t, i)
+        print(i)
+        print(f'sig_N1 {sig_N1} TUR {sig_MTUR} / {time.time() - start_time_i:3f}s')
+        #sig_MTUR                    = get_EP_MTUR(S_i_t, i)
+        #print('b', i, time.time() - start_time_i)
+        sigma_emp                   = exp_EP_spin_model(Da, J_t[i,:], i)
+        if DO_NEWTON2:
+            sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
+            print(f'sig_N2 {sig_N2} / {time.time() - start_time_i:3f}s')
+            
         if GD_MODE > 0:
             start_time_gd_i = time.time()
             if GD_MODE == 2:
@@ -127,7 +162,7 @@ def calc(N, rep):
                 sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1,  num_iters=1000)
             else:
                 raise Exception('Uknown GD_MODE')
-            # print(theta_gd)
+            print(f'sig_GD {sig_GD:3f} / {time.time() - start_time_gd_i:3f}s')
             time_gd += time.time() - start_time_gd_i
                 
         else:
@@ -137,7 +172,8 @@ def calc(N, rep):
         S_Emp += Pi*sigma_emp
         S_TUR += Pi*sig_MTUR
         S_N1  += Pi*sig_N1
-        # S_N2  += Pi*max(sig_N1,sig_N2)
+        if DO_NEWTON2:
+            S_N2  += Pi*max(sig_N1,sig_N2)
         S_GD  += Pi*sig_GD
 
 
@@ -145,7 +181,8 @@ def calc(N, rep):
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
     print(f"  EP (MTUR)         :    {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
-    # print(f"  EP (2-step Newton):    {S_N2:.6f}")
+    if DO_NEWTON2:
+        print(f"  EP (2-step Newton):    {S_N2:.6f}")
     print(f"  EP (Grad Ascent  ):    {S_GD:.6f}   {time_gd:3f}s")
     print("-" * 70)
 
