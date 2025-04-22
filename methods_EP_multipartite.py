@@ -332,9 +332,9 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
     return sig_BFGS.item(), theta
     
     
-def get_EP_Adam(S, theta_init, Da, i, num_iters=100, 
+def get_EP_Adam(S, theta_init, Da, i, num_iters=1, 
                      beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
-                     tol=1e-4, skip_warm_up=False):
+                     tol=1e-4, skip_warm_up=False, batch_size=64):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -358,32 +358,39 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=100,
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)
     
-
+    N,T=S.shape
+    
+    batches = T // batch_size
     for t in range(1, num_iters + 1):
-        Da_th, Z = correlations_theta(S, theta, i)
-        Da_th /= Z
+        
+        perm = torch.randperm(T)
+        for j in range(0, T, batch_size):
+            batch_idx = perm[j:j + batch_size]
+            S_batch = S[:, batch_idx]
+            Da_th, Z = correlations_theta(S, theta, i)
+            Da_th /= Z
 
-        grad = remove_i(Da - Da_th, i)
+            grad = remove_i(Da - Da_th, i)
 
-        # Adam moment updates
-        m = beta1 * m + (1 - beta1) * grad
-        v = beta2 * v + (1 - beta2) * grad.pow(2)
-        if skip_warm_up:
-            m_hat = m
-            v_hat = v
-        else:
-            m_hat = m / (1 - beta1 ** t)
-            v_hat = v / (1 - beta2 ** t)
+            # Adam moment updates
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * grad.pow(2)
+            if skip_warm_up:
+                m_hat = m
+                v_hat = v
+            else:
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
 
-        # Compute parameter update
-        delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+            # Compute parameter update
+            delta_theta = lr / batches* m_hat / (v_hat.sqrt() + eps)
 
-        # Apply update to full theta
-        theta += delta_theta
+            # Apply update to full theta
+            theta += delta_theta
 
-        # Optional: early stopping
-        if delta_theta.norm() < tol:
-            break
+            # Optional: early stopping
+            if delta_theta.norm() < tol:
+                break
 
     Dai = remove_i(Da, i)
     sig_Adam = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
