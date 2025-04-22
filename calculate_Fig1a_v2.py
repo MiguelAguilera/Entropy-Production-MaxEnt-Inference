@@ -7,7 +7,10 @@ from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
 import gd 
 
-DO_GD = True
+GD_MODE = 2  # 0 for no GD
+             # 1 for pytorch Adam
+             # 2 for our Adam
+
 
 # -------------------------------
 # Argument Parsing
@@ -86,7 +89,8 @@ def calc(N, rep):
     J_t = torch.from_numpy(J)
 
     # Initialize accumulators
-    S_Emp = S_TUR = S_N1 = S_N2 = S_GD= 0
+    S_Emp = S_TUR = S_N1 = S_GD= 0
+    # S_N2 = 0
     
     T = N * rep  # Total spin-flip attempts
 
@@ -109,15 +113,19 @@ def calc(N, rep):
         # Estimate entropy production using various methods
         sig_N1, theta1, Da          = get_EP_Newton(S_i_t, i)
         sig_MTUR                    = get_EP_MTUR(S_i_t, i)
-        sigma_emp                   = exp_EP_spin_model(Da, J_t, i)
-        sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
+        sigma_emp                   = exp_EP_spin_model(Da, J_t[i,:], i)
+        # sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
 
-        if DO_GD:
+        if GD_MODE > 0:
             start_time_gd_i = time.time()
-            # sig_GD, theta_gd        = get_EP_Adam(S_i_t, theta_init=theta1, Da=Da, i=i) 
-            # 
-            sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1)
+            if GD_MODE == 2:
+                sig_GD, theta_gd        = get_EP_Adam(S_i_t, theta_init=theta1, Da=Da, i=i) 
+            elif GD_MODE == 1:
+                sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1,  num_iters=1000)
+            else:
+                raise Exception('Uknown GD_MODE')
             time_gd += time.time() - start_time_gd_i
+                
         else:
             sig_GD = np.nan
 
@@ -125,7 +133,7 @@ def calc(N, rep):
         S_Emp += Pi*sigma_emp
         S_TUR += Pi*sig_MTUR
         S_N1  += Pi*sig_N1
-        S_N2  += Pi*max(sig_N1,sig_N2)
+        # S_N2  += Pi*max(sig_N1,sig_N2)
         S_GD  += Pi*sig_GD
 
 
@@ -133,7 +141,7 @@ def calc(N, rep):
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
     print(f"  EP (MTUR)         :    {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
-    print(f"  EP (2-step Newton):    {S_N2:.6f}")
+    # print(f"  EP (2-step Newton):    {S_N2:.6f}")
     print(f"  EP (Grad Ascent  ):    {S_GD:.6f}   {time_gd:3f}s")
     print("-" * 70)
 
@@ -142,7 +150,7 @@ def calc(N, rep):
 # -------------------------------
 # Run Experiments Across Beta Values
 # -------------------------------
-EP = np.zeros((5, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2, GradientAscent
+EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, GradientAscent
 
 for ib, beta in enumerate(np.round(betas, 8)):
     EP[:, ib] = calc(N, rep)
@@ -171,8 +179,8 @@ if not args.no_plot:
         r'$\Sigma$', 
         r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
         r'$\widehat{\Sigma}_{\bm g}$', 
+        # r'${\Sigma}_{\bm g}$',
         r'${\Sigma}_{\bm g}$',
-        r'${\Sigma}_{\bm g}^2$',
     ]
 
     cmap = plt.get_cmap('inferno_r')
