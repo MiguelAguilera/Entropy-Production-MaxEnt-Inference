@@ -105,7 +105,6 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
     Dai    = remove_i(Da, i)
     Dai_th = remove_i(Da_th, i)
     Ks_no_diag_th = K_nodiag(Ks_th, i)
-
     rhs_th = Dai - Dai_th
 
 #    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
@@ -176,8 +175,7 @@ def get_EP_Newton(S, i):
 
     Dai = remove_i(Da, i)
     sig_N1 = theta @ Dai - torch.log(norm_theta(S, theta, i))
-    return sig_N1, theta, Da
-
+    return sig_N1.item(), theta, Da
 
 
 def get_EP_MTUR(S, i):
@@ -189,11 +187,11 @@ def get_EP_MTUR(S, i):
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
     sig_MTUR = theta @ Dai
-    return sig_MTUR
+    return sig_MTUR.item()
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
+def get_EP_Newton2(S, theta_init, Da, i, delta=0.25):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -248,7 +246,91 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
     # Compute surrogate objective (e.g., log-partition or entropy production)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
 
-    return sig_N2, theta
+    return sig_N2.item(), theta
+    
+def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
+    """
+    Manual BFGS maximization for f(θ) = θ^T ⟨g⟩ - log Z(θ)
+
+    Parameters
+    ----------
+    S : torch.Tensor
+        Binary spin configurations (N, nflips).
+    theta_init : torch.Tensor
+        Initial estimate of θ (with θ[i] = 0 fixed).
+    Da : torch.Tensor
+        Empirical averages ⟨g⟩ (e.g., ⟨s_j⟩).
+    i : int
+        Index of fixed spin variable.
+    delta : float
+        Trust region parameter.
+    max_iter : int
+        Maximum number of BFGS iterations.
+    tol : float
+        Gradient norm tolerance for convergence.
+
+    Returns
+    -------
+    sig_BFGS : float
+        Final surrogate objective value.
+    theta : torch.Tensor
+        Final estimate of θ.
+    """
+
+        
+    theta = theta_init.clone()
+    n = theta.numel()
+    
+    Dai = remove_i(Da, i)
+    I = torch.eye(n)
+    
+    # Initial model estimate and gradient
+    Da_th, Z = correlations_theta(S, theta, i)
+    Da_th /= Z
+    Da_th_wo_i = remove_i(Da_th, i)
+    grad = Dai - Da_th_wo_i
+
+    H = torch.eye(n)  # initial inverse Hessian approximation
+
+    for it in range(max_iter):
+        if grad.norm() < tol:
+            break
+
+        # Compute direction and step
+        p = H @ grad
+        if grad.norm() > delta * theta.norm():
+            p = p * (delta * theta.norm() / grad.norm())
+        theta_new = theta + alpha * p
+
+        # Compute new gradient
+        Da_th_new, Z_new = correlations_theta(S, theta_new, i)
+        Da_th_new /= Z_new
+        grad_new = Dai - remove_i(Da_th_new, i)
+
+        # BFGS update
+        s = theta_new - theta
+        y = grad_new - grad
+        rho = 1.0 / (y @ s + 1e-10)
+
+        H = (I - rho * s[:, None] @ y[None, :]) @ H @ (I - rho * y[:, None] @ s[None, :]) + rho * s[:, None] @ s[None, :]
+
+        # Reuse values for next iteration
+        theta = theta_new
+        grad = grad_new
+        Da_th = Da_th_new  # optional, for final objective
+
+
+    # Final update
+    p = H @ grad_new  # ascent direction
+    if grad.norm() > delta * theta.norm():
+        p = p * (delta * theta.norm() / grad.norm())
+    theta = theta + alpha * p
+
+    # Final objective
+    sig_BFGS = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
+
+    return sig_BFGS.item(), theta
+    
     
 def get_EP_Adam(S, theta_init, Da, i, num_iters=100, 
                      beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
