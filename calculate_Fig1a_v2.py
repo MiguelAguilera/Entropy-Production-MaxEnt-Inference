@@ -7,6 +7,88 @@ from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
 import gd 
 
+
+
+
+def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=100, 
+                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
+                     tol=1e-2, skip_warm_up=False):
+    """
+    Performs multiple Adam-style updates to refine theta estimation.
+    
+    Arguments:
+        S         : binary spin samples, shape (N, num_flips)
+        theta_init: initial theta vector
+        Da        : empirical expectation vector
+        i         : index to remove from theta (current spin)
+        num_iters : number of Adam updates
+        beta1, beta2: Adam moment decay parameters
+        lr        : learning rate
+        eps       : epsilon for numerical stability
+        tol       : tolerance for early stopping
+    
+    Returns:
+        sig_N2    : final entropy production estimate
+        delta_all : total change in theta (final - initial)
+        theta     : final updated theta
+    """
+    nflips = S_i.shape[1]
+    theta = theta_init.clone()
+    m = torch.zeros_like(theta)
+    v = torch.zeros_like(theta)
+    N = len(theta)
+
+    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
+    S_onlyi = S_i[i,:]
+
+    Da_noi = remove_i(Da, i)
+
+    last_val = None
+
+    for t in range(1, num_iters + 1):
+        thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        S1_S = -(-2 * S_onlyi) * torch.exp(-thf)
+        Da_th = torch.einsum('r,jr->j', S1_S, S_i) / nflips
+        Z = torch.mean(torch.exp(-thf))
+        # Da_th, Z = correlations_theta(S, theta, i)
+        Da_th /= Z
+
+        cur_val = theta @ Da_noi - torch.log(Z) 
+        # Early stopping
+        if last_val is not None and np.abs(last_val - cur_val) < tol:
+            break
+        last_val = cur_val
+
+        grad = Da_noi - remove_i(Da_th, i)
+
+        if False:
+            # regular gradient descent
+            theta += lr * grad
+            
+        else:
+            # Adam moment updates
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * grad * grad
+            if skip_warm_up:
+                m_hat = m
+                v_hat = v
+            else:
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
+
+            # Compute parameter update
+            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+
+            theta += delta_theta
+
+
+    return cur_val, theta
+
+
+
+
+
+
 GD_MODE = 2  # 0 for no GD
              # 1 for pytorch Adam
              # 2 for our Adam
@@ -119,7 +201,7 @@ def calc(N, rep):
         if GD_MODE > 0:
             start_time_gd_i = time.time()
             if GD_MODE == 2:
-                sig_GD, theta_gd        = get_EP_Adam(S_i_t, theta_init=theta1, Da=Da, i=i) 
+                sig_GD, theta_gd        = get_EP_Adam2(S_i_t, theta_init=theta1, Da=Da, i=i) 
             elif GD_MODE == 1:
                 sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1,  num_iters=1000)
             else:
