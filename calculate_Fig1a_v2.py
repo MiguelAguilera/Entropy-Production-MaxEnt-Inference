@@ -1,5 +1,4 @@
-import os
-import argparse
+import os, argparse, time
 import numpy as np
 import torch
 import h5py
@@ -69,15 +68,20 @@ def calc(N, rep):
     print("=" * 70)
 
     if args.patterns is None:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
     else:
-        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+        file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
-    with h5py.File(file_name, 'r') as f:
-        J = f['J'][:]
-        H = f['H'][:]
-        assert(np.all(H==0))  # We do not support local fields in our analysis
+    data = np.load(file_name)
+    J = data['J']
+    H = data['H']
+    assert(np.all(H==0))  # We do not support local fields in our analysis
+
+    # with h5py.File(file_name, 'r') as f:
+    #     J = f['J'][:]
+    #     H = f['H'][:]
+    #     assert(np.all(H==0))  # We do not support local fields in our analysis
 
     J_t = torch.from_numpy(J)
 
@@ -86,9 +90,15 @@ def calc(N, rep):
     
     T = N * rep  # Total spin-flip attempts
 
+    time_gd  = 0
+    start_time = time.time()
+
     for i in range(N):
-        with h5py.File(file_name, 'r') as f:
-            S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
+        #with h5py.File(file_name+'.h5', 'r') as f:
+        #    S_i = f[f'S_{i}'][:].astype(DTYPE) * 2 - 1  # Convert to ±1
+        F_i = data["F"][i]
+        S_i = data["S"][:, F_i].astype("float32") * 2 - 1  # convert {0,1} → {-1,1}
+
         S_i_t = torch.from_numpy(S_i)
 
         if S_i.shape[1] <= 10:
@@ -103,7 +113,11 @@ def calc(N, rep):
         sig_N2, theta2              = get_EP_Newton2(S_i_t, theta1, Da, i)
 
         if DO_GD:
-            sig_GD, theta_gd            = gd.get_EP_gd(S_i_t, i, x0=theta1)
+            start_time_gd_i = time.time()
+            # sig_GD, theta_gd        = get_EP_Adam(S_i_t, theta_init=theta1, Da=Da, i=i) 
+            # 
+            sig_GD, theta_gd = gd.get_EP_gd(S_i_t, i, x0=theta1)
+            time_gd += time.time() - start_time_gd_i
         else:
             sig_GD = np.nan
 
@@ -114,12 +128,13 @@ def calc(N, rep):
         S_N2  += Pi*max(sig_N1,sig_N2)
         S_GD  += Pi*sig_GD
 
-    print("\n[Results]")
+
+    print(f"\n[Results] {time.time()-start_time:3f}s")
     print(f"  EP (Empirical)    :    {S_Emp:.6f}")
     print(f"  EP (MTUR)         :    {S_TUR:.6f}")
     print(f"  EP (1-step Newton):    {S_N1:.6f}")
     print(f"  EP (2-step Newton):    {S_N2:.6f}")
-    print(f"  EP (Grad Ascent  ):    {S_GD:.6f}")
+    print(f"  EP (Grad Ascent  ):    {S_GD:.6f}   {time_gd:3f}s")
     print("-" * 70)
 
     return np.array([S_Emp, S_TUR, S_N1, S_N2, S_GD])

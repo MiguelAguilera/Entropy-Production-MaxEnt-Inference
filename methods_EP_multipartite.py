@@ -389,7 +389,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
             theta += delta_theta
 
             # Optional: early stopping
-            if delta_theta.norm() < tol:
+            if delta_theta.norm() < tol*(N/10):
                 break
 
     Dai = remove_i(Da, i)
