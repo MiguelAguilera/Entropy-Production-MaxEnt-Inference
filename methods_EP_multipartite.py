@@ -357,7 +357,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=100,
     theta = theta_init.clone()
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)
-    
+    N = len(theta)
 
     for t in range(1, num_iters + 1):
         Da_th, Z = correlations_theta(S, theta, i)
@@ -382,7 +382,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=100,
         theta += delta_theta
 
         # Optional: early stopping
-        if delta_theta.norm() < tol:
+        if delta_theta.norm() < tol*(N/10):
             break
 
     Dai = remove_i(Da, i)
