@@ -1,6 +1,6 @@
 import torch
-
 import numpy as np
+import time
 
 # =======================
 # Spin Model and Correlations
@@ -15,20 +15,20 @@ def exp_EP_spin_model(Da, J_i, i):
     assert J_i.dim() == 1, f"Tensor must be 1D, but got {J_i.dim()}D"
     return (J_i @ Da).item()
     
-def correlations(S, i):
+def correlations(S_i, i):
     """
     Compute pairwise correlations for spin `i`
     """
-    N, nflips = S.shape
-    Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / nflips
+    N, nflips = S_i.shape
+    Da = torch.einsum('r,jr->j', (-2 * S_i[i, :]), S_i) / nflips
     return Da
 
-def correlations4(S, i):
+def correlations4(S_i, i):
     """
     Compute 4th-order correlation matrix for spin `i`.
     """
-    N, nflips = S.shape
-    K = (4 * S) @ S.T / nflips
+    N, nflips = S_i.shape
+    K = (4 * S_i) @ S_i.T / nflips
     return K
 
 # =======================
@@ -94,7 +94,6 @@ def remove_i(A, i):
     Remove the i-th element from a 1D tensor A.
     """
     r = torch.cat((A[:i], A[i+1:]))
-    #print(A,i,r)
     return r
 
 # =======================
@@ -425,7 +424,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 
 
-def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=1000, 
+def get_EP_Adam2(S_i, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-3, skip_warm_up=False):
     """
@@ -447,14 +446,13 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=1000,
         delta_all : total change in theta (final - initial)
         theta     : final updated theta
     """
+    # DO_HOLDOUT = False
 
-    DO_HOLDOUT = False
-
-    if DO_HOLDOUT:
-        nflips = int(S_i.shape[1]/2)
-        S_i_tst = S_i[:,nflips+1:]
-        S_i     = S_i[:,:nflips]
-        theta_init = torch.zeros_like(theta_init)
+    # # if DO_HOLDOUT:
+    # #     nflips = int(S_i.shape[1]/2)
+    # #     S_i_tst = S_i[:,nflips+1:]
+    # #     S_i     = S_i[:,:nflips]
+    # #     theta_init = torch.zeros_like(theta_init)
 
     nflips = S_i.shape[1]
     theta = theta_init.clone()
@@ -462,36 +460,36 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=1000,
     v = torch.zeros_like(theta)
     N = len(theta)
 
+    stime = time.time()
     S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
     S_onlyi = S_i[i,:]
 
+    X = -2 * S_onlyi * S_without_i
     Da = correlations(S_i, i)
     Da_noi = remove_i(Da, i)
 
-    last_val = None
-
-    # def log_mean_exp_neg(X):
-    #     # Compute maximum value for stability
-    #     max_val = torch.max(-X)
-        
-    #     # Compute in a numerically stable way
-    #     return max_val + torch.log(torch.mean(torch.exp(-X - max_val)))    
+    last_val = -np.inf
+    cur_val  = torch.tensor(np.nan)
 
     for t in range(1, num_iters + 1):
-        thf = (-2 * S_onlyi) * (theta @ S_without_i)
-        S1_S = -(-2 * S_onlyi) * torch.exp(-thf)
-        Da_th = torch.einsum('r,jr->j', S1_S, S_i) / nflips
-        Z = torch.mean(torch.exp(-thf))
-        # Da_th, Z = correlations_theta(S, theta, i)
+        #thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        thf = theta @ X
+        
+        Y = torch.exp(-thf)
+        Z = torch.mean(Y)
+        S1_S = -(-2 * S_onlyi) * Y
+
+        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
         Da_th /= Z
 
-        cur_val = theta @ Da_noi - torch.log(Z) 
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
         # Early stopping
-        if last_val is not None and torch.abs((last_val - cur_val)/last_val) < tol:
+        if np.abs((last_val - cur_val)/(last_val+1e-8)) < tol:
             break
         last_val = cur_val
 
-        grad = Da_noi - remove_i(Da_th, i)
+        #grad = Da_noi - remove_i(Da_th, i)
+        grad = Da_noi - Da_th
 
         if False:
             # regular gradient descent
@@ -513,19 +511,19 @@ def get_EP_Adam2(S_i, theta_init, Da, i, num_iters=1000,
 
             theta += delta_theta
 
-    if DO_HOLDOUT:    
-        # Get test values
-        Da = correlations(S_i_tst, i)
-        Da_noi = remove_i(Da, i)
-        S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
-        S_onlyi = S_i_tst[i,:]
+    # if DO_HOLDOUT:    
+    #     # Get test values
+    #     Da = correlations(S_i_tst, i)
+    #     Da_noi = remove_i(Da, i)
+    #     S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
+    #     S_onlyi = S_i_tst[i,:]
 
-        thf = (-2 * S_onlyi) * (theta @ S_without_i)
-        Z = torch.mean(torch.exp(-thf))
-        cur_val = theta @ Da_noi - torch.log(Z) 
-    # print(Z,nflips)
+    #     thf = (-2 * S_onlyi) * (theta @ S_without_i)
+    #     Z = torch.mean(torch.exp(-thf))
+    #     cur_val = theta @ Da_noi - torch.log(Z) 
+    # # print(Z,nflips)
         
-    return cur_val.item(), theta
+    return cur_val, theta
 
 
 
