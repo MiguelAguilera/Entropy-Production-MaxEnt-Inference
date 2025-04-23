@@ -100,7 +100,7 @@ def remove_i(A, i):
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
@@ -114,20 +114,20 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 #    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
 #    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
 
-    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
+#    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
-    # epsilon = 1e-6
-    # I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
 
-    # while True:
-    #     try:
-    #         dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
-    #         break
-    #     except torch._C._LinAlgError:
-    #         epsilon *= 10  # Increase regularization if matrix is singular
-    #         print(f"Matrix is singular, increasing epsilon to {epsilon}")
+    while True:
+        try:
+            dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
+            if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
+                break
+        except torch._C._LinAlgError:
+            epsilon *= 10  # Increase regularization if matrix is singular
+            print(f"Matrix is singular, increasing epsilon to {epsilon}")
 
-    # return dtheta
+    return dtheta
 
 # =======================
 # Entropy Production Estimators
@@ -169,16 +169,21 @@ def get_EP_Newton(S, i):
     """
     N, nflips = S.shape
     Da = correlations(S, i)
+    Dai = remove_i(Da, i)
     Ks = correlations4(S, i)
     Ks -= torch.einsum('j,k->jk', Da, Da)
     
-    theta = solve_linear_theta(Da, -Da, Ks, i)
-    Dai = remove_i(Da, i)
-    
-    Z = norm_theta(S, theta, i)
+    Z=0
+    eps = 1e-4
+    while True:  # regularize until  we get a non-zero Z
+        theta = solve_linear_theta(Da, -Da, Ks, i, eps=eps)
+        Z = norm_theta(S, theta, i)
+        if not np.isclose(Z.item(),0):
+            break
+        eps *= 10
 
     Dai = remove_i(Da, i)
-    sig_N1 = theta @ Dai - torch.log(norm_theta(S, theta, i))
+    sig_N1 = theta @ Dai - torch.log(Z)
     return sig_N1.item(), theta, Da
 
 
@@ -465,9 +470,9 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
         Da_th /= Z
 
-        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+        cur_val = (theta @ Da_noi - torch.log(Z + 1e-20)).item()
         # Early stopping
-        if (time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol):
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
         last_val = cur_val
 
