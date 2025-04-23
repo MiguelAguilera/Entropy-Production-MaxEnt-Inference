@@ -1,6 +1,6 @@
 import torch
-
 import numpy as np
+import time
 
 # =======================
 # Spin Model and Correlations
@@ -12,22 +12,23 @@ def exp_EP_spin_model(Da, J_i, i):
     correlation matrix Da and interaction matrix J.
     """
 #    return torch.sum((J[i, :]-J[:,i])* Da)/2
-    return torch.sum(J_i * Da) 
+    assert J_i.dim() == 1, f"Tensor must be 1D, but got {J_i.dim()}D"
+    return (J_i @ Da).item()
     
-def correlations(S, i):
+def correlations(S_i, i):
     """
     Compute pairwise correlations for spin `i`
     """
-    N, nflips = S.shape
-    Da = torch.einsum('r,jr->j', (-2 * S[i, :]), S) / nflips
+    N, nflips = S_i.shape
+    Da = torch.einsum('r,jr->j', (-2 * S_i[i, :]), S_i) / nflips
     return Da
 
-def correlations4(S, i):
+def correlations4(S_i, i):
     """
     Compute 4th-order correlation matrix for spin `i`.
     """
-    N, nflips = S.shape
-    K = (4 * S) @ S.T / nflips
+    N, nflips = S_i.shape
+    K = (4 * S_i) @ S_i.T / nflips
     return K
 
 # =======================
@@ -74,6 +75,8 @@ def norm_theta(S, theta, i):
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
 
+
+
 # =======================
 # Matrix Processing Utilities
 # =======================
@@ -91,14 +94,13 @@ def remove_i(A, i):
     Remove the i-th element from a 1D tensor A.
     """
     r = torch.cat((A[:i], A[i+1:]))
-    #print(A,i,r)
     return r
 
 # =======================
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
@@ -112,13 +114,15 @@ def solve_linear_theta(Da, Da_th, Ks_th, i):
 #    alpha = 1e-1*torch.trace(Ks_no_diag_th)/len(Ks_no_diag_th)
 #    dtheta = torch.linalg.solve(Ks_no_diag_th + alpha*I, rhs_th)
 
-    epsilon = 1e-6
+#    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
+
     I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
 
     while True:
         try:
-            dtheta = torch.linalg.solve(Ks_no_diag_th + epsilon * I, rhs_th)
-            break
+            dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
+            if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
+                break
         except torch._C._LinAlgError:
             epsilon *= 10  # Increase regularization if matrix is singular
             print(f"Matrix is singular, increasing epsilon to {epsilon}")
@@ -165,16 +169,21 @@ def get_EP_Newton(S, i):
     """
     N, nflips = S.shape
     Da = correlations(S, i)
+    Dai = remove_i(Da, i)
     Ks = correlations4(S, i)
     Ks -= torch.einsum('j,k->jk', Da, Da)
     
-    theta = solve_linear_theta(Da, -Da, Ks, i)
-    Dai = remove_i(Da, i)
-    
-    Z = norm_theta(S, theta, i)
+    Z=0
+    eps = 1e-4
+    while True:  # regularize until  we get a non-zero Z
+        theta = solve_linear_theta(Da, -Da, Ks, i, eps=eps)
+        Z = norm_theta(S, theta, i)
+        if not np.isclose(Z.item(),0):
+            break
+        eps *= 10
 
     Dai = remove_i(Da, i)
-    sig_N1 = theta @ Dai - torch.log(norm_theta(S, theta, i))
+    sig_N1 = theta @ Dai - torch.log(Z)
     return sig_N1.item(), theta, Da
 
 
@@ -395,4 +404,134 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
     Dai = remove_i(Da, i)
     sig_Adam = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
     return sig_Adam, theta
+
+
+
+
+
+
+def get_EP_Adam2(S_i, theta_init, i, num_iters=1000, 
+                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
+                     tol=1e-3, skip_warm_up=False,
+                     timeout=15):
+    """
+    Performs multiple Adam-style updates to refine theta estimation.
+    
+    Arguments:
+        S         : binary spin samples, shape (N, num_flips)
+        theta_init: initial theta vector
+        Da        : empirical expectation vector
+        i         : index to remove from theta (current spin)
+        num_iters : number of Adam updates
+        beta1, beta2: Adam moment decay parameters
+        lr        : learning rate
+        eps       : epsilon for numerical stability
+        tol       : tolerance for early stopping
+        skip_warm_up : Adam option
+        timeout : maximum second to run
+    
+    Returns:
+        sig_gd    : final entropy production estimate
+        theta     : final updated theta
+    """
+    DO_HOLDOUT = False
+
+    if DO_HOLDOUT:
+        nflips = int(S_i.shape[1]/2)
+        S_i_tst = S_i[:,nflips+1:]
+        S_i     = S_i[:,:nflips]
+        theta_init = torch.zeros_like(theta_init)
+
+    nflips = S_i.shape[1]
+    theta = theta_init.clone()
+    m = torch.zeros_like(theta)
+    v = torch.zeros_like(theta)
+    N = len(theta)
+
+    stime = time.time()
+    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
+    S_onlyi = S_i[i,:]
+
+    X = -2 * S_onlyi * S_without_i
+    Da = correlations(S_i, i)
+    Da_noi = remove_i(Da, i)
+
+    last_val = -np.inf
+    cur_val  = torch.tensor(np.nan)
+
+    for t in range(1, num_iters + 1):
+        #thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        thf = theta @ X
+        
+        Y = torch.exp(-thf)
+        Z = torch.mean(Y)
+        S1_S = -(-2 * S_onlyi) * Y
+
+        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
+        Da_th /= Z
+
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+        # if np.isnan(cur_val):
+        #     print(Z,thf)
+        #     asdf
+        #     print(grad)
+        #     print(v_hat.sqrt())
+        #     print(m,v)
+        #     print(t,Da_noi, theta, Z)
+        #     print(theta_init)
+        #     raise Exception()
+        # Early stopping
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
+            break
+        if cur_val > np.log(nflips):
+            break
+
+        last_val = cur_val
+
+        #grad = Da_noi - remove_i(Da_th, i)
+        grad = Da_noi - Da_th
+
+        if False:
+            # regular gradient descent
+            theta += lr * grad
+            
+        else:
+            # Adam moment updates
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * (grad**2)
+            if skip_warm_up:
+                m_hat = m
+                v_hat = v
+            else:
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
+
+            # Compute parameter update
+            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+
+            theta += delta_theta
+
+            # if torch.isinf(theta).any() or torch.isnan(theta).any():
+            #     print(Z)
+            #     print(last_val)
+            #     #print(m_hat, v_hat, delta_theta)
+            #     raise Exception('here')
+
+    if DO_HOLDOUT:    
+        # Get test values
+        Da = correlations(S_i_tst, i)
+        Da_noi = remove_i(Da, i)
+        S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
+        S_onlyi = S_i_tst[i,:]
+
+        thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        Z = torch.mean(torch.exp(-thf))
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+    # # print(Z,nflips)
+        
+    return cur_val, theta
+
+
+
+
 

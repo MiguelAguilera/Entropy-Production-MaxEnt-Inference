@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit, prange
+from numba import njit, prange, objmode
 import h5py
 import hdf5plugin
 import threading
@@ -73,7 +73,7 @@ def ParallelGlauberStep(H, J, s, T=1):
 # --------- Sampling Function --------- #
 
 @njit(parallel=True, fastmath=True, cache=True)
-def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
+def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar=True):
     """
     Sample spin configurations using Glauber dynamics.
 
@@ -93,11 +93,19 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
     F = np.ones_like(S)
 
     trial_rep = rep//trials
+    
+    print_every = int(rep/100)
+    if progressbar:
+        print("-"*100)
+
     for trial in range(trials):
         if init==1:
             s0  = np.ones(N, dtype=DTYPE)
         elif init==0:
             s0  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
+        else:
+            raise Exception('unknown init')
+
         if sequential:
             s = SequentialGlauberStep(H, J, s0, T=num_steps)
         else:
@@ -115,13 +123,20 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000):
             S[:, trial*trial_rep + r] = s.astype('int32')
             F[:, trial*trial_rep + r] = -(s1 * s).astype('int32')  # Indicates if spin changed: 1 if flipped, -1 otherwise
 
+            if progressbar and (trial*trial_rep + r) % print_every == 0:
+                with objmode():
+                    print(".", end="", flush=True)
+
+    if progressbar:
+        print()
     return S, F
 
 
 
-def run_simulation(N, num_steps=128, rep=1_000_000,
+def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
                    beta=1.3485, J0=1.0, DJ=0.5, seed=None,
-                   onlychanges=None, sequential=True, patterns=None):
+                   onlychanges=None, sequential=True, 
+                   patterns=None):
     """
     Run Glauber dynamics simulation and save results.
 
@@ -129,6 +144,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
         N (int): Number of spins.
         num_steps (int): Number of Glauber steps per sample.
         rep (int): Number of repetitions/samples.
+        trials (int): How many restarts
         beta (float): Inverse temperature.
         J0 (float): Mean coupling.
         DJ (float): Coupling variability.
@@ -163,9 +179,9 @@ def run_simulation(N, num_steps=128, rep=1_000_000,
     np.fill_diagonal(J, 0)
     H = np.zeros(N, dtype=DTYPE)
     # Warm-up run (just-in-time compilation trigger)
-    _ = sample(rep//100, H, J, num_steps//10, sequential=sequential,init=init,trials=1)
+    _ = sample(10, H, J, 1, sequential=sequential,init=init,trials=1,progressbar=False)
 
     # Actual sampling
-    S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=1)
+    S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=trials)
 
     return J, H, S, F

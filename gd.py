@@ -1,6 +1,6 @@
 import torch
 
-def get_EP_gd(X, i, x0=None):
+def get_EP_gd(X, i, x0=None, tol=1e-4,num_iters=100):
     N = X.shape[0]
     if x0 is None:
         x0 = np.zeros(N)
@@ -22,9 +22,9 @@ def get_EP_gd(X, i, x0=None):
         x0=x0.clone().detach(), # np.zeros(N-1),
         lr=.01,
         optimizer='Adam',
-        tol=1e-4,
+        tol=tol,
         # report_every=20,
-        num_iters=100
+        num_iters=num_iters
     )
     return -v, theta
 

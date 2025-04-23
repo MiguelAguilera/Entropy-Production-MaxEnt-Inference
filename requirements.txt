@@ -6,3 +6,4 @@ numba==0.61.2
 numpy==1.23.5
 seaborn==0.13.2
 torch==2.6.0
+tqdm
