@@ -3,14 +3,12 @@
 ARGS="--patterns 10 --beta_min 1 --beta_max 4 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000"
 
 
-#ARGS="--patterns 10 --beta_min 1 --beta_max 4 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData10"
-#python generate_data_spin_model.py --seed 42    $ARGS
+#ARGS="--patterns 100 --beta_min 1 --rep 1000000 --beta_max 4 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData10"
+#python generate_data_spin_model.py  --seed 42    $ARGS
 
 #--patterns 10 
-# ARGS="--beta_max 6 --beta_min 6 --num_steps 10000 --rep 100000 --size 10 --num_beta 1  --BASE_DIR ~/MaxEntData4"
-
-#rm -rf ~/MaxEntData4
-# python generate_data_spin_model.py --seed 42    $ARGS
+ARGS="--beta_max 6 --beta_min 1 --num_steps 10000 --rep 100000 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData4" ;  rm -rf ~/MaxEntData4
+python generate_data_spin_model.py --seed 42    $ARGS
 python calculate_Fig1a_v2.py                    $ARGS #--no_plot
 
 

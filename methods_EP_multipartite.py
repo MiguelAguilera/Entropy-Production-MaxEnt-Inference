@@ -194,25 +194,6 @@ def get_EP_MTUR(S, i):
     return sig_MTUR.item()
 
 
-def get_EP_Newton_MTUR(S, i):
-    """
-    Compute entropy production estimate using the 1-step Newton method for spin i.
-    """
-    N, nflips = S.shape
-    Da = correlations(S, i)
-    Ks = correlations4(S, i)
-    Ks -= torch.einsum('j,k->jk', Da, Da)
-    
-    theta = solve_linear_theta(Da, -Da, Ks, i)
-    Dai = remove_i(Da, i)
-    
-    Z = norm_theta(S, theta, i)
-
-    Dai = remove_i(Da, i)
-    sig_N1 = theta @ Dai - torch.log(norm_theta(S, theta, i))
-    sig_MTUR = theta @ Dai
-    return sig_N1.item(), sig_MTUR.item(), theta, Da
-
 
 def get_EP_Newton2(S, theta_init, Da, i, delta=0.25):
     """
@@ -426,7 +407,8 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 def get_EP_Adam2(S_i, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
-                     tol=1e-3, skip_warm_up=False):
+                     tol=1e-3, skip_warm_up=False,
+                     timeout=15):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -440,19 +422,20 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         lr        : learning rate
         eps       : epsilon for numerical stability
         tol       : tolerance for early stopping
+        skip_warm_up : Adam option
+        timeout : maximum second to run
     
     Returns:
-        sig_N2    : final entropy production estimate
-        delta_all : total change in theta (final - initial)
+        sig_gd    : final entropy production estimate
         theta     : final updated theta
     """
-    # DO_HOLDOUT = False
+    DO_HOLDOUT = False
 
-    # # if DO_HOLDOUT:
-    # #     nflips = int(S_i.shape[1]/2)
-    # #     S_i_tst = S_i[:,nflips+1:]
-    # #     S_i     = S_i[:,:nflips]
-    # #     theta_init = torch.zeros_like(theta_init)
+    if DO_HOLDOUT:
+        nflips = int(S_i.shape[1]/2)
+        S_i_tst = S_i[:,nflips+1:]
+        S_i     = S_i[:,:nflips]
+        theta_init = torch.zeros_like(theta_init)
 
     nflips = S_i.shape[1]
     theta = theta_init.clone()
@@ -484,7 +467,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
 
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
         # Early stopping
-        if np.abs((last_val - cur_val)/(last_val+1e-8)) < tol:
+        if (time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol):
             break
         last_val = cur_val
 
@@ -511,16 +494,16 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
 
             theta += delta_theta
 
-    # if DO_HOLDOUT:    
-    #     # Get test values
-    #     Da = correlations(S_i_tst, i)
-    #     Da_noi = remove_i(Da, i)
-    #     S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
-    #     S_onlyi = S_i_tst[i,:]
+    if DO_HOLDOUT:    
+        # Get test values
+        Da = correlations(S_i_tst, i)
+        Da_noi = remove_i(Da, i)
+        S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
+        S_onlyi = S_i_tst[i,:]
 
-    #     thf = (-2 * S_onlyi) * (theta @ S_without_i)
-    #     Z = torch.mean(torch.exp(-thf))
-    #     cur_val = theta @ Da_noi - torch.log(Z) 
+        thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        Z = torch.mean(torch.exp(-thf))
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
     # # print(Z,nflips)
         
     return cur_val, theta
