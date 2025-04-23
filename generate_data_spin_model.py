@@ -99,7 +99,7 @@ BASE_DIR = os.path.expanduser(args.BASE_DIR)  # Expand user path (e.g., ~)
 DTYPE = 'float32'  # Data type used (if relevant in downstream code)
 
 # Simulation parameters
-overwrite = True  # Whether to overwrite existing files
+overwrite = False  # Whether to overwrite existing files
 
 # Generate array of beta values
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
