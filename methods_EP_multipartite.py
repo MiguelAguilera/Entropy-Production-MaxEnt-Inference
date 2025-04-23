@@ -483,7 +483,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         # Early stopping
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
-        if cur_val > np.log(N):
+        if cur_val > np.log(nflips):
             break
 
         last_val = cur_val
