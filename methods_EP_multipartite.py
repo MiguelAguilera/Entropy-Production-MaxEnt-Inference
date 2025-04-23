@@ -470,10 +470,22 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
         Da_th /= Z
 
-        cur_val = (theta @ Da_noi - torch.log(Z + 1e-20)).item()
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+        # if np.isnan(cur_val):
+        #     print(Z,thf)
+        #     asdf
+        #     print(grad)
+        #     print(v_hat.sqrt())
+        #     print(m,v)
+        #     print(t,Da_noi, theta, Z)
+        #     print(theta_init)
+        #     raise Exception()
         # Early stopping
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
+        if cur_val > np.log(N):
+            break
+
         last_val = cur_val
 
         #grad = Da_noi - remove_i(Da_th, i)
@@ -486,7 +498,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         else:
             # Adam moment updates
             m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * grad * grad
+            v = beta2 * v + (1 - beta2) * (grad**2)
             if skip_warm_up:
                 m_hat = m
                 v_hat = v
@@ -498,6 +510,12 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
             delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
 
             theta += delta_theta
+
+            # if torch.isinf(theta).any() or torch.isnan(theta).any():
+            #     print(Z)
+            #     print(last_val)
+            #     #print(m_hat, v_hat, delta_theta)
+            #     raise Exception('here')
 
     if DO_HOLDOUT:    
         # Get test values
