@@ -5,18 +5,14 @@ import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
-import h5py
-import hdf5plugin # This needs to be imported even thought its not explicitly used
 from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
-import gd 
 
 import calc
 
 
 
 if __name__ == "__main__":
-
 
     # -------------------------------
     # Argument Parsing
