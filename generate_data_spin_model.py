@@ -88,7 +88,7 @@ parser.add_argument("--critical_beta", type=float, default=1.3484999614126383,
 parser.add_argument("--seed", type=int, default=42,
                     help="Seed for random number generator (negative for no seed) (default: 42).")
 
-parser.add_argument("--overwrite", action="store_true",  default=False, help="Do not overwrite existing files.")
+parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
 
 args = parser.parse_args()
 
