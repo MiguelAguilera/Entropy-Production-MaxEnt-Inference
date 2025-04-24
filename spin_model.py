@@ -100,19 +100,27 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar
 
     for trial in range(trials):
         if init==1:
-            s0  = np.ones(N, dtype=DTYPE)
+            s  = np.ones(N, dtype=DTYPE)
         elif init==0:
-            s0  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
+            s  = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         else:
             raise Exception('unknown init')
 
         if sequential:
-            s = SequentialGlauberStep(H, J, s0, T=num_steps)
+            # s = SequentialGlauberStep(H, J, s.copy(), T=num_steps)
+            indices = np.random.randint(0, N, int(N * num_steps))
+            for i in indices:
+                s[i] = GlauberStep(H[i], J[i, :], s)
+
+
         else:
-            s = ParallelGlauberStep(H, J, s0, T=num_steps)
+            s = ParallelGlauberStep(H, J, s.copy(), T=num_steps)
         for r in range(trial_rep):
             if sequential:
-                s = SequentialGlauberStep(H, J, s.copy(), T=1)
+                # s = SequentialGlauberStep(H, J, s.copy(), T=1)
+                i = np.random.randint(0, N)
+                s[i] = GlauberStep(H[i], J[i, :], s)
+
             else:
                 s = ParallelGlauberStep(H, J, s.copy(), T=1)
             
