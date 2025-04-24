@@ -417,8 +417,8 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 def get_EP_Adam2(S_i, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
-                     tol=1e-3, skip_warm_up=False,
-                     timeout=15):
+                     tol=1e-4, skip_warm_up=False,
+                     timeout=60):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -489,6 +489,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
         if cur_val > np.log(nflips):
+            # print('breaking')
             break
 
         last_val = cur_val

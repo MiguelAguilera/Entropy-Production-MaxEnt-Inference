@@ -63,6 +63,8 @@ if __name__ == "__main__":
     EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, GradientAscent
 
     for ib, beta in enumerate(np.round(betas, 8)):
+        #if beta < 3:
+        #    continue
         if args.patterns is None:
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
         else:
