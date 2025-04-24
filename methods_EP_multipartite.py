@@ -476,15 +476,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         Da_th /= Z
 
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
-        # if np.isnan(cur_val):
-        #     print(Z,thf)
-        #     asdf
-        #     print(grad)
-        #     print(v_hat.sqrt())
-        #     print(m,v)
-        #     print(t,Da_noi, theta, Z)
-        #     print(theta_init)
-        #     raise Exception()
+
         # Early stopping
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
@@ -517,11 +509,6 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
 
             theta += delta_theta
 
-            # if torch.isinf(theta).any() or torch.isnan(theta).any():
-            #     print(Z)
-            #     print(last_val)
-            #     #print(m_hat, v_hat, delta_theta)
-            #     raise Exception('here')
 
     if DO_HOLDOUT:    
         # Get test values
