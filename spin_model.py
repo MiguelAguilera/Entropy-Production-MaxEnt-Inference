@@ -118,8 +118,11 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar
         for r in range(trial_rep):
             if sequential:
                 # s = SequentialGlauberStep(H, J, s.copy(), T=1)
-                i = np.random.randint(0, N)
-                s[i] = GlauberStep(H[i], J[i, :], s)
+#                i = np.random.randint(0, N)
+#                s[i] = GlauberStep(H[i], J[i, :], s)
+                indices = np.random.randint(0, N, int(N))
+                for i in indices:
+                    s[i] = GlauberStep(H[i], J[i, :], s)
 
             else:
                 s = ParallelGlauberStep(H, J, s.copy(), T=1)
