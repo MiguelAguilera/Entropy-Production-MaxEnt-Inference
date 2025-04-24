@@ -100,7 +100,7 @@ def remove_i(A, i):
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, medthod='solve'):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
@@ -116,7 +116,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, medthod='solve'):
 
 #    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
-    if method='LS':
+    if method=='LS':
         dtheta = torch.linalg.lstsq(Ks_no_diag_th, rhs_th).solution
     else:
         I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device  = Ks_th.device)
@@ -124,7 +124,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, medthod='solve'):
             try:
                 if method=='solve':
                     dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
-                elif method='QR':
+                elif method=='QR':
                     Q, R = torch.linalg.qr(Ks_no_diag_th)
                     dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
                 if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
