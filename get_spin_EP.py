@@ -23,17 +23,17 @@ from threading import Thread
 #        S_i = f['S'][:, F_i].astype('float32') * 2 - 1  # convert back to {-1, 1}
 #        J_i = f['J'][i, :]          # loads only 1 row of J
 #        return S_i, J_i
-def get_spin_data(i, file_name):
+def get_spin_data(i, file_name, cap):
     data = np.load(file_name)
 
     F_i = data["F"][i]
-    S_i = data["S"][:, F_i].astype("float32") * 2 - 1  # convert {0,1} → {-1,1}
+    S_i = data["S"][:, F_i]
     J_i = data["J"][i, :]
 
-    return S_i, J_i
+    return S_i[:,:cap], J_i
 
 
-def select_device(threshold=0.5):
+def select_device(threshold=0.6):
     if not torch.cuda.is_available():
         return torch.device("cpu")
 
@@ -51,37 +51,32 @@ def select_device(threshold=0.5):
     
     
 def calc_spin(i_args):
-    i, N, T, file_name, file_name_out = i_args
-    S_i, J_i = get_spin_data(i, file_name)
+    i, N, rep, T, file_name, file_name_out = i_args
 
-
-#    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    S_i, J_i = get_spin_data(i, file_name, cap = rep//4)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #    S_i_t = torch.from_numpy(S_i).to(device)
 #    J_i_t = torch.from_numpy(J_i).to(device)
 #    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    device = select_device()
-    S_i_t = torch.from_numpy(S_i).to(device)
+#    device = select_device()
+    S_i_t = (torch.from_numpy(S_i)).to(device).float()* 2 - 1  # convert {0,1} → {-1,1}
     J_i_t = torch.from_numpy(J_i).to(device)
 
     if S_i.shape[1] <= 10:
         print(f"  [Warning] Skipping spin {i}: insufficient time steps")
         return None
 
-    # Randomly assign device
-    if torch.cuda.is_available() and torch.rand(1).item() < 1.:
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-        
 #    print(f"[Spin {i}] Running on device: {device}")
     S_i_t.to(device)
     J_i_t.to(device)
-    Pi = S_i_t.shape[1] / T
+    Pi = rep / T
 
     t0 = time.time()
     MTUR = Pi * get_EP_MTUR(S_i_t, i)
     time_tur = time.time() - t0
+
 
     t0 = time.time()
     sig_N1, theta_N1, Da = get_EP_Newton(S_i_t, i)
@@ -89,11 +84,26 @@ def calc_spin(i_args):
     theta_N1_np = theta_N1.detach().cpu().numpy()
     time_n1 = time.time() - t0
 
-    sig_N2 , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i)   # Second newton step
-##    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
-    for r in range(2):
-        sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
-#    sig_N2, theta_N2 = get_EP_Adam(S_i_t, theta_N1, Da, i)
+
+    Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
+    del J_i_t
+    torch.cuda.empty_cache()
+    
+    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i)   # Second newton step
+###    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
+    sig_old = sig_N1
+    dsig = sig_new-sig_old
+    count = 0
+    while dsig/sig_old > 1E-2 and count <10:
+        count +=1
+#        print(sig_N2,dsig)
+        sig_old=sig_new
+        sig_new, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
+        dsig = sig_new-sig_old
+#    print(sig_N1,sig_old,sig_new,Emp/Pi)
+    sig_N2 = max(sig_new,sig_old)
+#    sig_N2, theta_N2 = get_EP_Adam2(S_i_t, theta_N1, i)
+
 #    sig_N2, theta_N2 = get_EP_BFGS(S_i_t, theta_N1, Da, i) 
 #    sig_N2, theta_N2 = get_EP_gd(S_i_t, i, x0=theta_N1.clone().detach().requires_grad(True),  num_iters=1000)
     
@@ -102,7 +112,6 @@ def calc_spin(i_args):
     time_n2 = time.time() - t0
     
 
-    Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
     
 #    sig_Adam, theta_Adam = get_EP_Adam(S_i_t, theta_N1, Da, i)
 #    time_adam = time.time() - t0
@@ -192,15 +201,34 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
         
 
 def calc_spin_group(group_args):
-    indices, N, T, file_name, file_name_out, progress, lock = group_args
+    indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory = group_args
+
+    if check_memory:
+        wait_time = np.random.rand()*4  # between 0 and 4 seconds
+        time.sleep(wait_time)
+    cuda_available = torch.cuda.is_available()
+    device = torch.device("cuda") if cuda_available else torch.device("cpu")
+    
     for i in indices:
-        calc_spin((i, N, T, file_name, file_name_out))
+        if cuda_available:
+            # GPU memory check loop only if CUDA is available
+            while True and check_memory:
+                torch.cuda.empty_cache()  # Clear cache before checking
+                allocated = torch.cuda.memory_allocated(device)
+                total = torch.cuda.get_device_properties(device).total_memory
+                used_percentage = allocated / total
+                
+                if used_percentage < 0.5:  # Proceed if memory usage is below 80%
+                    break
+                print(f"Waiting for GPU memory (currently {used_percentage:.1f}% used)")
+                time.sleep(1)  # Wait before checking again
+        calc_spin((i, N, rep, T, file_name, file_name_out))
         torch.cuda.empty_cache()
         gc.collect()
         with lock:
             progress.value += 1
-    
-def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processes = 2):
+     
+def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processes = 1, overwrite=True, check_memory=False):
     """
     Compute entropy production rate (EP) estimates using multiple methods for a spin system.
 
@@ -211,18 +239,22 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processe
     Returns:
         np.ndarray: EP estimates [empirical, MTUR, Newton-1, Newton-2]
     """
-    
+    if os.path.exists(file_name_out) and not overwrite:
+        print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
+        results = load_results_from_file(file_name_out, N, return_parameters)
+        if not return_parameters:
+            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2 = results
+            return np.array([S_Emp, S_TUR, S_N1, S_N2])
+        else:
+            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
+            return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), J
+#    N//=50
     beta_str = re.search(r'_beta_([0-9.]+)', file_name).group(1)
     beta = float(beta_str)
     print()
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
     print("=" * 70)
-
-#    with h5py.File(file_name, 'r') as f:
-#        J = f['J'][:]
-#        H = f['H'][:]
-#        assert(np.all(H==0))  # We do not support local fields in our analysis
 
     data = np.load(file_name)
     J = data["J"]
@@ -233,17 +265,6 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processe
     S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
     time_emp = time_tur = time_n1 = time_n2 = time_adam = 0
     T = N * rep  # Total spin-flip attempts
-
-#    num_processes = min(mp.cpu_count(),6)
-#    group_size = int(np.ceil(N / num_processes))
-#    grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
-#    args_list = [(indices, N, T, file_name, file_name_out) for indices in grouped_indices]
-
-#    Parallel(
-#        n_jobs=num_processes,
-#        backend="multiprocessing",
-#        prefer="processes"
-#    )(delayed(calc_spin_group)(args) for args in args_list)
 
     group_size = int(np.ceil(N / num_processes))
     grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
@@ -272,18 +293,14 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processe
         updater = Thread(target=update_bar)
         updater.start()
 
-        args_list = [(indices, N, T, file_name, file_name_out, progress, lock) for indices in grouped_indices]
+        args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory) for indices in grouped_indices]
         with ctx.Pool(processes=num_processes) as pool:
             pool.map(calc_spin_group, args_list)
 
         updater.join()
 
-#    ctx = mp.get_context("spawn")  # "spawn" is required for CUDA
-#    with ctx.Pool(processes=num_processes) as pool:
-#        pool.map(calc_spin_group, args_list)
         
-        
-    # Merge individual spin HDF5 files into a single merged file.
+    # Merge individual spin files into a single merged HDF5 file.
     merge_spins(file_name_out, N)
     # Aggregate results from HDF5
     results = load_results_from_file(file_name_out, N, return_parameters)
