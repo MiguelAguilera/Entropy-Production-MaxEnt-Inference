@@ -6,8 +6,9 @@ ARGS="--patterns 6 --beta_min 1 --beta_max 4 --rep 1000000 --size 200 --num_beta
 ARGS="--patterns 6 --beta_min 0.01 --beta_max 4 --size 1000 --num_beta 10  --BASE_DIR ~/MaxEntData1000v2"
 ARGS="--patterns 6 --beta_min 0.01 --beta_max 4 --size 400 --num_beta 10  --BASE_DIR ~/MaxEntData400"
 
-ARGS="--patterns 6 --beta_min 0.01 --beta_max 4 --size 40 --num_beta 10  --BASE_DIR ~/MaxEntData40"
 ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 25  --BASE_DIR ~/MaxEntData1000v3"
+ARGS="--patterns 6 --beta_min 0.01 --beta_max 4 --size 40 --num_beta 10  --BASE_DIR ~/MaxEntData40"
+#ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000v11"
 #ARGS="--patterns 100 --beta_min 1 --rep 1000000 --beta_max 4 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData10"
 #python generate_data_spin_model.py  --seed 42    $ARGS
 

@@ -1,17 +1,13 @@
-import os, argparse, time, pickle
+import os, argparse, time, pickle, psutil
 import numpy as np
 from collections import defaultdict 
 from tqdm import tqdm
+import gc
 
-import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
-import h5py
-import hdf5plugin # This needs to be imported even thought its not explicitly used
-from matplotlib import pyplot as plt
 from methods_EP_multipartite import *
-import gd 
 
 
 LABELS = {'emp': 'Empirical', 'N1': 'Newton 1-step', 'TUR': 'MTUR', 'N2': 'Newton 2-step', 'GD': 'Grad Ascent'}
@@ -74,6 +70,7 @@ def calc_spin(S_i, J_i, i):
         if GD_MODE == 2:
             sigmas['GD'], thetas['GD'] = get_EP_Adam2(S_i, theta_init=x0, i=i) 
         elif GD_MODE == 1:
+            import gd
             sigmas['GD'], thetas['GD'] = gd.get_EP_gd(S_i, i, x0=x0,  num_iters=1000)
         else:
             raise Exception('Uknown GD_MODE')
@@ -90,6 +87,7 @@ def calc(file_name):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     start_time = time.time()
+    process = psutil.Process(os.getpid())
 
     out_filename = os.path.dirname(file_name)+'/epdata_' + os.path.basename(file_name)+'.pkl'
     if os.path.exists(out_filename):
@@ -98,51 +96,53 @@ def calc(file_name):
             epdata = pickle.load(file)
 
     else:
-
+        print()
+        print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         data = np.load(file_name)
         N, rep = data['S'].shape
-
-        print()
-        print("=" * 70)
-        print(f"  Starting EP estimation | System size: {N} ")
-        print("=" * 70)
-
-        print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-
         H = data['H']
-        S = torch.from_numpy(data["S"].astype("float32") * 2 - 1).to(device)
-        F = torch.from_numpy(data["F"]).to(device)
         assert(np.all(H==0))  # We do not support local fields in our analysis
+        with torch.no_grad():
+            Sraw = torch.from_numpy(data["S"]).to(device)
+            F = torch.from_numpy(data["F"]).to(device)
 
-        J = torch.from_numpy(data['J']).to(device)
+            J = torch.from_numpy(data['J']).to(device)
 
-        frequencies = F.float().sum(axis=1).cpu().numpy()/(N*rep)
+            frequencies = F.float().sum(axis=1).cpu().numpy()/(N*rep)
 
-        epdata = {'frequencies':frequencies}
+            epdata = {'frequencies':frequencies}
 
-        pbar = tqdm(range(N))
+            pbar = tqdm(range(N))
 
-        for i in pbar:
-            # S_i = S[:, F[i]]
-            indices = torch.where(F[i])[0]  # Get indices where F[i] is True
-            S_i = torch.index_select(S, 1, indices)
+            print("=" * 70)
+            print(f"  Starting EP estimation | System size: {N}")
+            print("=" * 70)
 
-            res = calc_spin( S_i, J[i,:], i )
-            epdata[i] = res 
-            sigmas, times, thetas = res
+            for i in pbar:
+                # S_i = S[:, F[i]]
+                S_i = torch.index_select(Sraw, 1, torch.where(F[i])[0] ).to(torch.float32) * 2 - 1
 
-            for k,v in sigmas.items():
-                ep_sums[k]   += frequencies[i]*v
-                time_sums[k] += times.get(k, np.nan)
+                res = calc_spin( S_i, J[i,:], i )
 
-            pbar.set_description(f'emp={ep_sums['emp']:1f}, N1={ep_sums['N1']:1f} GD={ep_sums['GD']:1f}')
+                epdata[i] = res 
+                sigmas, times, thetas = res
 
-        for k,v in ep_sums.items():
-            epdata[k]=v
+                for k,v in sigmas.items():
+                    ep_sums[k]   += frequencies[i]*v
+                    time_sums[k] += times.get(k, np.nan)
 
-        with open(out_filename, 'wb') as file:
-            pickle.dump(epdata, file)
-            print(f'Saved to {out_filename}')
+                del S_i, sigmas, times, thetas, res
+                gc.collect()
+                memory_info  = process.memory_info()
+                memory_usage = memory_info.rss / 1024 / 1024
+                pbar.set_description(f'emp={ep_sums['emp']:3.3f}, N1={ep_sums['N1']:3.3f} GD={ep_sums['GD']:3.3f} mem={memory_usage:.1f}mb')
+
+            for k,v in ep_sums.items():
+                epdata[k]=v
+
+            with open(out_filename, 'wb') as file:
+                pickle.dump(epdata, file)
+                print(f'Saved to {out_filename}')
 
     print(f"\n[Results] {time.time()-start_time:3f}s")
     for k,lbl in LABELS.items():
