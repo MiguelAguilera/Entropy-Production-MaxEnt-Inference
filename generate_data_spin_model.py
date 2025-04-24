@@ -25,7 +25,7 @@ import spin_model
 
 #    print(f"Data saved to {file_name}")
 
-def save_data(file_name, J, H, S, F):
+def save_data(file_name, J, H, S_bin, F_bin):
     """
     Save model data to a .npz file.
 
@@ -34,12 +34,8 @@ def save_data(file_name, J, H, S, F):
         J, H : np.ndarray
             Global model parameters.
         S, F : np.ndarray
-            Spin states and flip indices.
+            Binary spin states and flip indices.
     """
-    # Convert to {0,1} as in original HDF5 version
-    S_bin = ((S + 1) // 2).astype(bool)
-    F_bin = ((F + 1) // 2).astype(bool)
-
     # Save all data
     np.savez(
         file_name,
@@ -163,7 +159,6 @@ for beta_ix, beta in enumerate(betas):
 
     print('Sampled states: %d' % S.shape[1])
     print('   - state changes : %d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
-    print('   - magnetization : %f' % np.mean(S.astype(float)))
     
     save_data(file_name, J, H, S, F)
     print(f"Simulation took {time.time()-start_time:.3f}s.")

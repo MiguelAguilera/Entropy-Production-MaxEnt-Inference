@@ -89,7 +89,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar
         F (array): Matrix of spin-flip indicators.
     """
     N = len(H)
-    S = np.ones((N, rep), dtype='int32')
+    S = np.ones((N, rep), dtype=np.uint8)
     F = np.ones_like(S)
 
     trial_rep = rep//trials
@@ -131,8 +131,8 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar
             for i in range(N):
                 s1[i] = GlauberStep(H[i], J[i, :], s)
 
-            S[:, trial*trial_rep + r] = s.astype('int32')
-            F[:, trial*trial_rep + r] = -(s1 * s).astype('int32')  # Indicates if spin changed: 1 if flipped, -1 otherwise
+            S[:, trial*trial_rep + r] = ((1+s)/2).astype(np.uint8)
+            F[:, trial*trial_rep + r] = ((1-s1 * s)/2).astype(np.uint8)  # Indicates if spin changed: 1 if flipped, 0 otherwise
 
             if progressbar and (trial*trial_rep + r) % print_every == 0:
                 with objmode():
@@ -194,5 +194,4 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
 
     # Actual sampling
     S, F = sample(rep, H, J, num_steps, sequential=sequential,init=init,trials=trials)
-
-    return J, H, S, F
+    return J, H, S.astype(bool), F.astype(bool)
