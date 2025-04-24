@@ -100,7 +100,7 @@ def remove_i(A, i):
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, medthod='solve'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
@@ -116,17 +116,23 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
 
 #    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
-    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device  = Ks_th.device)
-
-    while True:
-        try:
-            dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
-            if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
-                break
-        except torch._C._LinAlgError:
-            eps *= 10  # Increase regularization if matrix is singular
-            print(f"Matrix is singular, increasing epsilon to {eps}")
-
+    if method='LS':
+        dtheta = torch.linalg.lstsq(Ks_no_diag_th, rhs_th).solution
+    else:
+        I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device  = Ks_th.device)
+        while True:
+            try:
+                if method=='solve':
+                    dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
+                elif method='QR':
+                    Q, R = torch.linalg.qr(Ks_no_diag_th)
+                    dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
+                if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
+                    break
+            except torch._C._LinAlgError:
+                eps *= 10  # Increase regularization if matrix is singular
+                print(f"Matrix is singular, increasing epsilon to {eps}")
+        
     return dtheta
 
 # =======================
@@ -205,7 +211,7 @@ def get_EP_MTUR(S, i):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=0.25):
+def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
