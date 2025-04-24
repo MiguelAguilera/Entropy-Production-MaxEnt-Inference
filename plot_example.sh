@@ -16,7 +16,7 @@ ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 25  --BASE_D
 # ARGS="--patterns 10 --beta_max 3.5 --beta_min 1 --num_steps 10000 --rep 100000 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData4" 
 #rm -rf ~/MaxEntData4
 
-python generate_data_spin_model.py --seed 42    $ARGS --no_overwrite
+python generate_data_spin_model.py --seed 42    $ARGS 
 python calculate_Fig1a_v2.py                    $ARGS #--no_plot
 
 
