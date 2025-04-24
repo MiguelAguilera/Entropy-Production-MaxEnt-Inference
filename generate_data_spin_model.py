@@ -27,7 +27,7 @@ import spin_model
 
 def save_data(file_name, J, H, S, F):
     """
-    Save model data to a compressed .npz file.
+    Save model data to a .npz file.
 
     Parameters:
         file_name (str): Path to the output .npz file.
@@ -40,7 +40,7 @@ def save_data(file_name, J, H, S, F):
     S_bin = ((S + 1) // 2).astype(bool)
     F_bin = ((F + 1) // 2).astype(bool)
 
-    # Save all data compressed
+    # Save all data
     np.savez(
         file_name,
         J=J,
@@ -49,7 +49,7 @@ def save_data(file_name, J, H, S, F):
         F=F_bin
     )
 
-    print(f"Compressed data saved to {file_name}")
+    print(f"Data saved to {file_name}")
 
 # -------------------------------
 # Argument Parsing
@@ -92,7 +92,7 @@ parser.add_argument("--critical_beta", type=float, default=1.3484999614126383,
 parser.add_argument("--seed", type=int, default=42,
                     help="Seed for random number generator (negative for no seed) (default: 42).")
 
-parser.add_argument("--no_overwrite", action="store_true", help="Do not overwrite existing files.")
+parser.add_argument("--overwrite", action="store_true",  default=False, help="Do not overwrite existing files.")
 
 args = parser.parse_args()
 
@@ -103,7 +103,7 @@ BASE_DIR = os.path.expanduser(args.BASE_DIR)  # Expand user path (e.g., ~)
 DTYPE = 'float32'  # Data type used (if relevant in downstream code)
 
 # Simulation parameters
-overwrite = not args.no_overwrite  # Whether to overwrite existing files
+overwrite = args.overwrite  # Whether to overwrite existing files
 
 # Generate array of beta values
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
