@@ -87,65 +87,71 @@ def calc_spin(S_i, J_i, i):
 
 
 def calc(file_name):
-    data = np.load(file_name)
-    N, rep = data['S'].shape
-
-    print()
-    print("=" * 70)
-    print(f"  Starting EP estimation | System size: {N} ")
-    print("=" * 70)
-
-    print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-
-    H = data['H']
-    S = torch.from_numpy(data["S"].astype("float32") * 2 - 1).to(device)
-    F = torch.from_numpy(data["F"]).to(device)
-    assert(np.all(H==0))  # We do not support local fields in our analysis
-
-    J = torch.from_numpy(data['J']).to(device)
-
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
-
-    time_gd  = time_N1 = 0
     start_time = time.time()
 
-    frequencies = F.float().sum(axis=1).cpu().numpy()/(N*rep)
+    out_filename = os.path.dirname(file_name)+'/epdata_' + os.path.basename(file_name)+'.pkl'
+    if os.path.exists(out_filename):
+        print(f'{out_filename} exists! loading')
+        with open(out_filename, 'rb') as file:
+            epdata = pickle.load(file)
 
-    data = {'frequencies':frequencies}
+    else:
 
-    pbar = tqdm(range(N))
+        data = np.load(file_name)
+        N, rep = data['S'].shape
 
-    for i in pbar:
-        # S_i = S[:, F[i]]
-        indices = torch.where(F[i])[0]  # Get indices where F[i] is True
-        S_i = torch.index_select(S, 1, indices)
+        print()
+        print("=" * 70)
+        print(f"  Starting EP estimation | System size: {N} ")
+        print("=" * 70)
 
-        res = calc_spin( S_i, J[i,:], i )
-        data[i] = res 
-        sigmas, times, thetas = res
+        print(f"[Loading] Reading data from file:\n  → {file_name}\n")
 
-        for k,v in sigmas.items():
-            ep_sums[k]   += frequencies[i]*v
-            time_sums[k] += times.get(k, np.nan)
+        H = data['H']
+        S = torch.from_numpy(data["S"].astype("float32") * 2 - 1).to(device)
+        F = torch.from_numpy(data["F"]).to(device)
+        assert(np.all(H==0))  # We do not support local fields in our analysis
 
-        pbar.set_description(f'emp={ep_sums['emp']:1f}, N1={ep_sums['N1']:1f} GD={ep_sums['GD']:1f}')
+        J = torch.from_numpy(data['J']).to(device)
 
-    for k,v in ep_sums.items():
-        data[k]=v
+        frequencies = F.float().sum(axis=1).cpu().numpy()/(N*rep)
+
+        epdata = {'frequencies':frequencies}
+
+        pbar = tqdm(range(N))
+
+        for i in pbar:
+            # S_i = S[:, F[i]]
+            indices = torch.where(F[i])[0]  # Get indices where F[i] is True
+            S_i = torch.index_select(S, 1, indices)
+
+            res = calc_spin( S_i, J[i,:], i )
+            epdata[i] = res 
+            sigmas, times, thetas = res
+
+            for k,v in sigmas.items():
+                ep_sums[k]   += frequencies[i]*v
+                time_sums[k] += times.get(k, np.nan)
+
+            pbar.set_description(f'emp={ep_sums['emp']:1f}, N1={ep_sums['N1']:1f} GD={ep_sums['GD']:1f}')
+
+        for k,v in ep_sums.items():
+            epdata[k]=v
+
+        with open(out_filename, 'wb') as file:
+            pickle.dump(epdata, file)
+            print(f'Saved to {out_filename}')
 
     print(f"\n[Results] {time.time()-start_time:3f}s")
     for k,lbl in LABELS.items():
-        if k in ep_sums:
-            print(f"  EP ({lbl:15s})    : {ep_sums[k]:.6f}   {time_sums[k]:3f}s")
+        if k in epdata:
+            print(f"  EP ({lbl:15s})    : {epdata[k]:.6f}   {time_sums.get(k,np.nan):3f}s")
     print("-" * 70)
 
-    out_filename = os.path.dirname(file_name)+'/epdata_' + os.path.basename(file_name)+'.pkl'
-    with open(out_filename, 'wb') as file:
-        pickle.dump(data, file)
-        print(f'Saved to {out_filename}')
 
-    return data
+    return epdata
 
 
 

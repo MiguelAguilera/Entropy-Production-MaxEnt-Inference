@@ -92,6 +92,8 @@ parser.add_argument("--critical_beta", type=float, default=1.3484999614126383,
 parser.add_argument("--seed", type=int, default=42,
                     help="Seed for random number generator (negative for no seed) (default: 42).")
 
+parser.add_argument("--no_overwrite", action="store_true", help="Do not overwrite existing files.")
+
 args = parser.parse_args()
 
 # -------------------------------
@@ -101,7 +103,7 @@ BASE_DIR = os.path.expanduser(args.BASE_DIR)  # Expand user path (e.g., ~)
 DTYPE = 'float32'  # Data type used (if relevant in downstream code)
 
 # Simulation parameters
-overwrite = False  # Whether to overwrite existing files
+overwrite = not args.no_overwrite  # Whether to overwrite existing files
 
 # Generate array of beta values
 betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
