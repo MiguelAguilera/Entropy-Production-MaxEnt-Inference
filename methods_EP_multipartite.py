@@ -116,7 +116,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
 
 #    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
-    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype)
+    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device  = Ks_th.device)
 
     while True:
         try:
@@ -167,11 +167,14 @@ def get_EP_Newton(S, i):
     """
     Compute entropy production estimate using the 1-step Newton method for spin i.
     """
-    N, nflips = S.shape
+    device = S.device
     Da = correlations(S, i)
-    Dai = remove_i(Da, i)
     Ks = correlations4(S, i)
+    Da = Da.to(device)
+    Ks = Ks.to(device)
     Ks -= torch.einsum('j,k->jk', Da, Da)
+    theta = solve_linear_theta(Da, -Da, Ks, i)
+    Dai = remove_i(Da, i)
     
     Z=0
     eps = 1e-4
@@ -182,7 +185,6 @@ def get_EP_Newton(S, i):
             break
         eps *= 10
 
-    Dai = remove_i(Da, i)
     sig_N1 = theta @ Dai - torch.log(Z)
     return sig_N1.item(), theta, Da
 
@@ -191,8 +193,11 @@ def get_EP_MTUR(S, i):
     """
     Compute entropy production estimate using the MTUR method for spin i.
     """
+    device = S.device
     Da = correlations(S, i)
     Ks = correlations4(S, i)
+    Da = Da.to(device)
+    Ks = Ks.to(device)
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
     sig_MTUR = theta @ Dai
@@ -532,6 +537,61 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
     return cur_val, theta
 
 
+def get_EP_gd(X, i, x0=None, tol=1e-4,num_iters=100):
+    N = X.shape[0]
+    if x0 is None:
+        x0 = np.zeros(N)
+
+    g_t = torch.zeros_like(X)
+    for j in range(N):
+        g_t[j,:] = -2*X[i,:]*X[j,:]    # these are the observables
+    g_t_noI = torch.cat((g_t[:i,:], g_t[i+1:,:]))
+    g_avg=g_t_noI.mean(axis=1)           # conditional averages 
+
+    def func(theta): 
+        obj = theta@g_avg - torch.log(torch.exp(-theta @ g_t_noI).mean())
+        #obj -= torch.logsumexp(vals, dim=0) - torch.log(torch.tensor(vals.numel()))
+        return -obj  # minus because code is for gradient descent
+
+    
+    theta, v = gradient_descent(
+        func,
+        x0=x0.clone().detach(), # np.zeros(N-1),
+        lr=.01,
+        optimizer='Adam',
+        tol=tol,
+        # report_every=20,
+        num_iters=num_iters
+    )
+    return -v, theta
+
+def gradient_descent(f, x0, optimizer='Adam', lr=0.1, num_iters=1000, tol=1e-5, report_every=None, opt_args={}):
+    x = torch.tensor(x0, dtype=torch.float32, requires_grad=True)
+    opt_obj = getattr(torch.optim, optimizer)
+    opt     = opt_obj([x], lr=lr, **opt_args)
+    loss_history = []
+    prev_loss = float('inf')
+    for i in range(num_iters):
+        opt.zero_grad()
+        loss = f(x)
+        loss.backward()
+        opt.step()
+        if report_every is not None and (i+1) % report_every == 0:
+            print(f"Iteration {i+1}: {loss.item():.6f}")
+        if abs(prev_loss - loss.item()) < tol:
+            break
+        prev_loss = loss.item()
+    
+    return x.detach(), loss.item()
+
+if False:
+    # Run gradient descent starting from x = 5
+    final_x, last_loss = gradient_descent(
+        objective_function, 
+        initial_x=5.0,
+        lr=learning_rate,
+        num_iters=num_iterations
+    )
 
 
 
