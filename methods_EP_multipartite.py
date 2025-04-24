@@ -125,7 +125,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
                 break
         except torch._C._LinAlgError:
             eps *= 10  # Increase regularization if matrix is singular
-            print(f"Matrix is singular, increasing epsilon to {epsilon}")
+            print(f"Matrix is singular, increasing epsilon to {eps}")
 
     return dtheta
 
