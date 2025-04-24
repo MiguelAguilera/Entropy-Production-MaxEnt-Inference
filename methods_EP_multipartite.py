@@ -124,7 +124,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5):
             if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                 break
         except torch._C._LinAlgError:
-            epsilon *= 10  # Increase regularization if matrix is singular
+            eps *= 10  # Increase regularization if matrix is singular
             print(f"Matrix is singular, increasing epsilon to {epsilon}")
 
     return dtheta
