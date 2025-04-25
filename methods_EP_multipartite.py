@@ -11,7 +11,6 @@ def exp_EP_spin_model(Da, J_i, i):
     Compute empirical entropy production contribution from spin `i` using 
     correlation matrix Da and interaction matrix J.
     """
-#    return torch.sum((J[i, :]-J[:,i])* Da)/2
     assert J_i.dim() == 1, f"Tensor must be 1D, but got {J_i.dim()}D"
     return (J_i @ Da).item()
     
