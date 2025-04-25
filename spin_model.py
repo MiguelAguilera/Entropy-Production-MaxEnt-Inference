@@ -174,9 +174,9 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
         np.random.seed(seed)
 
     # Initialize couplings and fields
-    rnd = np.random.randn(N, N)
     if patterns is None:
         init=0
+        rnd = np.random.randn(N, N)
         J = (beta * (J0 / N + rnd * DJ / np.sqrt(N))).astype(DTYPE)
     else:
         init=0
