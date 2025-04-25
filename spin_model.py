@@ -182,6 +182,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
         init=0
         L=patterns
         xi = np.random.randint(0,2,(L,N)).astype(DTYPE)*2-1
+#        xi = np.random.rand(L,N).astype(DTYPE)*4-2
         xi_shifted = np.zeros_like(xi)
         for a in range(L-1):
             xi_shifted[a+1,]= xi[a,:]
