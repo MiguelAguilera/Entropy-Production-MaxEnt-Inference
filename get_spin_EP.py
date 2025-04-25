@@ -23,14 +23,16 @@ from threading import Thread
 #        S_i = f['S'][:, F_i].astype('float32') * 2 - 1  # convert back to {-1, 1}
 #        J_i = f['J'][i, :]          # loads only 1 row of J
 #        return S_i, J_i
-def get_spin_data(i, file_name, cap):
+def get_spin_data(i, file_name, cap=None):
     data = np.load(file_name)
 
-    F_i = data["F"][i]
-    S_i = data["S"][:, F_i]
+    F_i = data["F"][:, i]
+    S_i = data["S"][F_i, :]
     J_i = data["J"][i, :]
-
-    return S_i[:,:cap], J_i
+    if cap is None:
+        return S_i, J_i
+    else:
+        return S_i[:cap, :], J_i
 
 
 def select_device(threshold=0.6):
@@ -49,11 +51,10 @@ def select_device(threshold=0.6):
 
     return device
     
-    
 def calc_spin(i_args):
     i, N, rep, T, file_name, file_name_out = i_args
 
-    S_i, J_i = get_spin_data(i, file_name, cap = rep//4)
+    S_i, J_i = get_spin_data(i, file_name)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #    S_i_t = torch.from_numpy(S_i).to(device)
@@ -86,8 +87,8 @@ def calc_spin(i_args):
 
 
     Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
-    del J_i_t
-    torch.cuda.empty_cache()
+#    del J_i_t
+#    torch.cuda.empty_cache()
     
     sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i)   # Second newton step
 ###    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
@@ -228,7 +229,7 @@ def calc_spin_group(group_args):
         with lock:
             progress.value += 1
      
-def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processes = 1, overwrite=True, check_memory=False):
+def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=False, num_processes = 2, overwrite=True, check_memory=True):
     """
     Compute entropy production rate (EP) estimates using multiple methods for a spin system.
 
@@ -261,43 +262,44 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, num_processe
     H = data["H"]
     assert np.all(H == 0), "Non-zero local fields are not supported"
 
-    # Initialize accumulators
-    S_Emp = S_TUR = S_N1 = S_N2 = S_Adam = 0
-    time_emp = time_tur = time_n1 = time_n2 = time_adam = 0
     T = N * rep  # Total spin-flip attempts
 
-    group_size = int(np.ceil(N / num_processes))
-    grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
+    if not parallel:
+        print(f"[Sequential] Running on a single process")
+        for i in tqdm(range(N), desc="Sequential spin progress"):
+            calc_spin((i, N, rep, T, file_name, file_name_out))
+    else:
+        group_size = int(np.ceil(N / num_processes))
+        grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
 
-    print(f"[Parallel] Using {num_processes} processes via torch.multiprocessing")
+        print(f"[Parallel] Using {num_processes} processes via torch.multiprocessing")
 
-    ctx = mp.get_context("spawn")  # Required for CUDA
-    manager = mp.Manager()
-    progress = manager.Value('i', 0)
-    lock = manager.Lock()
+        ctx = mp.get_context("spawn")  # Required for CUDA
+        manager = ctx.Manager()
+        progress = manager.Value('i', 0)
+        lock = manager.Lock()
 
-    total_tasks = sum(len(g) for g in grouped_indices)
+        total_tasks = sum(len(g) for g in grouped_indices)
 
-    # tqdm wrapper around pool.map
-    with tqdm(total=total_tasks, desc="Global spin progress", position=0) as pbar:
-        def update_bar():
-            prev = 0
-            while progress.value < total_tasks:
-                with lock:
-                    new = progress.value
-                if new > prev:
-                    pbar.update(new - prev)
-                    prev = new
-                time.sleep(0.1)
+        with tqdm(total=total_tasks, desc="Global spin progress", position=0) as pbar:
+            def update_bar():
+                prev = 0
+                while progress.value < total_tasks:
+                    with lock:
+                        new = progress.value
+                    if new > prev:
+                        pbar.update(new - prev)
+                        prev = new
+                    time.sleep(0.1)
 
-        updater = Thread(target=update_bar)
-        updater.start()
+            updater = Thread(target=update_bar)
+            updater.start()
 
-        args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory) for indices in grouped_indices]
-        with ctx.Pool(processes=num_processes) as pool:
-            pool.map(calc_spin_group, args_list)
+            args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory) for indices in grouped_indices]
+            with ctx.Pool(processes=num_processes) as pool:
+                pool.map(calc_spin_group, args_list)
 
-        updater.join()
+            updater.join()
 
         
     # Merge individual spin files into a single merged HDF5 file.

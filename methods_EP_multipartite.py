@@ -15,20 +15,20 @@ def exp_EP_spin_model(Da, J_i, i):
     assert J_i.dim() == 1, f"Tensor must be 1D, but got {J_i.dim()}D"
     return (J_i @ Da).item()
     
-def correlations(S_i, i):
+def correlations(S, i):
     """
     Compute pairwise correlations for spin `i`
     """
-    N, nflips = S_i.shape
-    Da = torch.einsum('r,jr->j', (-2 * S_i[i, :]), S_i) / nflips
+    nflips, N = S.shape
+    Da = (-2 * S[:, i]) @ S / nflips 
     return Da
 
-def correlations4(S_i, i):
+def correlations4(S, i):
     """
     Compute 4th-order correlation matrix for spin `i`.
     """
-    N, nflips = S_i.shape
-    K = (4 * S_i) @ S_i.T / nflips
+    nflips, N = S.shape
+    K = (4 * S.T) @ S / nflips
     return K
 
 # =======================
@@ -40,11 +40,11 @@ def correlations_theta(S, theta, i):
     Compute weighted pairwise correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
-    N, nflips = S.shape
-    S_without_i = torch.cat((S[:i, :], S[i+1:, :]))  # remove spin i
-    thf = (-2 * S[i, :]) * (theta @ S_without_i)
-    S1_S = -(-2 * S[i, :]) * torch.exp(-thf)
-    Da = torch.einsum('r,jr->j', S1_S, S) / nflips
+    nflips, N = S.shape
+    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    thf = (-2 * S[:, i]) * (S_without_i @ theta)
+    S1_S = -(-2 * S[:, i]) * torch.exp(-thf)
+    Da = S1_S @ S / nflips
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Da, Z
 
@@ -53,10 +53,10 @@ def correlations4_theta(S, theta, i):
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
-    N, nflips = S.shape
-    S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
-    thf = (-2 * S[i, :]) * (theta @ S_without_i)
-    K = (4 * torch.exp(-thf) * S) @ S.T / nflips
+    nflips, N = S.shape
+    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    thf = (-2 * S[:, i]) * (S_without_i @ theta)
+    K = (4 * torch.exp(-thf) * S.T) @ S / nflips
 #    K[i, :] = 0
 #    K[:, i] = 0
     return K
@@ -69,9 +69,9 @@ def norm_theta(S, theta, i):
     """
     Estimate normalization constant Z from the partition function under theta.
     """
-    N, nflips = S.shape
-    S_without_i = torch.cat((S[:i, :], S[i+1:, :]))
-    thf = (-2 * S[i, :]) * (theta @ S_without_i)
+    nflips, N = S.shape
+    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    thf = (-2 * S[:, i]) * (S_without_i @ theta)
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
 
@@ -125,7 +125,7 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
                 if method=='solve':
                     dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
                 elif method=='QR':
-                    Q, R = torch.linalg.qr(Ks_no_diag_th)
+                    Q, R = torch.linalg.qr(Ks_no_diag_th + eps * I)
                     dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
                 if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                     break
@@ -236,8 +236,6 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
     delta_theta : torch.Tensor
         Computed Newton step (Δθ).
     """
-
-    N, nflips = S.shape
 
     # Compute model-averaged first-order and fourth-order statistics (excluding index i)
     Da_th, Z = correlations_theta(S, theta_init, i)
@@ -471,7 +469,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
     cur_val  = torch.tensor(np.nan)
 
     for t in range(1, num_iters + 1):
-        #thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        #thf = (-2 * S_onlyi) * (S_without_i @ theta)
         thf = theta @ X
         
         Y = torch.exp(-thf)
@@ -523,7 +521,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
         S_onlyi = S_i_tst[i,:]
 
-        thf = (-2 * S_onlyi) * (theta @ S_without_i)
+        thf = (-2 * S_onlyi) * (S_without_i @ theta)
         Z = torch.mean(torch.exp(-thf))
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
     # # print(Z,nflips)
