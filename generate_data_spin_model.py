@@ -133,7 +133,7 @@ for beta_ix, beta in enumerate(betas):
         else:
             file_name = (
                 f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-                f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{num_neighbors}.npz"
+                f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
             )
     else:
         file_name = (

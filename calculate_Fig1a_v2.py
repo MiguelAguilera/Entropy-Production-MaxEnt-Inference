@@ -99,7 +99,7 @@ if __name__ == "__main__":
             plt.title(fr'$\beta={beta:3.3f}$')
             plt.show()
 
-        del xvals, yvals, R2, res
+        del xvals, yvals, R2, res, J
         gc.collect()
 
 

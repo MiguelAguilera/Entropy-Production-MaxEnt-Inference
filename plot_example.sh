@@ -16,9 +16,14 @@ ARGS="--beta_min 0.01 --beta_max 2 --size 100 --num_beta 10  --BASE_DIR ~/MaxEnt
 
 #ARGS="--rep 100000 --beta_min 0 --beta_max 4 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v5"
 #ARGS="--rep 100000 --beta_min 4.5 --beta_max 8 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v6"
-ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v7_j0"
+ARGS="--beta_min 5 --J0 0 --beta_max 5 --size 30 --num_beta 1  --BASE_DIR ~/MaxEntData30v10"
 
-ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v8_j0"
+#ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v8_j0"
+ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntData30v7_j0"
+
+ARGS="--beta_min 0 --rep 1000 --J0 0 --beta_max 5 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest"
+
+# ARGS="--beta_min 1 --J0 0 --beta_max 5 --size 1000 --num_beta 25  --BASE_DIR ~/MaxEntData1000diluted"
 
 #ARGS="--beta_min 0  --beta_max 5 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v7"
 
