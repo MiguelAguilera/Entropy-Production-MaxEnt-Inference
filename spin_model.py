@@ -147,7 +147,7 @@ def sample(rep, H, J, num_steps, sequential=True,init=0,trials=1000, progressbar
 def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
                    beta=1.3485, J0=1.0, DJ=0.5, seed=None,
                    onlychanges=None, sequential=True, 
-                   patterns=None):
+                   patterns=None, num_neighbors=None):
     """
     Run Glauber dynamics simulation and save results.
 
@@ -162,6 +162,7 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
         seed (int): Random seed.
         onlychanges (None or bool): Not used.
         sequential (bool): Whether to use sequential or parallel updates.
+        num_neighbors (int): On average how many neighbors to connect (if we want sparse connectivity)
 
     Returns:
         J: NxN np.array of coupling coefficients
@@ -176,9 +177,18 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
     # Initialize couplings and fields
     if patterns is None:
         init=0
+        # rnd = np.random.randn(N, N) ** 3
         rnd = np.random.randn(N, N)
         J = (beta * (J0 / N + rnd * DJ / np.sqrt(N))).astype(DTYPE)
+
+        if num_neighbors is not None and num_neighbors > 0:
+            mask = np.random.rand(N, N) > num_neighbors/N
+            rnd = np.where(mask, 0, rnd)
+            J = (beta * (J0 / N + rnd * DJ / np.sqrt(num_neighbors))).astype(DTYPE)
+
     else:
+        if num_neighbors is not None and num_neighbors > 0:
+            raise Exception('num_neighbors not supported with patterns')
         init=0
         L=patterns
         xi = np.random.randint(0,2,(L,N)).astype(DTYPE)*2-1

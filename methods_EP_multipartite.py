@@ -116,10 +116,10 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
 
 #    return torch.linalg.solve(Ks_no_diag_th, rhs_th)
 
+    I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device=Ks_th.device)
     if method=='LS':
-        dtheta = torch.linalg.lstsq(Ks_no_diag_th, rhs_th).solution
+        dtheta = torch.linalg.lstsq(Ks_no_diag_th + eps * I, rhs_th).solution
     else:
-        I = torch.eye(Ks_no_diag_th.size(-1), dtype=Ks_th.dtype, device  = Ks_th.device)
         while True:
             try:
                 if method=='solve':
@@ -184,15 +184,22 @@ def get_EP_Newton(S, i):
     
     Z=0
     eps = 1e-4
-    while True:  # regularize until  we get a non-zero Z
+    for _ in range(100):  # regularize until  we get a non-zero Z
         theta = solve_linear_theta(Da, -Da, Ks, i, eps=eps)
         Z = norm_theta(S, theta, i)
-        if not np.isclose(Z.item(),0):
+        if not np.isclose(Z.item(),0) and not np.isinf(Z.item()):
             break
         eps *= 10
+    else:
+        print('get_EP_Newton cannot regularize enough!')
+        return np.nan, theta, Da
 
     sig_N1 = theta @ Dai - torch.log(Z)
-    return sig_N1.item(), theta, Da
+    v = sig_N1.item()
+    if np.isinf(v):
+        print(theta, Da, Z, theta @ Dai)
+
+    return v, theta, Da
 
 
 def get_EP_MTUR(S, i):
@@ -419,7 +426,7 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
 
 
 
-def get_EP_Adam2(S_i, theta_init, i, num_iters=1000, 
+def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-4, skip_warm_up=False,
                      timeout=60):
@@ -450,6 +457,8 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         S_i_tst = S_i[:,nflips+1:]
         S_i     = S_i[:,:nflips]
         theta_init = torch.zeros_like(theta_init)
+        Da = correlations(S_i, i).T
+    
 
     nflips = S_i.shape[1]
     theta = theta_init.clone()
@@ -462,7 +471,6 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
     S_onlyi = S_i[i,:]
 
     X = -2 * S_onlyi * S_without_i
-    Da = correlations(S_i, i)
     Da_noi = remove_i(Da, i)
 
     last_val = -np.inf
@@ -485,7 +493,6 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
         if cur_val > np.log(nflips):
-            # print('breaking')
             break
 
         last_val = cur_val
@@ -516,7 +523,7 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
 
     if DO_HOLDOUT:    
         # Get test values
-        Da = correlations(S_i_tst, i)
+        Da = correlations(S_i_tst, i).T
         Da_noi = remove_i(Da, i)
         S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
         S_onlyi = S_i_tst[i,:]
@@ -524,7 +531,6 @@ def get_EP_Adam2(S_i, theta_init, i, num_iters=1000,
         thf = (-2 * S_onlyi) * (S_without_i @ theta)
         Z = torch.mean(torch.exp(-thf))
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
-    # # print(Z,nflips)
         
     return cur_val, theta
 

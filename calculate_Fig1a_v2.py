@@ -1,7 +1,6 @@
-import os, argparse, time
+import os, argparse, time, gc
 import numpy as np
 
-import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
@@ -41,6 +40,7 @@ if __name__ == "__main__":
                         help='Disable plotting if specified')
     parser.add_argument("--patterns", type=int, default=None,
                         help="Hopfield pattern density (default: None).")
+    parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
     args = parser.parse_args()
 
     N = args.size
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     # -------------------------------
     EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, GradientAscent
 
+    results = []
     for ib, beta in enumerate(np.round(betas, 8)):
         #if beta < 3:
         #    continue
@@ -66,8 +67,41 @@ if __name__ == "__main__":
         else:
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
         
-        res = calc.calc(file_name)
+        res = calc.calc(file_name, overwrite=args.overwrite)
+        res['beta'] = beta
+        results.append(res)
         EP[:, ib] = np.array([res['emp'], res['TUR'], res['N1'], res['GD']])
+
+        J      = res['J']
+        xvals = (J - J.T)[:]
+        yvals = {}
+        R2    = {}
+        for k in ['N1','GD']:
+            Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
+                                for i,m in enumerate(res['theta_'+k])])
+            yy = (Thetas - Thetas.T)[:]
+
+            R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
+            yvals[k]=yy
+
+        print(f'theta R2 values: GD={R2['GD']:3f}  N1={R2['N1']:3f}')
+
+        if  beta >= 3.9:
+            plt.scatter(xvals, yvals['N1'], label=r'$\hat{\theta} \quad(R^2='+f'{R2['N1']:3.3f}'+')$', s=3)
+            plt.scatter(xvals, yvals['GD'], label=r'${\theta}^* \quad(R^2='+f'{R2['GD']:3.3f}'+')$', s=3)
+            lims = [1.1*xvals.min(), 1.1*xvals.max()]
+            plt.xlim( *lims )
+            plt.ylim( *lims )
+            plt.plot(lims, lims, lw=1, ls=":", c='k')
+            plt.legend()
+            plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
+            plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
+            plt.title(fr'$\beta={beta:3.3f}$')
+            plt.show()
+
+        del xvals, yvals, R2, res
+        gc.collect()
+
 
     # -------------------------------
     # Save results

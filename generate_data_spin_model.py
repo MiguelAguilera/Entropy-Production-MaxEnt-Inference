@@ -73,6 +73,8 @@ parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5).")
 parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
+parser.add_argument("--num_neighbors", type=int, default=None,
+                    help="Number of neighbors for sparse connectivity (default: None).")
 
 # Flags for update mode: sequential or parallel
 parser.add_argument("--sequential", action="store_true", help="Enable sequential update mode.")
@@ -154,7 +156,8 @@ for beta_ix, beta in enumerate(betas):
         DJ=args.DJ,
         seed=args.seed,
         sequential=args.sequential,
-        patterns=args.patterns
+        patterns=args.patterns,
+        num_neighbors=args.num_neighbors,
     )
 
     print('Sampled states: %d' % S.shape[1])
