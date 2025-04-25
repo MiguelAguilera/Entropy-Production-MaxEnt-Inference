@@ -4,6 +4,9 @@ from collections import defaultdict
 from tqdm import tqdm
 import gc
 
+import matplotlib.pyplot as plt 
+import seaborn as sns
+            
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
@@ -41,7 +44,6 @@ def set_default_device():
 def calc_spin(S_i, J_i, i):
     verbose=False
 
-
     #print(i, time.time() - start_time_i)
     # S_i_t = torch.from_numpy(S_i).to(device)
 
@@ -52,7 +54,8 @@ def calc_spin(S_i, J_i, i):
     sigmas, times, thetas = {}, {}, {}
 
     start_time_i = time.time()
-    sigmas['N1'], thetas['N1'], Da = get_EP_Newton(S_i, i)
+    sigmas['N1'], theta_N1, Da = get_EP_Newton(S_i, i)
+    thetas['N1'] = theta_N1.cpu().numpy()
     times['N1']  = time.time() - start_time_i
 
     start_time_i = time.time()
@@ -61,20 +64,43 @@ def calc_spin(S_i, J_i, i):
 
     sigmas['emp']                            = exp_EP_spin_model(Da, J_i, i)
     if DO_NEWTON2:
-        sigmas['N2'], theta2                 = get_EP_Newton2(S_i, theta1, Da, i)
+        sigmas['N2'], theta2                 = get_EP_Newton2(S_i, theta_N1, Da, i)
         
     if GD_MODE > 0:
         start_time_gd_i = time.time()
-        #x0=thetas['N1'] # 
-        x0=torch.zeros_like(thetas['N1'])
+        # x0=theta_N1
+        x0=torch.zeros_like(theta_N1)
         if GD_MODE == 2:
-            sigmas['GD'], thetas['GD'] = get_EP_Adam2(S_i, theta_init=x0, i=i) 
+            sigmas['GD'], ctheta = get_EP_Adam2(S_i.T, Da=Da.T, theta_init=x0, i=i) 
         elif GD_MODE == 1:
             import gd
-            sigmas['GD'], thetas['GD'] = gd.get_EP_gd(S_i, i, x0=x0,  num_iters=1000)
+            sigmas['GD'], ctheta = gd.get_EP_gd(S_i.T, i, x0=x0,  num_iters=1000)
         else:
             raise Exception('Uknown GD_MODE')
+        thetas['GD']  = ctheta.cpu().numpy()
         times['GD'] = time.time() - start_time_gd_i
+
+        if False:
+            ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
+            stats = (ctheta2@S_i.T).cpu().numpy()
+            stats -= stats.mean()
+            print(np.mean( stats**3 ) )
+            print(np.mean( stats**4 ) - 3*np.mean( stats**2 )**2  )
+            #print(np.mean( (stats - stats.mean())**4-3*np.mean(stats - stats.mean())**2)
+            sns.kdeplot( stats, label='Original')# , bins=20, color='red', alpha=0.3, label='Original') 
+            
+            stats2 = np.random.normal(loc=0, scale=stats.std(), size=len(stats))
+            stats2 -= stats2.mean()
+            #plt.hist( stats, bins=20, alpha=0.3, color='k', label='Gaussian')
+            sns.kdeplot( stats2, label='Gaussian')
+            #plt.yscale('log')
+
+            plt.legend() 
+            
+
+            plt.show()
+            #asdf
+
     else:
         times['GD'] = np.nan
         sigmas['GD'] = np.nan
@@ -83,34 +109,44 @@ def calc_spin(S_i, J_i, i):
     return sigmas, times, thetas
 
 
-def calc(file_name):
+def calc(file_name, overwrite=False):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     start_time = time.time()
     process = psutil.Process(os.getpid())
 
+    epdata = None
+
     out_filename = os.path.dirname(file_name)+'/epdata_' + os.path.basename(file_name)+'.pkl'
     if os.path.exists(out_filename):
-        print(f'{out_filename} exists! loading')
-        with open(out_filename, 'rb') as file:
-            epdata = pickle.load(file)
+        print(f'{out_filename} exists! '+('loading' if not overwrite else 'overwriting'))
+        if not overwrite:
+            with open(out_filename, 'rb') as file:
+                epdata = pickle.load(file)
+                
 
-    else:
+    if epdata is None:
         print()
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         data = np.load(file_name)
-        N, rep = data['S'].shape
+        rep, N = data['S'].shape
         H = data['H']
         assert(np.all(H==0))  # We do not support local fields in our analysis
         with torch.no_grad():
             Sraw = torch.from_numpy(data["S"]).to(device)
             F = torch.from_numpy(data["F"]).to(device)
 
+            if False:
+                vvv=data['J'].reshape([1,-1])[0,:]
+                plt.hist(vvv)
+                #sns.kdeplot(vvv)
+                plt.show()
+                #asf
+
             J = torch.from_numpy(data['J']).to(device)
 
-            frequencies = F.float().sum(axis=1).cpu().numpy()/(N*rep)
-
-            epdata = {'frequencies':frequencies}
+            frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
+            epdata = {'frequencies':frequencies, 'J': data['J']}
 
             pbar = tqdm(range(N))
 
@@ -120,7 +156,7 @@ def calc(file_name):
 
             for i in pbar:
                 # S_i = S[:, F[i]]
-                S_i = torch.index_select(Sraw, 1, torch.where(F[i])[0] ).to(torch.float32) * 2 - 1
+                S_i = torch.index_select(Sraw, 0, torch.where(F[:,i])[0] ).to(torch.float32) * 2 - 1
 
                 res = calc_spin( S_i, J[i,:], i )
 
@@ -130,6 +166,10 @@ def calc(file_name):
                 for k,v in sigmas.items():
                     ep_sums[k]   += frequencies[i]*v
                     time_sums[k] += times.get(k, np.nan)
+                    kk = 'theta_'+k
+                    if kk not in epdata:
+                        epdata[kk] = []
+                    epdata[kk].append(thetas.get(k, np.nan))
 
                 del S_i, sigmas, times, thetas, res
                 gc.collect()
@@ -139,6 +179,7 @@ def calc(file_name):
 
             for k,v in ep_sums.items():
                 epdata[k]=v
+
 
             with open(out_filename, 'wb') as file:
                 pickle.dump(epdata, file)
