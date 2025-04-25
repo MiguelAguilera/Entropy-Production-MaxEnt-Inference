@@ -63,8 +63,8 @@ parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                     help="Base directory to store simulation results (default: '~/MaxEntData').")
 parser.add_argument("--beta_min", type=float, default=0,
                     help="Minimum beta value (default: 0).")
-parser.add_argument("--beta_max", type=float, default=4,
-                    help="Maximum beta value (default: 4).")
+parser.add_argument("--beta_max", type=float, default=3,
+                    help="Maximum beta value (default: 3).")
 parser.add_argument("--num_beta", type=int, default=101,
                     help="Number of beta values to simulate (default: 101).")
 parser.add_argument("--J0", type=float, default=1.0,
