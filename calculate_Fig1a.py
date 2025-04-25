@@ -23,8 +23,8 @@ if __name__ == "__main__":
                         help="Base directory to store simulation results (default: '~/MaxEntData').")
     parser.add_argument("--beta_min", type=float, default=0,
                         help="Minimum beta value (default: 0)")
-    parser.add_argument("--beta_max", type=float, default=4,
-                        help="Maximum beta value (default: 4)")
+    parser.add_argument("--beta_max", type=float, default=3,
+                        help="Maximum beta value (default: 3)")
     parser.add_argument("--num_beta", type=int, default=101,
                         help="Number of beta values to simulate (default: 101)")
     parser.add_argument("--J0", type=float, default=1.0,
@@ -35,6 +35,8 @@ if __name__ == "__main__":
                         help='Disable plotting if specified')
     parser.add_argument("--patterns", type=int, default=None,
                         help="Hopfield pattern density (default: None).")
+    parser.add_argument("--overwrite", action="store_true",  default=False,
+                        help="Do not overwrite existing files.")
     args = parser.parse_args()
 
     N = args.size
@@ -73,7 +75,7 @@ if __name__ == "__main__":
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
             file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_patterns_{args.patterns}.h5"
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        EP[:, ib] = calc(N, rep, file_name, file_name_out)
+        EP[:, ib] = calc(N, rep, file_name, file_name_out, overwrite=args.overwrite)
         
 
     #np.savez(file_name_out, EP=EP, betas=betas)
@@ -123,4 +125,5 @@ if __name__ == "__main__":
 
         # Save and show figure
         plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
+        print('save')
         plt.show()
