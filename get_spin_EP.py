@@ -56,6 +56,8 @@ def calc_spin(i_args):
 
     S_i, J_i = get_spin_data(i, file_name)
     
+    nflips = S_i.shape[0]
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #    S_i_t = torch.from_numpy(S_i).to(device)
 #    J_i_t = torch.from_numpy(J_i).to(device)

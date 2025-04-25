@@ -37,6 +37,8 @@ if __name__ == "__main__":
                         help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False,
                         help="Do not overwrite existing files.")
+parser.add_argument("--num_neighbors", type=int, default=None,
+                        help="Number of neighbors for sparse connectivity (default: None).")
     args = parser.parse_args()
 
     N = args.size
@@ -69,8 +71,8 @@ if __name__ == "__main__":
 
     for ib, beta in enumerate(np.round(betas, 8)):
         if args.patterns is None:
-            file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
-            file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+            file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+            file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.h5"
         else:
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
             file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_beta_{beta}_patterns_{args.patterns}.h5"
