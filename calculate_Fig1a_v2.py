@@ -18,59 +18,58 @@ if __name__ == "__main__":
     # -------------------------------
     parser = argparse.ArgumentParser(description="Estimate EP for the spin model with varying beta values.")
 
-    parser.add_argument("--num_steps", type=int, default=2**7,
-                        help="Number of simulation steps (default: 128)")
-    parser.add_argument("--rep", type=int, default=1_000_000,
-                        help="Number of repetitions for the simulation (default: 1,000,000)")
-    parser.add_argument("--size", type=int, default=100,
-                        help="System size (default: 100)")
+    # parser.add_argument("--num_steps", type=int, default=2**7,
+    #                     help="Number of simulation steps (default: 128)")
+    # parser.add_argument("--rep", type=int, default=1_000_000,
+    #                     help="Number of repetitions for the simulation (default: 1,000,000)")
+    # parser.add_argument("--size", type=int, default=100,
+    #                     help="System size (default: 100)")
     parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                         help="Base directory to store simulation results (default: '~/MaxEntData').")
-    parser.add_argument("--beta_min", type=float, default=0,
-                        help="Minimum beta value (default: 0)")
-    parser.add_argument("--beta_max", type=float, default=4,
-                        help="Maximum beta value (default: 4)")
-    parser.add_argument("--num_beta", type=int, default=101,
-                        help="Number of beta values to simulate (default: 101)")
-    parser.add_argument("--J0", type=float, default=1.0,
-                        help="Mean interaction coupling (default: 1.0)")
-    parser.add_argument("--DJ", type=float, default=0.5,
-                        help="Variance of the quenched disorder (default: 0.5)")
+    # parser.add_argument("--beta_min", type=float, default=0,
+    #                     help="Minimum beta value (default: 0)")
+    # parser.add_argument("--beta_max", type=float, default=4,
+    #                     help="Maximum beta value (default: 4)")
+    # parser.add_argument("--num_beta", type=int, default=101,
+    #                     help="Number of beta values to simulate (default: 101)")
+    # parser.add_argument("--J0", type=float, default=1.0,
+    #                     help="Mean interaction coupling (default: 1.0)")
+    # parser.add_argument("--DJ", type=float, default=0.5,
+    #                     help="Variance of the quenched disorder (default: 0.5)")
     parser.add_argument('--no_plot', action='store_true', default=False,
-                        help='Disable plotting if specified')
-    parser.add_argument("--patterns", type=int, default=None,
-                        help="Hopfield pattern density (default: None).")
+                         help='Disable plotting if specified')
+    # parser.add_argument("--patterns", type=int, default=None,
+    #                     help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
-    args = parser.parse_args()
+    args = parser.parse_known_args()[0]
 
-    N = args.size
-    rep = args.rep
+    #N = args.size
+    #rep = args.rep
 
     # -------------------------------
     # Global Setup
     # -------------------------------
-    BASE_DIR = os.path.expanduser(args.BASE_DIR)
+    BASE_DIR = os.path.expanduser(args.BASE_DIR) + '/sequential/'
     DTYPE = 'float32'
-    betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
-
+    
     # -------------------------------
     # Run Experiments Across Beta Values
     # -------------------------------
-    EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, GradientAscent
+    EPvals = []
+    betas = []
 
     results = []
-    for ib, beta in enumerate(np.round(betas, 8)):
-        #if beta < 3:
-        #    continue
-        if args.patterns is None:
-            file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
-        else:
-            file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
-        
-        res = calc.calc(file_name, overwrite=args.overwrite)
-        res['beta'] = beta
+
+    for file_name in sorted(os.listdir(BASE_DIR)):
+        if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
+            continue
+
+        res = calc.calc(BASE_DIR+'/'+file_name, overwrite=args.overwrite)
+        beta = res['beta']
+        betas.append( beta )
+
         results.append(res)
-        EP[:, ib] = np.array([res['emp'], res['TUR'], res['N1'], res['GD']])
+        EPvals.append( [res['emp'], res['TUR'], res['N1'], res['GD']] ) 
 
         J      = res['J']
         xvals = (J - J.T)[:]
@@ -102,15 +101,18 @@ if __name__ == "__main__":
         del xvals, yvals, R2, res, J
         gc.collect()
 
+    EP = np.array(EPvals)
+    betas = np.array(betas)
 
     # -------------------------------
     # Save results
     # -------------------------------
-    SAVE_DATA_DIR = 'ep_data/spin'
+    SAVE_DATA_DIR = BASE_DIR
     if not os.path.exists(SAVE_DATA_DIR):
         print(f'Creating base directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR)
-    filename = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.npz"
+    filename = f"{SAVE_DATA_DIR}/plot_data.npz"
+    print(filename)
     np.savez(filename, EP=EP, betas=betas)
     print(f'Saved calculations to {filename}')
 

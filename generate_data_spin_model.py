@@ -25,7 +25,7 @@ import spin_model
 
 #    print(f"Data saved to {file_name}")
 
-def save_data(file_name, J, H, S_bin, F_bin):
+def save_data(file_name, J, H, S_bin, F_bin, beta, args):
     """
     Save model data to a .npz file.
 
@@ -42,7 +42,15 @@ def save_data(file_name, J, H, S_bin, F_bin):
         J=J,
         H=H,
         S=S_bin,
-        F=F_bin
+        F=F_bin,
+        beta=beta, 
+        N=args.size,
+        DJ=args.DJ,
+        J0=args.J0,
+        rep=args.rep,
+        num_steps=args.num_steps,
+        trials=args.trials,
+        seed=args.seed,
     )
 
     print(f"Data saved to {file_name}")
@@ -169,7 +177,7 @@ for beta_ix, beta in enumerate(betas):
     print('Sampled states: %d' % S.shape[1])
     print('   - state changes : %d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
     
-    save_data(file_name, J, H, S, F)
+    save_data(file_name, J, H, S, F, beta, args)
     print(f"Simulation took {time.time()-start_time:.3f}s.")
 
 

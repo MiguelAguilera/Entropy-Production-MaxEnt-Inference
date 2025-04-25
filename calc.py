@@ -146,7 +146,7 @@ def calc(file_name, overwrite=False):
             J = torch.from_numpy(data['J']).to(device)
 
             frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
-            epdata = {'frequencies':frequencies, 'J': data['J']}
+            epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta']}
 
             pbar = tqdm(range(N))
 
