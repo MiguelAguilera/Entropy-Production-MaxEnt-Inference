@@ -37,7 +37,7 @@ if __name__ == "__main__":
                         help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False,
                         help="Do not overwrite existing files.")
-parser.add_argument("--num_neighbors", type=int, default=None,
+    parser.add_argument("--num_neighbors", type=int, default=None,
                         help="Number of neighbors for sparse connectivity (default: None).")
     args = parser.parse_args()
 
