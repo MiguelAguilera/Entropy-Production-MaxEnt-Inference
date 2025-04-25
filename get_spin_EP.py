@@ -72,7 +72,7 @@ def calc_spin(i_args):
 #    print(f"[Spin {i}] Running on device: {device}")
     S_i_t.to(device)
     J_i_t.to(device)
-    Pi = rep / T
+    Pi = nflips / T
 
     t0 = time.time()
     MTUR = Pi * get_EP_MTUR(S_i_t, i)
