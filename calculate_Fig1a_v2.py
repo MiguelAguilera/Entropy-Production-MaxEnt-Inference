@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
     results = []
 
-    for file_name in sorted(os.listdir(BASE_DIR)):
+    for file_name in sorted(os.listdir(BASE_DIR))[::-1]:
         if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
             continue
 

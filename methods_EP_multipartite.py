@@ -499,17 +499,19 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
         sig_gd    : final entropy production estimate
         theta     : final updated theta
     """
+
+    nflips = S_i.shape[1]
+
     DO_HOLDOUT = False
 
     if DO_HOLDOUT:
-        nflips = int(S_i.shape[1]/2)
+        nflips = int(nflips/2)
         S_i_tst = S_i[:,nflips+1:]
         S_i     = S_i[:,:nflips]
         theta_init = torch.zeros_like(theta_init)
-        Da = correlations(S_i, i).T
+        Da = correlations(S_i.T, i)
     
 
-    nflips = S_i.shape[1]
     theta = theta_init.clone()
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)
@@ -572,12 +574,15 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
 
     if DO_HOLDOUT:    
         # Get test values
-        Da = correlations(S_i_tst, i).T
+        Da = correlations(S_i_tst.T, i)
         Da_noi = remove_i(Da, i)
         S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
         S_onlyi = S_i_tst[i,:]
 
-        thf = (-2 * S_onlyi) * (S_without_i @ theta)
+        X = -2 * S_onlyi * S_without_i
+
+        thf = theta @ X
+        # thf = (-2 * S_onlyi) * (S_without_i @ theta)
         Z = torch.mean(torch.exp(-thf))
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
         
