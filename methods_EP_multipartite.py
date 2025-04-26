@@ -22,7 +22,7 @@ def correlations(S, i):
     Da = (-2 * S[:, i]) @ S / nflips 
     return Da
 
-def correlations4(S, i, num_chunks=None):
+def correlations4(S, i, num_chunks=10):
     """
     Compute 4th-order correlation matrix for spin `i`.
     
@@ -72,7 +72,7 @@ def correlations_theta(S, theta, i):
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Da, Z
 
-def correlations4_theta(S, theta, i, num_chunks=None):
+def correlations4_theta(S, theta, i, num_chunks=10):
     """
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
@@ -99,10 +99,10 @@ def correlations4_theta(S, theta, i, num_chunks=None):
 
             S_chunk = S[start:end, :]
             thf_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
+            weighted_S_T = 4 * torch.exp(-thf_chunk) * S_chunk.T
+            K += weighted_S_T @ S_chunk / nflips
 
-            K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk / nflips
-
-            del S_chunk, thf_chunk
+            del S_chunk, thf_chunk, weighted_S_T
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
 
@@ -150,7 +150,7 @@ def remove_i(A, i):
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='LS'):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
