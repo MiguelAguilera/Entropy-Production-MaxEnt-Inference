@@ -22,12 +22,35 @@ def correlations(S, i):
     Da = (-2 * S[:, i]) @ S / nflips 
     return Da
 
-def correlations4(S, i):
+def correlations4(S, i, num_chunks=10):
     """
     Compute 4th-order correlation matrix for spin `i`.
+    
+    If `num_chunks` is provided, computes the matrix in `num_chunks` pieces to save memory.
     """
     nflips, N = S.shape
-    K = (4 * S.T) @ S / nflips
+
+    if num_chunks is None:
+        # Normal full matrix multiplication
+        K = (4 * S.T) @ S / nflips
+    else:
+        # Chunked multiplication
+        device = S.device
+        K = torch.zeros((N, N), device=device)
+
+        chunk_size = (nflips + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for start in range(0, nflips, chunk_size):
+            end = min(start + chunk_size, nflips)
+            S_chunk = S[start:end, :]  # (chunk_size, N)
+
+            K += (4 * S_chunk.T) @ S_chunk
+
+            del S_chunk
+            torch.cuda.empty_cache()
+
+        K /= nflips
+
     return K
 
 # =======================
@@ -40,24 +63,50 @@ def correlations_theta(S, theta, i):
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
     nflips, N = S.shape
-    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    thf = (-2 * S[:, i]) * (S_without_i @ theta)
+#    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    thf = (-2 * S[:, i]) * (S @ theta_padded)
     S1_S = -(-2 * S[:, i]) * torch.exp(-thf)
     Da = S1_S @ S / nflips
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Da, Z
 
-def correlations4_theta(S, theta, i):
+def correlations4_theta(S, theta, i, num_chunks=10):
     """
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
+    
+    If `num_chunks` is provided, computes the matrix in chunks to save memory.
     """
     nflips, N = S.shape
-    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    thf = (-2 * S[:, i]) * (S_without_i @ theta)
-    K = (4 * torch.exp(-thf) * S.T) @ S / nflips
-#    K[i, :] = 0
-#    K[:, i] = 0
+    device = S.device
+
+    # Pad theta with a zero at position i
+    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=device), theta[i:]))
+
+    if num_chunks is None:
+        # Full computation
+        thf = (-2 * S[:, i]) * (S @ theta_padded)
+        K = (4 * torch.exp(-thf) * S.T) @ S / nflips
+    else:
+        # Chunked computation
+        K = torch.zeros((N, N), device=device)
+        chunk_size = (nflips + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for start in range(0, nflips, chunk_size):
+            end = min(start + chunk_size, nflips)
+
+            S_chunk = S[start:end, :]
+            thf_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
+            weight = 4 * torch.exp(-thf_chunk)
+
+            K += (weight.unsqueeze(1) * S_chunk).T @ S_chunk
+
+            del S_chunk, thf_chunk, weight
+            torch.cuda.empty_cache()
+
+        K /= nflips
+
     return K
 
 # =======================
@@ -69,8 +118,9 @@ def norm_theta(S, theta, i):
     Estimate normalization constant Z from the partition function under theta.
     """
     nflips, N = S.shape
-    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    thf = (-2 * S[:, i]) * (S_without_i @ theta)
+#    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    thf = (-2 * S[:, i]) * (S @ theta_padded)
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
 
@@ -99,7 +149,7 @@ def remove_i(A, i):
 # Linear Solver for Theta Estimation
 # =======================
 
-def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
+def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='LS'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
