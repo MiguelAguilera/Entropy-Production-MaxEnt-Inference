@@ -102,7 +102,7 @@ def correlations4_theta(S, theta, i, num_chunks=None):
 
             K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk / nflips
 
-            del S_chunk, thf_chunk, weight
+            del S_chunk, thf_chunk
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
 
