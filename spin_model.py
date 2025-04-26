@@ -1,7 +1,5 @@
 import numpy as np
 from numba import njit, prange, objmode
-import h5py
-import hdf5plugin
 import threading
 
 DTYPE = 'float32'  # Default data type for numerical operations

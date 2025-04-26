@@ -175,7 +175,7 @@ def calc(file_name, overwrite=False):
                 gc.collect()
                 memory_info  = process.memory_info()
                 memory_usage = memory_info.rss / 1024 / 1024
-                pbar.set_description(f'emp={ep_sums['emp']:3.3f}, N1={ep_sums['N1']:3.3f} GD={ep_sums['GD']:3.3f} mem={memory_usage:.1f}mb')
+                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} GD={ep_sums['GD']:3.5f} mem={memory_usage:.1f}mb')
 
             for k,v in ep_sums.items():
                 epdata[k]=v
