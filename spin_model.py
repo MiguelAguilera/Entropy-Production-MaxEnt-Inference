@@ -180,8 +180,8 @@ def run_simulation(N, num_steps=128, rep=1_000_000, trials=1,
         J = (beta * (J0 / N + rnd * DJ / np.sqrt(N))).astype(DTYPE)
 
         if num_neighbors is not None and num_neighbors > 0:
-            mask = np.random.rand(N, N) > num_neighbors/N
-            rnd = np.where(mask, 0, rnd)
+            mask = np.random.rand(N, N) < num_neighbors/N
+            rnd *= mask
             J = (beta * (J0 / N + rnd * DJ / np.sqrt(num_neighbors))).astype(DTYPE)
 
     else:
