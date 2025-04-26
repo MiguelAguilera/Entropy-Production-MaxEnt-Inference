@@ -22,7 +22,7 @@ def correlations(S, i):
     Da = (-2 * S[:, i]) @ S / nflips 
     return Da
 
-def correlations4(S, i, num_chunks=10):
+def correlations4(S, i, num_chunks=None):
     """
     Compute 4th-order correlation matrix for spin `i`.
     
@@ -47,7 +47,8 @@ def correlations4(S, i, num_chunks=10):
             K += (4 * S_chunk.T) @ S_chunk
 
             del S_chunk
-            torch.cuda.empty_cache()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
 
         K /= nflips
 
@@ -71,7 +72,7 @@ def correlations_theta(S, theta, i):
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Da, Z
 
-def correlations4_theta(S, theta, i, num_chunks=10):
+def correlations4_theta(S, theta, i, num_chunks=None):
     """
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
@@ -98,12 +99,12 @@ def correlations4_theta(S, theta, i, num_chunks=10):
 
             S_chunk = S[start:end, :]
             thf_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
-            weight = 4 * torch.exp(-thf_chunk)
 
-            K += (weight.unsqueeze(1) * S_chunk).T @ S_chunk
+            K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk / nflips
 
             del S_chunk, thf_chunk, weight
-            torch.cuda.empty_cache()
+            if device.type == 'cuda':
+                torch.cuda.empty_cache()
 
         K /= nflips
 
