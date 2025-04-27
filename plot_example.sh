@@ -33,10 +33,13 @@ ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 300 --num_beta 25  --BASE_DIR ~/Ma
 
 #ARGS="--beta_min 3 --J0 0 --beta_max 5 --size 30 --num_beta 1  --BASE_DIR ~/MaxEntDataTest100"
 
-#ARGS="--beta_min 3 --J0 0 --beta_max 4 --size 40 --num_beta 1  --BASE_DIR ~/MaxEntDataTest30"
+#ARGS="--beta_min 3 --J0 0 --beta_max 4 --size 40 --num_beta 1  --BASE_DIR ~/MaxEntDataTest40"
 
 
 #ARGS="--beta_min 0  --beta_max 5 --size 30 --num_beta 10  --BASE_DIR ~/MaxEntData30v7"
+
+ARGS="--beta_min 0 --DJ 1 --J0 0 --beta_max 2 --size 1000 --rep 10000000 --num_beta 25  --BASE_DIR ~/MaxEntDataSteps"
+ARGS="--beta_min 1 --rep 2000000 --DJ 1 --J0 0 --beta_max 4 --size 40 --num_beta 5  --BASE_DIR ~/MaxEntDataTest44"
 
 # rm -rf ~/MaxEntData40v2
 #ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000v11"
@@ -47,7 +50,7 @@ ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 300 --num_beta 25  --BASE_DIR ~/Ma
 # ARGS="--patterns 10 --beta_max 3.5 --beta_min 1 --num_steps 10000 --rep 100000 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData4" 
 #rm -rf ~/MaxEntData4
 
-python generate_data_spin_model.py --seed 42   --num_neighbors 5  $ARGS 
-python calculate_Fig1a_v2.py                    $ARGS --overwrite --nograd #--no_plot
+# python generate_data_spin_model.py --seed 42   --num_neighbors 3  $ARGS 
+python calculate_Fig1a_v2.py                    $ARGS --nograd --overwrite  # --noplot #   --overwrite 
 
 

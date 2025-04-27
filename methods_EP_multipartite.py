@@ -65,7 +65,7 @@ def correlations_theta(S, theta, i):
     """
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    theta_padded = add_i(theta,i)
     thf = (-2 * S[:, i]) * (S @ theta_padded)
     S1_S = -(-2 * S[:, i]) * torch.exp(-thf)
     Da = S1_S @ S / nflips
@@ -119,7 +119,7 @@ def norm_theta(S, theta, i):
     """
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    theta_padded = add_i(theta,i)
     thf = (-2 * S[:, i]) * (S @ theta_padded)
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
@@ -284,6 +284,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
     return sig_N2.item(), theta
     
 def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
+    nflips,N = S.shape
     sig_old = sig_init
     sig_new, theta_N = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
     dsig = sig_new - sig_old
@@ -297,18 +298,85 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         if rel_change <= tol:
             break
 
+        #print(sig_new, np.log(nflips))
+        if sig_new > np.log(nflips):
+            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
+            break 
         if sig_new < sig_old or np.isnan(sig_new):
-            print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             sig_N = sig_old
             break
-
+        
         sig_old = sig_new
         sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+
         dsig = sig_new - sig_old
         sig_N = sig_new
         count += 1
 
     return sig_N, theta_N
+
+
+def get_EP_Newton_steps_holdout(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
+    nflips = int(S.shape[0]/2)
+    S      = S[nflips:,:]
+    S_test = S[:nflips,:]
+
+    S_only_i_test = S_test[:,i]
+    X = -2 * S_only_i_test[:,None]*S_test
+    def get_test_objective(theta):
+        Da_th, Z = correlations_theta(S_test, theta, i)
+        Da_th /= Z
+        theta2 = add_i(theta, i)
+        thf = X@theta2
+        Z = torch.exp(-thf).mean()
+        return (theta2 @ Da_th - torch.log(Z)).item()
+     
+
+
+    # dsig = np.nan
+    sig_old_tst = np.nan 
+    _, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
+    sig_new_tst = get_test_objective(theta_N)
+
+    count = 0
+    sig_N = sig_new_tst
+    eps = 1e-8  # small epsilon to avoid division by zero
+
+
+    while count < max_iter:
+        # rel_change = np.abs(dsig) / (np.abs(sig_old_tst) + eps)
+        #if rel_change <= tol:
+        #    break
+
+        if sig_new_tst > np.log(nflips):
+            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
+            break 
+
+        if sig_new_tst < sig_old_tst: # early stopping
+            sig_N = sig_old_tst
+            break
+
+        # if np.isnan(sig_new) or 
+        if np.isnan(sig_new_tst):
+            #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            sig_N = sig_old_tst
+            break
+
+
+        sig_old_tst = sig_new_tst
+        _, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        sig_new_tst = get_test_objective(theta_N)
+
+
+        # dsig = sig_new_tst - sig_old_tst
+        sig_N = sig_new_tst
+        count += 1
+
+    #if HOLDOUT:
+    #    sig_N = get_objective(S_test, Da=Da, theta=theta_N,i=i)
+
+    return sig_N, theta_N    
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
@@ -393,7 +461,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
 
     return sig_BFGS.item(), theta
     
-def get_objective(S_i, Da, theta,i):
+def get_objective_numpy(S_i, Da, theta,i):
     Dai      = remove_i(Da, i).cpu().numpy().astype('float64')
     theta_np = theta.cpu().numpy().astype('float64')
     Snp      = S_i.cpu().numpy().astype('float64')
@@ -401,9 +469,12 @@ def get_objective(S_i, Da, theta,i):
     S_without_i = np.hstack((Snp[:, :i], Snp[:, i+1:]))
     X = -2 * S_only_i[:,None]*S_without_i
     thf = X@theta_np
-    Y = np.exp(-thf)
-    Z = np.mean(Y)
+    Z = np.exp(-thf).mean()
     return theta_np @ Dai - np.log(Z)
+
+
+def add_i(x,i):
+    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
 
 def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
@@ -434,9 +505,7 @@ def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000,
 
     nflips = S_i.shape[1]
 
-    theta = torch.cat((theta_init[:i], 
-                       torch.tensor([0.0], device=theta_init.device), 
-                       theta_init[i:])).contiguous()
+    theta = add_i(theta_init, i)
 
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)

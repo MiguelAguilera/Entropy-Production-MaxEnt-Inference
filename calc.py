@@ -16,7 +16,8 @@ from methods_EP_multipartite import *
 LABELS = {'emp'  : 'Empirical', 
           'N1'   : 'Newton 1-step', 
           'TUR'  : 'MTUR', 
-          'NS'   : 'Newton Steps', 
+          'NS'   : 'Newton', 
+          'NSH'   : 'Newton holdout)', 
           'GD'   : 'Grad Ascent',
           'BFGS' : 'BFGS'}
 
@@ -76,6 +77,13 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
         sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
         thetas['NS'] = theta2.cpu().numpy()
         times[ 'NS'] = time.time() - stime
+
+        if True:
+            stime = time.time()
+            sigmas['NSH'], theta2  = get_EP_Newton_steps_holdout(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
+            thetas['NSH'] = theta2.cpu().numpy()
+            times[ 'NSH'] = time.time() - stime
+
         if sigmas['NS']>100:
             print('HUGE VALUE!', sigmas['NS'],get_objective(S_i, Da=Da, theta=theta2, i=i))
             #print(theta2)
@@ -174,7 +182,6 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
 
             for i in pbar:
                 S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
-                # S_i = torch.index_select(Sraw, 0, torch.where(F[:,i])[0] ).to(torch.float32) * 2 - 1
 
                 res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
 
