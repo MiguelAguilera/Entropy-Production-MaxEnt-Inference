@@ -22,7 +22,7 @@ def correlations(S, i):
     Da = (-2 * S[:, i]) @ S / nflips 
     return Da
 
-def correlations4(S, i, num_chunks=10):
+def correlations4(S, i, num_chunks=20):
     """
     Compute 4th-order correlation matrix for spin `i`.
     
@@ -72,7 +72,7 @@ def correlations_theta(S, theta, i):
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Da, Z
 
-def correlations4_theta(S, theta, i, num_chunks=10):
+def correlations4_theta(S, theta, i, num_chunks=20):
     """
     Compute weighted 4th-order correlations using theta.
     THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
@@ -94,14 +94,14 @@ def correlations4_theta(S, theta, i, num_chunks=10):
         K = torch.zeros((N, N), device=device)
         chunk_size = (nflips + num_chunks - 1) // num_chunks  # Ceiling division
 
-        for start in range(0, nflips, chunk_size):
-            end = min(start + chunk_size, nflips)
-
-            S_chunk = S[start:end, :]
+        for r in range(num_chunks):
+            start = r * chunk_size
+            end = min((r + 1) * chunk_size, nflips)
+            S_chunk = S[start:end]
+            
             thf_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
-            K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk / nflips
+            K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk
 
-            del S_chunk, thf_chunk
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
 
@@ -218,15 +218,12 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
 #     )
 #     return obj_values[-1], optimal_params
 
-def get_EP_Newton(S, i):
+def get_EP_Newton(S, i, num_chunks=None):
     """
     Compute entropy production estimate using the 1-step Newton method for spin i.
     """
-    device = S.device
     Da = correlations(S, i)
-    Ks = correlations4(S, i)
-    Da = Da.to(device)
-    Ks = Ks.to(device)
+    Ks = correlations4(S, i,num_chunks)
     Ks -= torch.einsum('j,k->jk', Da, Da)
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
@@ -251,15 +248,12 @@ def get_EP_Newton(S, i):
     return v, theta, Da
 
 
-def get_EP_MTUR(S, i):
+def get_EP_MTUR(S, i,num_chunks=None):
     """
     Compute entropy production estimate using the MTUR method for spin i.
     """
-    device = S.device
     Da = correlations(S, i)
-    Ks = correlations4(S, i)
-    Da = Da.to(device)
-    Ks = Ks.to(device)
+    Ks = correlations4(S, i, num_chunks)
     theta = solve_linear_theta(Da, -Da, Ks, i)
     Dai = remove_i(Da, i)
     sig_MTUR = theta @ Dai
@@ -267,7 +261,7 @@ def get_EP_MTUR(S, i):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
+def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -295,7 +289,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.5):
 
     # Compute model-averaged first-order and fourth-order statistics (excluding index i)
     Da_th, Z = correlations_theta(S, theta_init, i)
-    Ks_th = correlations4_theta(S, theta_init, i)
+    Ks_th = correlations4_theta(S, theta_init, i,num_chunks)
 
     # Normalize by partition function Z
     Da_th /= Z
@@ -624,4 +618,98 @@ def get_EP_Adam2_bak(S_i, Da, theta_init, i, num_iters=1000,
 
 
 
+def get_EP_Adam3(S_i, Da, theta_init, i, num_iters=1000, 
+                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
+                     tol=1e-4, skip_warm_up=False,
+                     timeout=60):
+    """
+    Performs multiple Adam-style updates to refine theta estimation.
+    
+    Arguments:
+        S         : binary spin samples, shape (N, num_flips)
+        theta_init: initial theta vector
+        Da        : empirical expectation vector
+        i         : index to remove from theta (current spin)
+        num_iters : number of Adam updates
+        beta1, beta2: Adam moment decay parameters
+        lr        : learning rate
+        eps       : epsilon for numerical stability
+        tol       : tolerance for early stopping
+        skip_warm_up : Adam option
+        timeout : maximum second to run
+    
+    Returns:
+        sig_gd    : final entropy production estimate
+        theta     : final updated theta
+    """
 
+    nflips = S_i.shape[0]
+
+
+    theta = theta_init.clone()
+    m = torch.zeros_like(theta)
+    v = torch.zeros_like(theta)
+    N = len(theta)
+
+    stime = time.time()
+#    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
+    S_onlyi = S_i[:, i]
+
+#    X = -2 * S_onlyi * S_without_i
+    Da_noi = remove_i(Da, i)
+
+    last_val = -np.inf
+    cur_val  = torch.tensor(np.nan)
+
+    for t in range(1, num_iters + 1):
+        #thf = (-2 * S_onlyi) * (S_without_i @ theta)
+#        thf = theta @ X
+#        
+#        Y = torch.exp(-thf)
+#        Z = torch.mean(Y)
+#        S1_S = -(-2 * S_onlyi) * Y
+
+#        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
+#        Da_th /= Z
+
+        theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+        thf = (-2 * S_onlyi) * (S_i @ theta_padded)
+        S1_S = -(-2 * S_onlyi) * torch.exp(-thf)
+        Da_th = S1_S @ S_i / nflips
+        Z = torch.sum(torch.exp(-thf)) / nflips
+        Da_th /= Z
+
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+
+        # Early stopping
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
+            break
+        if cur_val > np.log(nflips):
+            break
+
+        last_val = cur_val
+
+        grad = Da_noi - remove_i(Da_th, i)
+#        grad = Da_noi - Da_th
+
+        if False:
+            # regular gradient descent
+            theta += lr * grad
+            
+        else:
+            # Adam moment updates
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * (grad**2)
+            if skip_warm_up:
+                m_hat = m
+                v_hat = v
+            else:
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
+
+            # Compute parameter update
+            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+
+            theta += delta_theta
+
+    return cur_val, theta
