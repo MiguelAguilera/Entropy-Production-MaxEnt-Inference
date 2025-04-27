@@ -58,24 +58,33 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
 
     sigmas, times, thetas = {}, {}, {}
 
-    start_time_i = time.time()
+    stime = time.time()
+    sigmas['TUR'] = get_EP_MTUR(S_i, i)
+    times[ 'TUR']  = time.time() - stime
+
+    stime = time.time()
     sigmas['N1'], theta_N1, Da = get_EP_Newton(S_i, i)
     thetas['N1'] = theta_N1.cpu().numpy()
-    times['N1']  = time.time() - start_time_i
+    times[ 'N1']  = time.time() - stime
 
-    start_time_i = time.time()
-    sigmas['TUR'] = get_EP_MTUR(S_i, i)
-    times['TUR']  = time.time() - start_time_i
+    stime = time.time()
+    sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
+    times[ 'emp']  = time.time() - stime
 
-    sigmas['emp']    = exp_EP_spin_model(Da, J_i, i)
     if newton:
         stime = time.time()
         sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
-        times[ 'NS'] = time.time() - stime
         thetas['NS'] = theta2.cpu().numpy()
+        times[ 'NS'] = time.time() - stime
+        if sigmas['NS']>100:
+            print('HUGE VALUE!', sigmas['NS'],get_objective(S_i, Da=Da, theta=theta2, i=i))
+            #print(theta2)
+            #print(Da)
+            #print('tmax',torch.abs(theta2).max())
+            #print('dmax',torch.abs(Da).max())
+            #raise Exception()
     else:
-        times[ 'NS'] = np.nan
-        sigmas['NS'] = np.nan
+        sigmas['NS'] = times['NS'] = np.nan
         thetas['NS'] = np.zeros(theta_N1.shape)
 
         
@@ -84,7 +93,7 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
         stime = time.time()
         sigmas['GD'], ctheta  = get_EP_Adam(S_i, Da=Da, theta_init=x0, i=i) 
         thetas['GD'] = ctheta.cpu().numpy()
-        times['GD']  = time.time() - stime
+        times[ 'GD']  = time.time() - stime
 
         #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, Da=Da, theta_init=torch.zeros_like(theta_N1), i=i) 
         #thetas['BFGS']  = ctheta.cpu().numpy()
@@ -112,8 +121,7 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             #asdf
 
     else:
-        times['GD'] = np.nan
-        sigmas['GD'] = np.nan
+        sigmas['GD'] = times['GD'] = np.nan
         thetas['GD'] = np.zeros(theta_N1.shape)
 
     return sigmas, times, thetas

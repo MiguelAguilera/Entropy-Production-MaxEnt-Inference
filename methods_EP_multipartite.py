@@ -394,6 +394,18 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
 
     return sig_BFGS.item(), theta
     
+def get_objective(S_i, Da, theta,i):
+    Dai      = remove_i(Da, i).cpu().numpy().astype('float64')
+    theta_np = theta.cpu().numpy().astype('float64')
+    Snp      = S_i.cpu().numpy().astype('float64')
+    S_only_i = Snp[:,i]
+    S_without_i = np.hstack((Snp[:, :i], Snp[:, i+1:]))
+    X = -2 * S_only_i[:,None]*S_without_i
+    thf = X@theta_np
+    Y = np.exp(-thf)
+    Z = np.mean(Y)
+    return theta_np @ Dai - np.log(Z)
+
 def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-4, skip_warm_up=False,
@@ -452,13 +464,14 @@ def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000,
         #Da_th /= Z
 
         cur_val = (theta @ Da - torch.log(Z)).item()
-
         #return 0, theta_init
 
-        # Early stopping
-        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
+        if np.isnan(cur_val):
             break
         if cur_val > np.log(nflips):
+            break
+        # Early stopping
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
 
         last_val = cur_val
