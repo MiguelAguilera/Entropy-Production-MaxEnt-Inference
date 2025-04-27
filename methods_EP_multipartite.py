@@ -316,6 +316,33 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
 
     return sig_N2.item(), theta
     
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-2, max_iter=50):
+    sig_old = sig_init
+    sig_new, theta_N = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
+    dsig = sig_new - sig_old
+    count = 0
+    sig_N = sig_new
+    eps = 1e-8  # small epsilon to avoid division by zero
+
+    while count < max_iter:
+        rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
+
+        if rel_change <= tol:
+            break
+
+        if sig_new < sig_old or np.isnan(sig_new):
+            print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            sig_N = sig_old
+            break
+
+        sig_old = sig_new
+        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        dsig = sig_new - sig_old
+        sig_N = sig_new
+        count += 1
+
+    return sig_N, theta_N
+            
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
     Manual BFGS maximization for f(θ) = θ^T ⟨g⟩ - log Z(θ)

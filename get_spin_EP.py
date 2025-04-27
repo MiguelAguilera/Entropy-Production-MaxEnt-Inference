@@ -88,26 +88,28 @@ def calc_spin(i_args):
     del J_i_t
     torch.cuda.empty_cache()
     
-    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i,num_chunks=num_chunks)   # Second newton step
-###    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
-    sig_old = sig_N1
-    dsig = sig_new-sig_old
-    count = 0
-    sig_N2 = sig_new  # Initialize sig_N2 before the loop starts
-    while dsig/sig_old > 1E-2 and count <50:
-        count +=1
-        sig_old = sig_new
-        sig_new, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
-        dsig = sig_new-sig_old
-        
-        if sig_old>sig_new or torch.isnan(torch.tensor(sig_new)):
-            sig_N2 = sig_old
-            print('break',sig_old, sig_new, count)
-            break
-        else:
-            sig_N2 = sig_new
-#    print(sig_N1,sig_old,sig_new,Emp/Pi)
-#    sig_N2, theta_N2 = get_EP_Adam2(S_i_t, theta_N1, i)
+    sig_N2, theta_N2 = get_EP_Newton_steps(S_i_t, theta_N1, sig_N1, Da, i, num_chunks=num_chunks)
+#    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i,num_chunks=num_chunks)   # Second newton step
+####    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
+#    sig_old = sig_N1
+#    dsig = sig_new-sig_old
+#    count = 0
+#    sig_N2 = sig_new  # Initialize sig_N2 before the loop starts
+#    while dsig/sig_old > 1E-2 and count <50:
+#        count +=1
+#        sig_old = sig_new
+#        sig_new, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
+#        dsig = sig_new-sig_old
+#        
+#        if sig_old>sig_new or torch.isnan(torch.tensor(sig_new)):
+#            sig_N2 = sig_old
+#            print('break',sig_old, sig_new, count)
+#            break
+#        else:
+#            sig_N2 = sig_new
+            
+            
+#    sig_N2, theta_N2 = get_EP_Adam3(S_i_t, Da, theta_N1, i)
 
 #    sig_N2, theta_N2 = get_EP_BFGS(S_i_t, theta_N1, Da, i) 
 #    sig_N2, theta_N2 = get_EP_gd(S_i_t, i, x0=theta_N1.clone().detach().requires_grad(True),  num_iters=1000)
@@ -266,6 +268,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
 
 
     T = N * rep  # Total spin-flip attempts
+#    cap= int(rep*0.3)
     cap=None
     if not parallel:
     
@@ -299,7 +302,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
                 preload_threads.pop(i)
             else:
                 S_i, J_i, nflips = get_spin_data(i, file_name, cap=cap)
-
+    
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #            if torch.cuda.is_available():
 #                S_i_tensor = torch.as_tensor(S_i).pin_memory()
@@ -307,6 +310,8 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
 #                J_i_tensor = torch.as_tensor(J_i).pin_memory()
 #                J_i_t = J_i_tensor.to(device, non_blocking=True)
 #            else:
+#            with torch.no_grad():
+#            if True:
             S_i_t = (torch.from_numpy(S_i)).to(device).float()* 2 - 1  # convert {0,1} → {-1,1}
             J_i_t = torch.from_numpy(J_i).to(device)
             del S_i, J_i # Free RAM
