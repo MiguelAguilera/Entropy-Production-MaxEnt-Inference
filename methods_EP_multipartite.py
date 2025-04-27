@@ -583,3 +583,99 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
     return cur_val, theta
 
 
+
+def get_EP_Adam3(S_i, Da, theta_init, i, num_iters=1000, 
+                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
+                     tol=1e-4, skip_warm_up=False,
+                     timeout=60):
+    """
+    Performs multiple Adam-style updates to refine theta estimation.
+    
+    Arguments:
+        S         : binary spin samples, shape (N, num_flips)
+        theta_init: initial theta vector
+        Da        : empirical expectation vector
+        i         : index to remove from theta (current spin)
+        num_iters : number of Adam updates
+        beta1, beta2: Adam moment decay parameters
+        lr        : learning rate
+        eps       : epsilon for numerical stability
+        tol       : tolerance for early stopping
+        skip_warm_up : Adam option
+        timeout : maximum second to run
+    
+    Returns:
+        sig_gd    : final entropy production estimate
+        theta     : final updated theta
+    """
+
+    nflips = S_i.shape[1]
+
+
+    theta = theta_init.clone()
+    m = torch.zeros_like(theta)
+    v = torch.zeros_like(theta)
+    N = len(theta)
+
+    stime = time.time()
+#    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
+    S_onlyi = S_i[:, i]
+
+#    X = -2 * S_onlyi * S_without_i
+    Da_noi = remove_i(Da, i)
+
+    last_val = -np.inf
+    cur_val  = torch.tensor(np.nan)
+
+    for t in range(1, num_iters + 1):
+        #thf = (-2 * S_onlyi) * (S_without_i @ theta)
+#        thf = theta @ X
+#        
+#        Y = torch.exp(-thf)
+#        Z = torch.mean(Y)
+#        S1_S = -(-2 * S_onlyi) * Y
+
+#        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
+#        Da_th /= Z
+
+        theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+        thf = (-2 * S_onlyi) * (S_i @ theta_padded)
+        S1_S = -(-2 * S_onlyi) * torch.exp(-thf)
+        Da_th = S1_S @ S_i / nflips
+        Z = torch.sum(torch.exp(-thf)) / nflips
+        Da_th /= Z
+
+        cur_val = (theta @ Da_noi - torch.log(Z)).item()
+
+        # Early stopping
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
+            break
+        if cur_val > np.log(nflips):
+            break
+
+        last_val = cur_val
+
+        grad = Da_noi - remove_i(Da_th, i)
+#        grad = Da_noi - Da_th
+
+        if False:
+            # regular gradient descent
+            theta += lr * grad
+            
+        else:
+            # Adam moment updates
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * (grad**2)
+            if skip_warm_up:
+                m_hat = m
+                v_hat = v
+            else:
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
+
+            # Compute parameter update
+            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+
+            theta += delta_theta
+
+    return cur_val, theta
