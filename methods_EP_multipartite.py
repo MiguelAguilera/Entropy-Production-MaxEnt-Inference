@@ -179,8 +179,10 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
                 if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                     break
             except torch._C._LinAlgError:
-                eps *= 10  # Increase regularization if matrix is singular
-                print(f"Matrix is singular, increasing epsilon to {eps}")
+#                eps *= 10  # Increase regularization if matrix is singular
+#                print(f"Matrix is singular, increasing epsilon to {eps}")
+                dtheta = torch.linalg.lstsq(Ks_no_diag_th + eps * I, rhs_th).solution
+                break
         
     return dtheta
 
@@ -283,32 +285,31 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10,delta=0.5):
     sig_old = sig_init
-    sig_new, theta_N = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
-    dsig = sig_new - sig_old
+    theta_N = theta_init.clone()
+    dsig = sig_old
     count = 0
-    sig_N = sig_new
     eps = 1e-8  # small epsilon to avoid division by zero
-
+    sig_new = sig_init
     while count < max_iter:
-        rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
+    
+        sig_old = sig_new
+        theta_old = theta_N.clone()
+        sig_new = np.nan
+        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
 
+        dsig = sig_new - sig_old
+        count += 1
+        rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
         if rel_change <= tol:
             break
 
         if sig_new < sig_old or np.isnan(sig_new):
             print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
-            sig_N = sig_old
-            break
+            return sig_new, theta_N
 
-        sig_old = sig_new
-        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
-        dsig = sig_new - sig_old
-        sig_N = sig_new
-        count += 1
-
-    return sig_N, theta_N
+    return sig_new, theta_N
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
