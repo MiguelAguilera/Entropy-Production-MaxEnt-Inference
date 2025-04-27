@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import torch
 import h5py
-import hdEP_spinsf5plugin
+import hdf5plugin
 from matplotlib import pyplot as plt
 import seaborn as sns
 from get_spin_EP import *
@@ -28,6 +28,10 @@ parser.add_argument("--DJ", type=float, default=0.5,
                     help="Variance of the quenched disorder (default: 0.5).")
 parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
+parser.add_argument("--num_neighbors", type=int, default=None,
+                    help="Number of neighbors for sparse connectivity (default: None).")
+parser.add_argument("--overwrite", action="store_true",  default=False,
+                    help="Do not overwrite existing files.")
 args = parser.parse_args()
 
 # -------------------------------
@@ -50,30 +54,29 @@ beta = np.round(args.beta, 8) # Inverse temperature (interaction strength)
 
 print(f'** DOING SYSTEM SIZE {N} with beta {beta:.6f} **', flush=True)
 
-
+SAVE_DATA_DIR = 'ep_data/spin'
 
 # -------------------------------
 # Load data
 # -------------------------------
 
 if args.patterns is None:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+    file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.h5"
 else:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.h5"
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+    file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
 print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-
-print(file_name, flush=True)
-
-
-EP, theta_N1,theta_N2,theta_Adam, J = calc(N, rep, file_name, return_parameters=True)
+        
+EP, theta_N1,theta_N2, J =  calc(N, rep, file_name, file_name_out, return_parameters=True, overwrite=args.overwrite)
 print(theta_N1.shape)
 dJ = J-J.T
 
 # -------------------------------
 # Save results
 # -------------------------------
-filename=f'data/spin/data_Fig_1b.npz'
-np.savez(filename, theta_N1=theta_N1.copy(), theta_N2=theta_N2.copy(), dJ=dJ)
+#filename=f'data/spin/data_Fig_1b.npz'
+#np.savez(filename, theta_N1=theta_N1.copy(), theta_N2=theta_N2.copy(), dJ=dJ)
 
 # -------------------------------
 # Helper function to expand off-diagonal matrix
@@ -98,13 +101,23 @@ theta_N2 = expand_offdiag(theta_N2)
 dtheta_N1 = theta_N1 - theta_N1.T
 dtheta_N2 = theta_N2 - theta_N2.T
 
+
+upper_indices = np.triu_indices(N, k=1)  # Upper triangle indices
+
+
+def R2(delta_theta, beta_delta_w):
+    residual = delta_theta - beta_delta_w
+    return 1-np.mean(residual**2) / np.var(delta_theta)
+r2_N1 = R2(dtheta_N1[upper_indices],J[upper_indices])
+r2_N2 = R2(dtheta_N2[upper_indices],J[upper_indices])
+print(f"R² (dJ vs. dtheta_Gaussian): {r2_N1:.4f}")
+print(f"R² (dJ vs. dtheta_Newton): {r2_N2:.4f}")
+
 # -------------------------------
 # Visualization
 # -------------------------------
 
 plt.figure(figsize=(4, 4))
-
-upper_indices = np.triu_indices(N, k=1)  # Upper triangle indices
 
 cmap = plt.get_cmap('inferno_r')
 colors = [cmap(0.25),cmap(0.5),cmap(0.75)]
