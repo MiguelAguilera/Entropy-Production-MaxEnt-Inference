@@ -41,6 +41,9 @@ ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 300 --num_beta 25  --BASE_DIR ~/Ma
 ARGS="--beta_min 0 --DJ 1 --J0 0 --beta_max 2 --size 1000 --rep 10000000 --num_beta 25  --BASE_DIR ~/MaxEntDataSteps"
 ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50"
 
+ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v2"
+
+
 # rm -rf ~/MaxEntData40v2
 #ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000v11"
 #ARGS="--patterns 100 --beta_min 1 --rep 1000000 --beta_max 4 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData10"
@@ -50,7 +53,7 @@ ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta
 # ARGS="--patterns 10 --beta_max 3.5 --beta_min 1 --num_steps 10000 --rep 100000 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData4" 
 #rm -rf ~/MaxEntData4
 
-# dpython generate_data_spin_model.py --seed 42   --num_neighbors 3  $ARGS 
+python generate_data_spin_model.py --seed 42   --num_neighbors 3  $ARGS 
 python calculate_Fig1a_v2.py                    $ARGS --nograd  --overwrite  # --noplot #   --overwrite 
  
 

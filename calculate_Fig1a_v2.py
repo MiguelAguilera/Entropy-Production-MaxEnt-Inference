@@ -83,7 +83,7 @@ if __name__ == "__main__":
         xvals = (J - J.T)[:]
         yvals = {}
         R2    = {}
-        for k in ['N1','GD']:
+        for k in ['N1','NSH']:
             Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
                                 for i,m in enumerate(res['theta_'+k])])
             yy = (Thetas - Thetas.T)[:]
@@ -91,7 +91,7 @@ if __name__ == "__main__":
             R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
             yvals[k]=yy
 
-        print(f'theta R2 values: GD={R2['GD']:3f}  N1={R2['N1']:3f}')
+        print(f'theta R2 values: NSH={R2['NSH']:3f}  N1={R2['N1']:3f}')
 
         if False and beta >= 3.9:
             plt.scatter(xvals, yvals['N1'], label=r'$\hat{\theta} \quad(R^2='+f'{R2['N1']:3.3f}'+')$', s=3)

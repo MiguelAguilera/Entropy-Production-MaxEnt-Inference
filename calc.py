@@ -17,7 +17,7 @@ LABELS = {'emp'  : 'Empirical',
           'N1'   : 'Newton 1-step', 
           'TUR'  : 'MTUR', 
           'NS'   : 'Newton', 
-          'NSH'   : 'Newton holdout)', 
+          'NSH'  : 'NewtonHoldout', 
           'GD'   : 'Grad Ascent',
           'BFGS' : 'BFGS'}
 
@@ -45,7 +45,11 @@ def set_default_device():
         torch.set_default_device(device)
         print("Set CPU as default device")
     return device
-
+def empty_cache():
+    if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
+        torch.cuda.empty_cache()
+    elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
 
 def calc_spin(S_i, J_i, i, grad=False, newton=False):
     verbose=False
@@ -63,22 +67,29 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     sigmas['TUR'] = get_EP_MTUR(S_i, i)
     times[ 'TUR']  = time.time() - stime
 
+    #gc.collect()
+
     stime = time.time()
     sigmas['N1'], theta_N1, Da = get_EP_Newton(S_i, i)
     thetas['N1'] = theta_N1.cpu().numpy()
     times[ 'N1']  = time.time() - stime
+
+    #gc.collect()
 
     if newton:
         stime = time.time()
         sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
         thetas['NS'] = theta2.cpu().numpy()
         times[ 'NS'] = time.time() - stime
+    
+        #gc.collect()
 
         if True:
             stime = time.time()
-            sigmas['NSH'], theta2  = get_EP_Newton_steps_holdout(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
+            sigmas['NSH'], theta2  = get_EP_Newton_steps_holdout(S_i, i=i)
             thetas['NSH'] = theta2.cpu().numpy()
             times[ 'NSH'] = time.time() - stime
+            #gc.collect()
 
     else:
         sigmas['NS'] = times['NS'] = np.nan
@@ -87,6 +98,7 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     stime = time.time()
     sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
     times[ 'emp']  = time.time() - stime
+    #gc.collect()
 
         
     if grad:
@@ -95,6 +107,7 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
         sigmas['GD'], ctheta  = get_EP_Adam(S_i, Da=Da, theta_init=x0, i=i) 
         thetas['GD'] = ctheta.cpu().numpy()
         times[ 'GD']  = time.time() - stime
+        #gc.collect()
 
         #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, Da=Da, theta_init=torch.zeros_like(theta_N1), i=i) 
         #thetas['BFGS']  = ctheta.cpu().numpy()
@@ -190,10 +203,15 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
                     epdata[kk].append(thetas.get(k, np.nan))
 
                 del S_i, sigmas, times, thetas, res
-                gc.collect()
+                
+                if i % 20 == 19:
+                    empty_cache()
+                    #stime = time.time()
+                    gc.collect()
+                    #print(time.time()-stime)
                 memory_info  = process.memory_info()
                 memory_usage = memory_info.rss / 1024 / 1024
-                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} NS={ep_sums['NS']:3.5f} GD={ep_sums['GD']:3.5f} mem={memory_usage:.1f}mb')
+                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} NS={ep_sums['NS']:3.5f} NSh={ep_sums['NSH']:3.5f} mem={memory_usage:.1f}mb')
 
             for k,v in ep_sums.items():
                 epdata[k]=v

@@ -153,6 +153,11 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
+
+    assert not torch.isnan(Da).any() 
+    assert not torch.isnan(Da_th).any() 
+    assert not torch.isnan(Ks_th).any() 
+
     Dai    = remove_i(Da, i)
     Dai_th = remove_i(Da_th, i)
     Ks_no_diag_th = K_nodiag(Ks_th, i)
@@ -179,9 +184,8 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
                     dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
                 elif method=='QR':
                     Q, R = torch.linalg.qr(Ks_no_diag_th + eps * I)
-                    if not torch.isnan(Q).any() and not torch.isnan(R).any():
-                        # dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
-                        dtheta = torch.linalg.solve_triangular( R, (Q.T @ rhs_th).unsqueeze(1), upper=True).squeeze()
+                    # dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
+                    dtheta = torch.linalg.solve_triangular( R, (Q.T @ rhs_th).unsqueeze(1), upper=True).squeeze()
 
                 if dtheta is not None and not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                     break
@@ -328,59 +332,70 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
     return sig_N, theta_N
 
 
-def get_EP_Newton_steps_holdout(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
+def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
     nflips = int(S.shape[0]/2)
-    S      = S[nflips:,:]
-    S_test = S[:nflips,:]
+    #print(S.shape, nflips)
+    S_trn = S[:nflips,:]
+    #print(S.shape, nflips)
+    S_tst = S[nflips:,:]
+    Dai_tst = remove_i(correlations(S_tst,i),i)
+
 
     def get_test_objective(theta):
-        Da_th, Z = correlations_theta(S_test, theta, i)
-        Da_th /= Z
-        return (theta @ remove_i(Da_th,i) - torch.log(Z)).item()
+        return (theta @ Dai_tst - torch.log(norm_theta(S_tst, theta, i))).item()
 
-
-    sig_new, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
-    sig_new_tst       = get_test_objective(theta_N)
-    sig_old  = sig_old_tst = np.nan 
-    dsig     = dsig_tst    = np.nan
+    sig_new_trn, theta_N, Da = get_EP_Newton(S_trn, i)
+    #sig_new, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
+    sig_new_tst = get_test_objective(theta_N)
+    sig_old_trn = sig_old_tst = np.nan 
+    dsig_trn    = dsig_tst    = np.nan
 
     count = 0
     sig_N = sig_new_tst
     eps = 1e-8  # small epsilon to avoid division by zero
 
+    if np.isnan(sig_new_tst) or np.isinf(sig_new_tst):
+        return sig_new_trn, theta_N 
 
     while count < max_iter:
-        rel_change     = np.abs(dsig)     / (np.abs(sig_old) + eps)
+        dsig_trn = sig_new_trn - sig_old_trn
+        dsig_tst = sig_new_tst - sig_old_tst
+
+        rel_change_trn = np.abs(dsig_trn) / (np.abs(sig_old_trn) + eps)
         rel_change_tst = np.abs(dsig_tst) / (np.abs(sig_old_tst) + eps)
 
-        if rel_change <= tol or rel_change_tst <= tol:
-            break
-
-        if sig_new_tst > np.log(nflips) or sig_new > np.log(nflips):
-            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
-            break 
-
-        if sig_new_tst < sig_old_tst or sig_new < sig_old: # early stopping
+        if rel_change_trn <= tol or rel_change_tst <= tol:
             sig_N = sig_old_tst
             break
 
-        if np.isnan(sig_new) or np.isnan(sig_new_tst):
+        if sig_new_tst > np.log(nflips) or sig_new_trn > np.log(nflips):
+            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
+            sig_N = sig_old_tst
+            break 
+
+        if sig_new_tst < sig_old_tst or sig_new_trn < sig_old_trn: # early stopping
+            sig_N = sig_old_tst
+            break
+
+        if np.isnan(sig_new_tst) or np.isnan(sig_new_trn) or np.isinf(sig_new_tst) or np.isinf(sig_new_trn):
             #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             sig_N = sig_old_tst
             break
 
 
-        sig_old = sig_new
-        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        sig_old_trn = sig_new_trn
+        sig_new_trn, theta_N = get_EP_Newton2(S_trn, theta_N.clone(), Da, i, num_chunks=num_chunks)
         
         sig_old_tst = sig_new_tst
         sig_new_tst = get_test_objective(theta_N)
 
 
-        dsig     = sig_new     - sig_old
-        dsig_tst = sig_new_tst - sig_old_tst
         sig_N    = sig_new_tst
         count   += 1
+
+    #if np.isnan(sig_N):
+    #    print(sig_new_tst, sig_old_tst, count)
+    #    asdf
 
     return sig_N, theta_N    
 
@@ -469,6 +484,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
     return sig_BFGS.item(), theta
     
 def get_objective_numpy(S_i, Da, theta,i):
+    # Perform calculation using float64 arithmetic for more accuracy
     Dai      = remove_i(Da, i).cpu().numpy().astype('float64')
     theta_np = theta.cpu().numpy().astype('float64')
     Snp      = S_i.cpu().numpy().astype('float64')
