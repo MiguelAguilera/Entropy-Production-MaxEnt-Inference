@@ -184,39 +184,6 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
         
     return dtheta
 
-# =======================
-# Entropy Production Estimators
-# =======================
-# import gd
-# def get_EP_gd2(S, i, x0=None):
-#     # NEED TO FINISH THIS
-#     N = S.shape[0]
-#     if x0 is None:
-#         x0 = np.zeros(N)
-
-#     g_t = torch.zeros_like(S)
-#     for j in range(N):
-#         g_t[j,:] = -2*S[i,:]*S[j,:]    # these are the observables
-#     g_t_noI = torch.cat((g_t[:i,:], g_t[i+1:,:]))
-#     g_avg=g_t_noI.mean(axis=1)           # conditional averages 
-
-#     def func(theta): 
-#         obj = theta@g_avg - torch.log(norm_theta(S, theta, i))
-#         return -obj
-#     def grad(theta):
-#         m1 = g_avg
-#         Da_th = correlations_theta(S, theta, i)/norm_theta(S, theta, i)
-#         r = m1
-#         r[:i] -= Da_th[:i]
-#         r[i:] -= Da_th[i+1:]
-#         return r
-
-#     optimal_params, obj_values, iterations = gd.adam_optimizer(
-#          func, 
-#          grad,
-#          x0
-#     )
-#     return obj_values[-1], optimal_params
 
 def get_EP_Newton(S, i, num_chunks=None):
     """
@@ -426,9 +393,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
 
     return sig_BFGS.item(), theta
     
-
-
-def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000, 
+def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-4, skip_warm_up=False,
                      timeout=60):
@@ -436,7 +401,7 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
     Performs multiple Adam-style updates to refine theta estimation.
     
     Arguments:
-        S         : binary spin samples, shape (N, num_flips)
+        S         : binary spin samples, shape (num_flips,N)
         theta_init: initial theta vector
         Da        : empirical expectation vector
         i         : index to remove from theta (current spin)
@@ -452,6 +417,8 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
         sig_gd    : final entropy production estimate
         theta     : final updated theta
     """
+
+    S_i    = S_i.T.contiguous()   # Transpose for quicker calculations
 
     nflips = S_i.shape[1]
 
@@ -523,220 +490,3 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
 
 
 
-
-
-
-def get_EP_Adam2_bak(S_i, Da, theta_init, i, num_iters=1000, 
-                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
-                     tol=1e-4, skip_warm_up=False,
-                     timeout=60):
-    """
-    Performs multiple Adam-style updates to refine theta estimation.
-    
-    Arguments:
-        S         : binary spin samples, shape (N, num_flips)
-        theta_init: initial theta vector
-        Da        : empirical expectation vector
-        i         : index to remove from theta (current spin)
-        num_iters : number of Adam updates
-        beta1, beta2: Adam moment decay parameters
-        lr        : learning rate
-        eps       : epsilon for numerical stability
-        tol       : tolerance for early stopping
-        skip_warm_up : Adam option
-        timeout : maximum second to run
-    
-    Returns:
-        sig_gd    : final entropy production estimate
-        theta     : final updated theta
-    """
-
-    nflips = S_i.shape[1]
-
-    DO_HOLDOUT = False
-
-    if DO_HOLDOUT:
-        nflips = int(nflips/2)
-        S_i_tst = S_i[:,nflips+1:]
-        S_i     = S_i[:,:nflips]
-        theta_init = torch.zeros_like(theta_init)
-        Da = correlations(S_i.T, i)
-    
-
-    theta = theta_init.clone()
-    m = torch.zeros_like(theta)
-    v = torch.zeros_like(theta)
-    N = len(theta)
-
-    stime = time.time()
-    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
-    S_onlyi = S_i[i,:]
-
-    X = -2 * S_onlyi * S_without_i
-    Da_noi = remove_i(Da, i)
-
-    last_val = -np.inf
-    cur_val  = torch.tensor(np.nan)
-
-    for t in range(1, num_iters + 1):
-        #thf = (-2 * S_onlyi) * (S_without_i @ theta)
-        thf = theta @ X
-        
-        Y = torch.exp(-thf)
-        Z = torch.mean(Y)
-        S1_S = -(-2 * S_onlyi) * Y
-
-        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
-        Da_th /= Z
-
-        cur_val = (theta @ Da_noi - torch.log(Z)).item()
-
-        #return 0, theta_init
-
-
-        # Early stopping
-        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
-            break
-        if cur_val > np.log(nflips):
-            break
-
-        last_val = cur_val
-
-        #grad = Da_noi - remove_i(Da_th, i)
-        grad = Da_noi - Da_th
-
-        if False:
-            # regular gradient descent
-            theta += lr * grad
-            
-        else:
-            # Adam moment updates
-            m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * (grad**2)
-            if skip_warm_up:
-                m_hat = m
-                v_hat = v
-            else:
-                m_hat = m / (1 - beta1 ** t)
-                v_hat = v / (1 - beta2 ** t)
-
-            # Compute parameter update
-            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
-
-            theta += delta_theta
-
-
-    if DO_HOLDOUT:    
-        # Get test values
-        Da = correlations(S_i_tst.T, i)
-        Da_noi = remove_i(Da, i)
-        S_without_i = torch.cat((S_i_tst[:i, :], S_i_tst[i+1:, :]))  # remove spin i
-        S_onlyi = S_i_tst[i,:]
-
-        X = -2 * S_onlyi * S_without_i
-
-        thf = theta @ X
-        # thf = (-2 * S_onlyi) * (S_without_i @ theta)
-        Z = torch.mean(torch.exp(-thf))
-        cur_val = (theta @ Da_noi - torch.log(Z)).item()
-        
-    return cur_val, theta
-
-
-
-
-def get_EP_Adam3(S_i, Da, theta_init, i, num_iters=1000, 
-                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
-                     tol=1e-4, skip_warm_up=False,
-                     timeout=60):
-    """
-    Performs multiple Adam-style updates to refine theta estimation.
-    
-    Arguments:
-        S         : binary spin samples, shape (N, num_flips)
-        theta_init: initial theta vector
-        Da        : empirical expectation vector
-        i         : index to remove from theta (current spin)
-        num_iters : number of Adam updates
-        beta1, beta2: Adam moment decay parameters
-        lr        : learning rate
-        eps       : epsilon for numerical stability
-        tol       : tolerance for early stopping
-        skip_warm_up : Adam option
-        timeout : maximum second to run
-    
-    Returns:
-        sig_gd    : final entropy production estimate
-        theta     : final updated theta
-    """
-
-    nflips = S_i.shape[0]
-
-
-    theta = theta_init.clone()
-    m = torch.zeros_like(theta)
-    v = torch.zeros_like(theta)
-    N = len(theta)
-
-    stime = time.time()
-#    S_without_i = torch.cat((S_i[:i, :], S_i[i+1:, :]))  # remove spin i
-    S_onlyi = S_i[:, i]
-
-#    X = -2 * S_onlyi * S_without_i
-    Da_noi = remove_i(Da, i)
-
-    last_val = -np.inf
-    cur_val  = torch.tensor(np.nan)
-
-    for t in range(1, num_iters + 1):
-        #thf = (-2 * S_onlyi) * (S_without_i @ theta)
-#        thf = theta @ X
-#        
-#        Y = torch.exp(-thf)
-#        Z = torch.mean(Y)
-#        S1_S = -(-2 * S_onlyi) * Y
-
-#        Da_th = torch.einsum('r,jr->j', S1_S, S_without_i) / nflips
-#        Da_th /= Z
-
-        theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
-        thf = (-2 * S_onlyi) * (S_i @ theta_padded)
-        S1_S = -(-2 * S_onlyi) * torch.exp(-thf)
-        Da_th = S1_S @ S_i / nflips
-        Z = torch.sum(torch.exp(-thf)) / nflips
-        Da_th /= Z
-
-        cur_val = (theta @ Da_noi - torch.log(Z)).item()
-
-        # Early stopping
-        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
-            break
-        if cur_val > np.log(nflips):
-            break
-
-        last_val = cur_val
-
-        grad = Da_noi - remove_i(Da_th, i)
-#        grad = Da_noi - Da_th
-
-        if False:
-            # regular gradient descent
-            theta += lr * grad
-            
-        else:
-            # Adam moment updates
-            m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * (grad**2)
-            if skip_warm_up:
-                m_hat = m
-                v_hat = v
-            else:
-                m_hat = m / (1 - beta1 ** t)
-                v_hat = v / (1 - beta2 ** t)
-
-            # Compute parameter update
-            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
-
-            theta += delta_theta
-
-    return cur_val, theta

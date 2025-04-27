@@ -13,12 +13,12 @@ import torch
 from methods_EP_multipartite import *
 
 
-LABELS = {'emp' : 'Empirical', 
-          'N1'  : 'Newton 1-step', 
-          'TUR': 'MTUR', 
-          'N2': 'Newton 2-step', 
-          'GD': 'Grad Ascent',
-          'GD3': 'GradAscent2'}
+LABELS = {'emp'  : 'Empirical', 
+          'N1'   : 'Newton 1-step', 
+          'TUR'  : 'MTUR', 
+          'NS'   : 'Newton Steps', 
+          'GD'   : 'Grad Ascent',
+          'BFGS' : 'BFGS'}
 
 def set_default_device():
     """
@@ -46,7 +46,7 @@ def set_default_device():
     return device
 
 
-def calc_spin(S_i, J_i, i):
+def calc_spin(S_i, J_i, i, grad=False, newton=False):
     verbose=False
 
     #print(i, time.time() - start_time_i)
@@ -67,36 +67,30 @@ def calc_spin(S_i, J_i, i):
     sigmas['TUR'] = get_EP_MTUR(S_i, i)
     times['TUR']  = time.time() - start_time_i
 
-    S_i_T = S_i.T.contiguous()
+    sigmas['emp']    = exp_EP_spin_model(Da, J_i, i)
+    if newton:
+        stime = time.time()
+        sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
+        times[ 'NS'] = time.time() - stime
+        thetas['NS'] = theta2.cpu().numpy()
+    else:
+        times[ 'NS'] = np.nan
+        sigmas['NS'] = np.nan
+        thetas['NS'] = np.zeros(theta_N1.shape)
 
-    sigmas['emp']                            = exp_EP_spin_model(Da, J_i, i)
-    if DO_NEWTON2:
-        sigmas['N2'], theta2                 = get_EP_Newton2(S_i, theta_N1, Da, i)
         
-    if GD_MODE > 0:
-        start_time_gd_i = time.time()
-        # x0=theta_N1
+    if grad: #  > 0:
         x0=torch.zeros_like(theta_N1)
-        if GD_MODE == 2:
-            sigmas['GD'] , ctheta  = get_EP_Adam2(S_i_T, Da=Da, theta_init=x0, i=i) 
+        stime = time.time()
+        sigmas['GD'], ctheta  = get_EP_Adam(S_i, Da=Da, theta_init=x0, i=i) 
+        thetas['GD'] = ctheta.cpu().numpy()
+        times['GD']  = time.time() - stime
 
-        elif GD_MODE == 1:
-            import gd
-            sigmas['GD'], ctheta = gd.get_EP_gd(S_i_T, i, x0=x0,  num_iters=1000)
-        else:
-            raise Exception('Uknown GD_MODE')
-        thetas['GD']  = ctheta.cpu().numpy()
-        times['GD'] = time.time() - start_time_gd_i
+        #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, Da=Da, theta_init=torch.zeros_like(theta_N1), i=i) 
+        #thetas['BFGS']  = ctheta.cpu().numpy()
+        #times['BFGS'] = time.time() - start_time_gd_i
 
-        start_time_gd_i = time.time()
-        #print(S_i.is_contiguous())
-        ##print(S_i.T.is_contiguous())
-        #adsf
-        #sigmas['GD3'], ctheta = get_EP_Adam4(S_i_T, Da=Da, theta_init=x0, i=i) 
-        #thetas['GD3']  = ctheta.cpu().numpy()
-        #times['GD3'] = time.time() - start_time_gd_i
-
-        if False:
+        if False:  # histogram of g outcomes
             ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
             stats = (ctheta2@S_i.T).cpu().numpy()
             stats -= stats.mean()
@@ -120,12 +114,12 @@ def calc_spin(S_i, J_i, i):
     else:
         times['GD'] = np.nan
         sigmas['GD'] = np.nan
-        thetas['GD'] = None
+        thetas['GD'] = np.zeros(theta_N1.shape)
 
     return sigmas, times, thetas
 
 
-def calc(file_name, overwrite=False):
+def calc(file_name, overwrite=False, newton=False, grad=False):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     start_time = time.time()
@@ -174,7 +168,7 @@ def calc(file_name, overwrite=False):
                 S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
                 # S_i = torch.index_select(Sraw, 0, torch.where(F[:,i])[0] ).to(torch.float32) * 2 - 1
 
-                res = calc_spin( S_i, J[i,:], i )
+                res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
 
                 epdata[i] = res 
                 sigmas, times, thetas = res
@@ -191,7 +185,7 @@ def calc(file_name, overwrite=False):
                 gc.collect()
                 memory_info  = process.memory_info()
                 memory_usage = memory_info.rss / 1024 / 1024
-                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} GD={ep_sums['GD']:3.5f} mem={memory_usage:.1f}mb')
+                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} NS={ep_sums['NS']:3.5f} GD={ep_sums['GD']:3.5f} mem={memory_usage:.1f}mb')
 
             for k,v in ep_sums.items():
                 epdata[k]=v
@@ -203,7 +197,7 @@ def calc(file_name, overwrite=False):
 
     print(f"\n[Results] {time.time()-start_time:3f}s")
     for k,lbl in LABELS.items():
-        if k in epdata:
+        if k in epdata and not np.isnan(epdata[k]):
             print(f"  EP ({lbl:15s})    : {epdata[k]:.6f}   {time_sums.get(k,np.nan):3f}s")
     print("-" * 70)
 
@@ -215,10 +209,10 @@ def calc(file_name, overwrite=False):
 device = set_default_device()
 torch.set_grad_enabled(False)
 
-DO_NEWTON2 = False
-GD_MODE = 2  # 0 for no GD
-             # 1 for pytorch Adam
-             # 2 for our Adam
+# DO_NEWTON2 = True
+# GD_MODE = 0  # 0 for no GD
+#              # 1 for pytorch Adam
+#              # 2 for our Adam
 
 if __name__ == "__main__":
 

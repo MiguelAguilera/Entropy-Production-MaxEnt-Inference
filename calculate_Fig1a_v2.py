@@ -41,6 +41,8 @@ if __name__ == "__main__":
     # parser.add_argument("--patterns", type=int, default=None,
     #                     help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
+    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
+    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
     args = parser.parse_known_args()[0]
 
     #N = args.size
@@ -64,7 +66,13 @@ if __name__ == "__main__":
         if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
             continue
 
-        res = calc.calc(BASE_DIR+file_name, overwrite=args.overwrite)
+        # Main call!
+        res = calc.calc(BASE_DIR+file_name, 
+            overwrite=args.overwrite, 
+            grad=not args.nograd, 
+            newton=not args.nonewton)
+
+
         beta = res['beta']
         betas.append( beta )
 
