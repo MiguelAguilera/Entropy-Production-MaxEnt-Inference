@@ -169,18 +169,25 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     if method=='LS':
         dtheta = torch.linalg.lstsq(Ks_no_diag_th + eps * I, rhs_th).solution
     else:
+        dtheta = None
         while True:
+            if eps > 1:
+                print('Something is wrong, cannot regularize enough')
+                return torch.nan + torch.zeros_like(Dai)
             try:
                 if method=='solve':
                     dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
                 elif method=='QR':
                     Q, R = torch.linalg.qr(Ks_no_diag_th + eps * I)
-                    dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
-                if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
+                    if not torch.isnan(Q).any() and not torch.isnan(R).any():
+                        # dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
+                        dtheta = torch.linalg.solve_triangular( R, (Q.T @ rhs_th).unsqueeze(1), upper=True).squeeze()
+
+                if dtheta is not None and not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                     break
             except torch._C._LinAlgError:
-                eps *= 10  # Increase regularization if matrix is singular
-                print(f"Matrix is singular, increasing epsilon to {eps}")
+                print(f"Matrix is singular, increasing epsilon {eps} by 10")
+            eps *= 10  
         
     return dtheta
 
@@ -262,6 +269,10 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
 
+    if torch.isinf(Ks_th).any():
+        # Error occured, usually means theta is too big
+        return np.nan, theta_init*np.nan
+
     # Compute Newton step: Δθ = H⁻¹ (Da - Da_th)
     delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
 
@@ -322,22 +333,16 @@ def get_EP_Newton_steps_holdout(S, theta_init, sig_init, Da, i, num_chunks=None,
     S      = S[nflips:,:]
     S_test = S[:nflips,:]
 
-    S_only_i_test = S_test[:,i]
-    X = -2 * S_only_i_test[:,None]*S_test
     def get_test_objective(theta):
         Da_th, Z = correlations_theta(S_test, theta, i)
         Da_th /= Z
-        theta2 = add_i(theta, i)
-        thf = X@theta2
-        Z = torch.exp(-thf).mean()
-        return (theta2 @ Da_th - torch.log(Z)).item()
-     
+        return (theta @ remove_i(Da_th,i) - torch.log(Z)).item()
 
 
-    # dsig = np.nan
-    sig_old_tst = np.nan 
-    _, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
-    sig_new_tst = get_test_objective(theta_N)
+    sig_new, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
+    sig_new_tst       = get_test_objective(theta_N)
+    sig_old  = sig_old_tst = np.nan 
+    dsig     = dsig_tst    = np.nan
 
     count = 0
     sig_N = sig_new_tst
@@ -345,38 +350,40 @@ def get_EP_Newton_steps_holdout(S, theta_init, sig_init, Da, i, num_chunks=None,
 
 
     while count < max_iter:
-        # rel_change = np.abs(dsig) / (np.abs(sig_old_tst) + eps)
-        #if rel_change <= tol:
-        #    break
+        rel_change     = np.abs(dsig)     / (np.abs(sig_old) + eps)
+        rel_change_tst = np.abs(dsig_tst) / (np.abs(sig_old_tst) + eps)
 
-        if sig_new_tst > np.log(nflips):
+        if rel_change <= tol or rel_change_tst <= tol:
+            break
+
+        if sig_new_tst > np.log(nflips) or sig_new > np.log(nflips):
             #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
             break 
 
-        if sig_new_tst < sig_old_tst: # early stopping
+        if sig_new_tst < sig_old_tst or sig_new < sig_old: # early stopping
             sig_N = sig_old_tst
             break
 
-        # if np.isnan(sig_new) or 
-        if np.isnan(sig_new_tst):
+        if np.isnan(sig_new) or np.isnan(sig_new_tst):
             #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             sig_N = sig_old_tst
             break
 
 
+        sig_old = sig_new
+        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        
         sig_old_tst = sig_new_tst
-        _, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
         sig_new_tst = get_test_objective(theta_N)
 
 
-        # dsig = sig_new_tst - sig_old_tst
-        sig_N = sig_new_tst
-        count += 1
-
-    #if HOLDOUT:
-    #    sig_N = get_objective(S_test, Da=Da, theta=theta_N,i=i)
+        dsig     = sig_new     - sig_old
+        dsig_tst = sig_new_tst - sig_old_tst
+        sig_N    = sig_new_tst
+        count   += 1
 
     return sig_N, theta_N    
+
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """

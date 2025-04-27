@@ -68,10 +68,6 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     thetas['N1'] = theta_N1.cpu().numpy()
     times[ 'N1']  = time.time() - stime
 
-    stime = time.time()
-    sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
-    times[ 'emp']  = time.time() - stime
-
     if newton:
         stime = time.time()
         sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
@@ -84,19 +80,16 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             thetas['NSH'] = theta2.cpu().numpy()
             times[ 'NSH'] = time.time() - stime
 
-        if sigmas['NS']>100:
-            print('HUGE VALUE!', sigmas['NS'],get_objective(S_i, Da=Da, theta=theta2, i=i))
-            #print(theta2)
-            #print(Da)
-            #print('tmax',torch.abs(theta2).max())
-            #print('dmax',torch.abs(Da).max())
-            #raise Exception()
     else:
         sigmas['NS'] = times['NS'] = np.nan
         thetas['NS'] = np.zeros(theta_N1.shape)
 
+    stime = time.time()
+    sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
+    times[ 'emp']  = time.time() - stime
+
         
-    if grad: #  > 0:
+    if grad:
         x0=torch.zeros_like(theta_N1)
         stime = time.time()
         sigmas['GD'], ctheta  = get_EP_Adam(S_i, Da=Da, theta_init=x0, i=i) 
