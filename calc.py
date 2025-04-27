@@ -13,7 +13,12 @@ import torch
 from methods_EP_multipartite import *
 
 
-LABELS = {'emp': 'Empirical', 'N1': 'Newton 1-step', 'TUR': 'MTUR', 'N2': 'Newton 2-step', 'GD': 'Grad Ascent'}
+LABELS = {'emp' : 'Empirical', 
+          'N1'  : 'Newton 1-step', 
+          'TUR': 'MTUR', 
+          'N2': 'Newton 2-step', 
+          'GD': 'Grad Ascent',
+          'GD3': 'GradAscent2'}
 
 def set_default_device():
     """
@@ -62,6 +67,8 @@ def calc_spin(S_i, J_i, i):
     sigmas['TUR'] = get_EP_MTUR(S_i, i)
     times['TUR']  = time.time() - start_time_i
 
+    S_i_T = S_i.T.contiguous()
+
     sigmas['emp']                            = exp_EP_spin_model(Da, J_i, i)
     if DO_NEWTON2:
         sigmas['N2'], theta2                 = get_EP_Newton2(S_i, theta_N1, Da, i)
@@ -71,14 +78,23 @@ def calc_spin(S_i, J_i, i):
         # x0=theta_N1
         x0=torch.zeros_like(theta_N1)
         if GD_MODE == 2:
-            sigmas['GD'], ctheta = get_EP_Adam2(S_i.T, Da=Da.T, theta_init=x0, i=i) 
+            sigmas['GD'] , ctheta  = get_EP_Adam2(S_i_T, Da=Da, theta_init=x0, i=i) 
+
         elif GD_MODE == 1:
             import gd
-            sigmas['GD'], ctheta = gd.get_EP_gd(S_i.T, i, x0=x0,  num_iters=1000)
+            sigmas['GD'], ctheta = gd.get_EP_gd(S_i_T, i, x0=x0,  num_iters=1000)
         else:
             raise Exception('Uknown GD_MODE')
         thetas['GD']  = ctheta.cpu().numpy()
         times['GD'] = time.time() - start_time_gd_i
+
+        start_time_gd_i = time.time()
+        #print(S_i.is_contiguous())
+        ##print(S_i.T.is_contiguous())
+        #adsf
+        #sigmas['GD3'], ctheta = get_EP_Adam4(S_i_T, Da=Da, theta_init=x0, i=i) 
+        #thetas['GD3']  = ctheta.cpu().numpy()
+        #times['GD3'] = time.time() - start_time_gd_i
 
         if False:
             ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
@@ -129,12 +145,12 @@ def calc(file_name, overwrite=False):
         print()
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         data = np.load(file_name)
-        rep, N = data['S'].shape
         H = data['H']
         assert(np.all(H==0))  # We do not support local fields in our analysis
         with torch.no_grad():
-            Sraw = torch.from_numpy(data["S"]).to(device)
-            F = torch.from_numpy(data["F"]).to(device)
+            S      = torch.from_numpy(data["S"]).to(device)
+            rep, N = S.shape
+            F      = torch.from_numpy(data["F"]).to(device).bool()
 
             if False:
                 vvv=data['J'].reshape([1,-1])[0,:]
@@ -155,8 +171,8 @@ def calc(file_name, overwrite=False):
             print("=" * 70)
 
             for i in pbar:
-                # S_i = S[:, F[i]]
-                S_i = torch.index_select(Sraw, 0, torch.where(F[:,i])[0] ).to(torch.float32) * 2 - 1
+                S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
+                # S_i = torch.index_select(Sraw, 0, torch.where(F[:,i])[0] ).to(torch.float32) * 2 - 1
 
                 res = calc_spin( S_i, J[i,:], i )
 

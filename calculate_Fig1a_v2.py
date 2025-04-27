@@ -64,7 +64,7 @@ if __name__ == "__main__":
         if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
             continue
 
-        res = calc.calc(BASE_DIR+'/'+file_name, overwrite=args.overwrite)
+        res = calc.calc(BASE_DIR+file_name, overwrite=args.overwrite)
         beta = res['beta']
         betas.append( beta )
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
         print(f'theta R2 values: GD={R2['GD']:3f}  N1={R2['N1']:3f}')
 
-        if  beta >= 3.9:
+        if False and beta >= 3.9:
             plt.scatter(xvals, yvals['N1'], label=r'$\hat{\theta} \quad(R^2='+f'{R2['N1']:3.3f}'+')$', s=3)
             plt.scatter(xvals, yvals['GD'], label=r'${\theta}^* \quad(R^2='+f'{R2['GD']:3.3f}'+')$', s=3)
             lims = [1.1*xvals.min(), 1.1*xvals.max()]
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         del xvals, yvals, R2, res, J
         gc.collect()
 
-    EP = np.array(EPvals)
+    EP = np.array(EPvals).T
     betas = np.array(betas)
 
     # -------------------------------
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     if not os.path.exists(SAVE_DATA_DIR):
         print(f'Creating base directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR)
-    filename = f"{SAVE_DATA_DIR}/plot_data.npz"
+    filename = f"{SAVE_DATA_DIR}plot_data.npz"
     print(filename)
     np.savez(filename, EP=EP, betas=betas)
     print(f'Saved calculations to {filename}')
@@ -136,16 +136,18 @@ if __name__ == "__main__":
         cmap = plt.get_cmap('inferno_r')
         colors = [cmap(0.25), cmap(0.5), cmap(0.75),cmap(0.95)]
 
-        plt.figure(figsize=(4, 4))
+        plt.figure(figsize=(5, 5), layout='constrained')
 
         # Plot each EP estimator
-        plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
+        s_ixs = np.argsort(betas)
+        print(betas[s_ixs])
+        # plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
         for i in range(1, EP.shape[0]):
-            plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
-        plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
+            plt.plot(betas[s_ixs], EP[i, s_ixs], label=labels[i], color=colors[i-1], lw=2)
+        plt.plot(betas[s_ixs], EP[0, s_ixs], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
         # Axes and labels
-        plt.axis([betas[0], betas[-1], 0, np.nanmax(EP) * 1.05])
+        plt.axis([betas.min(), betas.max(), 0, np.nanmax(EP) * 1.05])
         plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
         plt.xlabel(r'$\beta$')
 

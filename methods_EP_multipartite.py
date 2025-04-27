@@ -405,10 +405,12 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
 
     return sig_BFGS.item(), theta
     
-    
-def get_EP_Adam(S, theta_init, Da, i, num_iters=1, 
-                     beta1=0.9, beta2=0.999, lr=0.1, eps=1e-8, 
-                     tol=1e-4, skip_warm_up=False, batch_size=64):
+
+
+def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000, 
+                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
+                     tol=1e-4, skip_warm_up=False,
+                     timeout=60):
     """
     Performs multiple Adam-style updates to refine theta estimation.
     
@@ -422,33 +424,66 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
         lr        : learning rate
         eps       : epsilon for numerical stability
         tol       : tolerance for early stopping
+        skip_warm_up : Adam option
+        timeout : maximum second to run
     
     Returns:
-        sig_N2    : final entropy production estimate
-        delta_all : total change in theta (final - initial)
+        sig_gd    : final entropy production estimate
         theta     : final updated theta
     """
-    theta = theta_init.clone()
+
+    nflips = S_i.shape[1]
+
+    theta = torch.cat((theta_init[:i], 
+                       torch.tensor([0.0], device=theta_init.device), 
+                       theta_init[i:])).contiguous()
+
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)
-    
-    N,T=S.shape
-    
-    batches = T // batch_size
+    N = len(theta)
+
+    stime = time.time()
+    twice_S_onlyi = 2*S_i[i,:]
+
+    X = (-torch.einsum('j,ij->ij', twice_S_onlyi, S_i)).contiguous() # S_onlyi[:,None] * S_i
+    # -2 * S_onlyi * S_i # 
+    last_val = -np.inf
+    cur_val  = torch.tensor(np.nan)
+
     for t in range(1, num_iters + 1):
+        thf = theta@X
         
-        perm = torch.randperm(T)
-        for j in range(0, T, batch_size):
-            batch_idx = perm[j:j + batch_size]
-            S_batch = S[:, batch_idx]
-            Da_th, Z = correlations_theta(S, theta, i)
-            Da_th /= Z
+        Y = torch.exp(-thf)
+        Z = torch.mean(Y)
+        S1_S = twice_S_onlyi * Y # -(-2 * S_onlyi) * Y
 
-            grad = remove_i(Da - Da_th, i)
+        #print(S1_S.shape, S_i.shape)
 
+        Da_th = torch.einsum('r,jr->j', S1_S, S_i) / nflips / Z #  @torch.einsum('r,rj->j', S1_S, S_i) / nflips
+        #Da_th /= Z
+
+        cur_val = (theta @ Da - torch.log(Z)).item()
+
+        #return 0, theta_init
+
+        # Early stopping
+        if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
+            break
+        if cur_val > np.log(nflips):
+            break
+
+        last_val = cur_val
+
+        grad = Da - Da_th
+
+        if False:
+            # regular gradient descent
+            theta += lr * grad
+            
+        else:
             # Adam moment updates
             m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * grad.pow(2)
+            v = beta2 * v + (1 - beta2) * (grad**2)
             if skip_warm_up:
                 m_hat = m
                 v_hat = v
@@ -457,25 +492,20 @@ def get_EP_Adam(S, theta_init, Da, i, num_iters=1,
                 v_hat = v / (1 - beta2 ** t)
 
             # Compute parameter update
-            delta_theta = lr / batches* m_hat / (v_hat.sqrt() + eps)
+            delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
 
-            # Apply update to full theta
             theta += delta_theta
 
-            # Optional: early stopping
-            if delta_theta.norm() < tol*(N/10):
-                break
+        theta[i]=0.0
 
-    Dai = remove_i(Da, i)
-    sig_Adam = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
-    return sig_Adam, theta
+    return cur_val, torch.cat((theta[:i], theta[i+1:]))
 
 
 
 
 
 
-def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000, 
+def get_EP_Adam2_bak(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                      tol=1e-4, skip_warm_up=False,
                      timeout=60):
@@ -540,6 +570,9 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
 
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
 
+        #return 0, theta_init
+
+
         # Early stopping
         if t>5 and ((time.time()-stime > timeout) or (np.abs((last_val - cur_val)/(last_val+1e-8)) < tol)):
             break
@@ -587,5 +620,8 @@ def get_EP_Adam2(S_i, Da, theta_init, i, num_iters=1000,
         cur_val = (theta @ Da_noi - torch.log(Z)).item()
         
     return cur_val, theta
+
+
+
 
 
