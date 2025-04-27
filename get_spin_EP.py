@@ -29,10 +29,11 @@ def get_spin_data(i, file_name, cap=None):
     F_i = data["F"][:, i]
     S_i = data["S"][F_i, :]
     J_i = data["J"][i, :]
+    nflips = S_i.shape[0]
     if cap is None:
-        return S_i, J_i
+        return S_i, J_i, nflips
     else:
-        return S_i[:cap, :], J_i
+        return S_i[:cap, :], J_i, nflips
 
 
 def select_device(threshold=0.6):
@@ -51,60 +52,61 @@ def select_device(threshold=0.6):
 
     return device
     
+#def calc_spin(i_args):
+#    i, N, rep, T, file_name, file_name_out = i_args
+
+#    cap=1000000
+#    S_i, J_i, nflips = get_spin_data(i, file_name, cap= cap)
+    
 def calc_spin(i_args):
-    i, N, rep, T, file_name, file_name_out = i_args
+    i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips = i_args
 
-    S_i, J_i = get_spin_data(i, file_name)
-    
-    nflips = S_i.shape[0]
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#    S_i_t = torch.from_numpy(S_i).to(device)
-#    J_i_t = torch.from_numpy(J_i).to(device)
-#    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-#    device = select_device()
-    S_i_t = (torch.from_numpy(S_i)).to(device).float()* 2 - 1  # convert {0,1} → {-1,1}
-    J_i_t = torch.from_numpy(J_i).to(device)
 
-    if S_i.shape[1] <= 10:
-        print(f"  [Warning] Skipping spin {i}: insufficient time steps")
-        return None
+    num_chunks = 5
+#    if S_i_t.shape[1] <= 10:
+#        print(f"  [Warning] Skipping spin {i}: insufficient time steps")
+#        return None
 
 #    print(f"[Spin {i}] Running on device: {device}")
-    S_i_t.to(device)
-    J_i_t.to(device)
+#    S_i_t.to(device)
+#    J_i_t.to(device)
     Pi = nflips / T
 
     t0 = time.time()
-    MTUR = Pi * get_EP_MTUR(S_i_t, i)
+    MTUR = Pi * get_EP_MTUR(S_i_t, i,num_chunks=num_chunks)
     time_tur = time.time() - t0
 
 
     t0 = time.time()
-    sig_N1, theta_N1, Da = get_EP_Newton(S_i_t, i)
+    sig_N1, theta_N1, Da = get_EP_Newton(S_i_t, i,num_chunks=num_chunks)
     N1 = Pi * sig_N1
     theta_N1_np = theta_N1.detach().cpu().numpy()
     time_n1 = time.time() - t0
 
 
     Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
-#    del J_i_t
-#    torch.cuda.empty_cache()
+    del J_i_t
+    torch.cuda.empty_cache()
     
-    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i)   # Second newton step
+    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i,num_chunks=num_chunks)   # Second newton step
 ###    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
     sig_old = sig_N1
     dsig = sig_new-sig_old
     count = 0
-    while dsig/sig_old > 1E-2 and count <10:
+    sig_N2 = sig_new  # Initialize sig_N2 before the loop starts
+    while dsig/sig_old > 1E-2 and count <50:
         count +=1
-#        print(sig_N2,dsig)
-        sig_old=sig_new
+        sig_old = sig_new
         sig_new, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
         dsig = sig_new-sig_old
+        
+        if sig_old>sig_new or torch.isnan(torch.tensor(sig_new)):
+            sig_N2 = sig_old
+            print('break',sig_old, sig_new, count)
+            break
+        else:
+            sig_N2 = sig_new
 #    print(sig_N1,sig_old,sig_new,Emp/Pi)
-    sig_N2 = max(sig_new,sig_old)
 #    sig_N2, theta_N2 = get_EP_Adam2(S_i_t, theta_N1, i)
 
 #    sig_N2, theta_N2 = get_EP_BFGS(S_i_t, theta_N1, Da, i) 
@@ -135,7 +137,7 @@ def calc_spin(i_args):
         time_n2=time_n2,
         Emp=Emp
     )
-    
+    del S_i_t
     torch.cuda.empty_cache()
     gc.collect()
 
@@ -203,33 +205,29 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
         )
         
 
-def calc_spin_group(group_args):
-    indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory = group_args
+##def calc_spin_group(group_args):
+##    indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory = group_args
 
-    if check_memory:
-        wait_time = np.random.rand()*4  # between 0 and 4 seconds
-        time.sleep(wait_time)
-    cuda_available = torch.cuda.is_available()
-    device = torch.device("cuda") if cuda_available else torch.device("cpu")
-    
-    for i in indices:
-        if cuda_available:
-            # GPU memory check loop only if CUDA is available
-            while True and check_memory:
-                torch.cuda.empty_cache()  # Clear cache before checking
-                allocated = torch.cuda.memory_allocated(device)
-                total = torch.cuda.get_device_properties(device).total_memory
-                used_percentage = allocated / total
-                
-                if used_percentage < 0.5:  # Proceed if memory usage is below 80%
-                    break
-                print(f"Waiting for GPU memory (currently {used_percentage:.1f}% used)")
-                time.sleep(1)  # Wait before checking again
-        calc_spin((i, N, rep, T, file_name, file_name_out))
-        torch.cuda.empty_cache()
-        gc.collect()
-        with lock:
-            progress.value += 1
+##    cuda_available = torch.cuda.is_available()
+##    if cuda_available and check_memory:
+##        time.sleep(indices[0]/N*4)
+##    device = torch.device("cuda") if cuda_available else torch.device("cpu")
+
+##    cap=1000000
+##    S_i, J_i, nflips = get_spin_data(i, file_name, cap= cap)
+##    
+##    for i in indices:
+##        if i + 1 < N:
+##            preload_thread = Thread(target=lambda: get_spin_data(i+1, file_name, cap= cap))
+##            preload_thread.start()
+##        calc_spin((i, N, rep, T, file_name, file_name_out, S_i, J_i, nflips))
+##        with lock:
+##            progress.value += 1
+##        del S_i, J_i
+##        # Wait for next preload to finish
+##        if i + 1 < N:
+##            preload_thread.join()
+##            S_i, J_i, nflips = get_spin_data(i+1, file_name, cap= cap)
      
 def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=False, num_processes = 2, overwrite=True, check_memory=True):
     """
@@ -242,6 +240,12 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     Returns:
         np.ndarray: EP estimates [empirical, MTUR, Newton-1, Newton-2]
     """
+    
+    data = np.load(file_name)
+    J = data["J"]
+    H = data["H"]
+    assert np.all(H == 0), "Non-zero local fields are not supported"
+    
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
         results = load_results_from_file(file_name_out, N, return_parameters)
@@ -259,49 +263,102 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
     print("=" * 70)
 
-    data = np.load(file_name)
-    J = data["J"]
-    H = data["H"]
-    assert np.all(H == 0), "Non-zero local fields are not supported"
+
 
     T = N * rep  # Total spin-flip attempts
-
+    cap=None
     if not parallel:
+    
+        class DummyProgress:
+            def __init__(self):
+                self.value = 0
+
+        progress = DummyProgress()
         print(f"[Sequential] Running on a single process")
+
+        preload_depth = 4
+
+        preload_threads = {}
+        preload_results = {}
+
+        # Preload first 4 spins
+        for preload_i in range(min(preload_depth, N)):
+            def preload_func(j=preload_i):
+                preload_results[j] = get_spin_data(j, file_name, cap=cap)
+            thread = Thread(target=preload_func)
+            thread.start()
+            preload_threads[preload_i] = thread
+
+        # Now start computing
         for i in tqdm(range(N), desc="Sequential spin progress"):
-            calc_spin((i, N, rep, T, file_name, file_name_out))
-    else:
-        group_size = int(np.ceil(N / num_processes))
-        grouped_indices = [list(range(i, min(i + group_size, N))) for i in range(0, N, group_size)]
 
-        print(f"[Parallel] Using {num_processes} processes via torch.multiprocessing")
+            # Wait for spin i to be ready
+            if i in preload_threads:
+                preload_threads[i].join()
+                S_i, J_i, nflips = preload_results.pop(i)
+                preload_threads.pop(i)
+            else:
+                S_i, J_i, nflips = get_spin_data(i, file_name, cap=cap)
 
-        ctx = mp.get_context("spawn")  # Required for CUDA
-        manager = ctx.Manager()
-        progress = manager.Value('i', 0)
-        lock = manager.Lock()
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#            if torch.cuda.is_available():
+#                S_i_tensor = torch.as_tensor(S_i).pin_memory()
+#                S_i_t = S_i_tensor.to(device, non_blocking=True).float() * 2 - 1
+#                J_i_tensor = torch.as_tensor(J_i).pin_memory()
+#                J_i_t = J_i_tensor.to(device, non_blocking=True)
+#            else:
+            S_i_t = (torch.from_numpy(S_i)).to(device).float()* 2 - 1  # convert {0,1} → {-1,1}
+            J_i_t = torch.from_numpy(J_i).to(device)
+            del S_i, J_i # Free RAM
+            
+            # Compute
+            calc_spin((i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips))
+            progress.value += 1
 
-        total_tasks = sum(len(g) for g in grouped_indices)
+            # Preload next spin if needed
+            next_spin = i + preload_depth
+            if next_spin < N and next_spin not in preload_threads:
+                def preload_func(j=next_spin):
+                    preload_results[j] = get_spin_data(j, file_name, cap=cap)
+                thread = Thread(target=preload_func)
+                thread.start()
+                preload_threads[next_spin] = thread
 
-        with tqdm(total=total_tasks, desc="Global spin progress", position=0) as pbar:
-            def update_bar():
-                prev = 0
-                while progress.value < total_tasks:
-                    with lock:
-                        new = progress.value
-                    if new > prev:
-                        pbar.update(new - prev)
-                        prev = new
-                    time.sleep(0.1)
 
-            updater = Thread(target=update_bar)
-            updater.start()
 
-            args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory) for indices in grouped_indices]
-            with ctx.Pool(processes=num_processes) as pool:
-                pool.map(calc_spin_group, args_list)
+#    else:
+#        grouped_indices = np.array_split(np.arange(N), num_processes)
+#        grouped_indices = [list(g) for g in grouped_indices]
 
-            updater.join()
+#        print(f"[Parallel] Using {num_processes} processes via torch.multiprocessing")
+
+#        ctx = mp.get_context("spawn")  # Required for CUDA
+#        manager = ctx.Manager()
+#        progress = manager.Value('i', 0)
+#        lock = manager.Lock()
+#        gpu_lock = manager.Lock()
+#        
+#        total_tasks = sum(len(g) for g in grouped_indices)
+
+#        with tqdm(total=total_tasks, desc="Global spin progress", position=0) as pbar:
+#            def update_bar():
+#                prev = 0
+#                while progress.value < total_tasks:
+#                    with lock:
+#                        new = progress.value
+#                    if new > prev:
+#                        pbar.update(new - prev)
+#                        prev = new
+#                    time.sleep(0.1)
+
+#            updater = Thread(target=update_bar)
+#            updater.start()
+
+#            args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, gpu_lock) for indices in grouped_indices]
+#            with ctx.Pool(processes=num_processes) as pool:
+#                pool.map(calc_spin_group, args_list)
+
+#            updater.join()
 
         
     # Merge individual spin files into a single merged HDF5 file.
@@ -325,8 +382,8 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     if not return_parameters:
         return np.array([S_Emp, S_TUR, S_N1, S_N2])
     else:
-        theta_N1 = np.array(theta_N1_list)
-        theta_N2 = np.array(theta_N2_list)
+#        theta_N1 = np.array(theta_N1_list)
+#        theta_N2 = np.array(theta_N2_list)
         return np.array([S_Emp, S_TUR, S_N1, S_N2]), theta_N1, theta_N2, J
         
         
