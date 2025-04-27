@@ -609,7 +609,7 @@ def get_EP_Adam3(S_i, Da, theta_init, i, num_iters=1000,
         theta     : final updated theta
     """
 
-    nflips = S_i.shape[1]
+    nflips = S_i.shape[0]
 
 
     theta = theta_init.clone()
