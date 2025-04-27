@@ -328,7 +328,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         sig_old = sig_new
         theta_old = theta_N.clone()
         sig_new = np.nan
-        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks,delta=None)
 
         dsig = sig_new - sig_old
         count += 1
