@@ -283,7 +283,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-2, max_iter=50):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
     sig_old = sig_init
     sig_new, theta_N = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
     dsig = sig_new - sig_old
