@@ -287,30 +287,42 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
 
+    # Remove index i from Da for calculating log-partition contribution
+    Dai = remove_i(Da, i)
+    Dai_th = remove_i(Da_th, i)
+    
+    delta = delta_theta @ Da_th / (delta_theta @ (Dai-Da_th))
+    print('delta',delta)
     # Apply the update
     theta = theta_init + delta_theta
 
-    # Remove index i from Da for calculating log-partition contribution
-    Dai = remove_i(Da, i)
+
 
     # Compute surrogate objective (e.g., log-partition or entropy production)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=50):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
     nflips,N = S.shape
     sig_old = sig_init
-    sig_new, theta_N = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
-    dsig = sig_new - sig_old
+    theta_N = theta_init.clone()
+    dsig = sig_old
     count = 0
-    sig_N = sig_new
     eps = 1e-8  # small epsilon to avoid division by zero
-
+    sig_new = sig_init
     while count < max_iter:
-        rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
+    
+        sig_old = sig_new
+        theta_old = theta_N.clone()
+        sig_new = np.nan
+        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
 
-        if rel_change <= tol:
+        dsig = sig_new - sig_old
+        count += 1
+        rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
+        Z= torch.log(norm_theta(S, theta_N, i))
+        if rel_change <= tol:# or Z>0.1:
             break
 
         #print(sig_new, np.log(nflips))
@@ -318,18 +330,10 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
             #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
             break 
         if sig_new < sig_old or np.isnan(sig_new):
-            #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
-            sig_N = sig_old
-            break
+            print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            return sig_new, theta_N
         
-        sig_old = sig_new
-        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
-
-        dsig = sig_new - sig_old
-        sig_N = sig_new
-        count += 1
-
-    return sig_N, theta_N
+    return sig_new, theta_N
 
 
 def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
@@ -399,6 +403,7 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
 
     return sig_N, theta_N    
 
+>>>>>>> refs/remotes/origin/main
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
