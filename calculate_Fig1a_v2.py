@@ -36,7 +36,7 @@ if __name__ == "__main__":
     #                     help="Mean interaction coupling (default: 1.0)")
     # parser.add_argument("--DJ", type=float, default=0.5,
     #                     help="Variance of the quenched disorder (default: 0.5)")
-    parser.add_argument('--no_plot', action='store_true', default=False,
+    parser.add_argument('--noplot', action='store_true', default=False,
                          help='Disable plotting if specified')
     # parser.add_argument("--patterns", type=int, default=None,
     #                     help="Hopfield pattern density (default: None).")
@@ -77,13 +77,13 @@ if __name__ == "__main__":
         betas.append( beta )
 
         results.append(res)
-        EPvals.append( [res['emp'], res['TUR'], res['N1'], res['GD']] ) 
+        EPvals.append( [res['emp'], res['TUR'], res['N1'], res['NS'],res['NSH']] ) 
 
         J      = res['J']
         xvals = (J - J.T)[:]
         yvals = {}
         R2    = {}
-        for k in ['N1','GD']:
+        for k in ['N1','NSH']:
             Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
                                 for i,m in enumerate(res['theta_'+k])])
             yy = (Thetas - Thetas.T)[:]
@@ -91,7 +91,7 @@ if __name__ == "__main__":
             R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
             yvals[k]=yy
 
-        print(f'theta R2 values: GD={R2['GD']:3f}  N1={R2['N1']:3f}')
+        print(f'theta R2 values: NSH={R2['NSH']:3f}  N1={R2['N1']:3f}')
 
         if False and beta >= 3.9:
             plt.scatter(xvals, yvals['N1'], label=r'$\hat{\theta} \quad(R^2='+f'{R2['N1']:3.3f}'+')$', s=3)
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     np.savez(filename, EP=EP, betas=betas)
     print(f'Saved calculations to {filename}')
 
-    if not args.no_plot:
+    if not args.noplot:
         # -------------------------------
         # Plot Results
         # -------------------------------
@@ -139,6 +139,7 @@ if __name__ == "__main__":
             r'$\widehat{\Sigma}_{\bm g}$', 
             # r'${\Sigma}_{\bm g}$',
             r'${\Sigma}_{\bm g}$',
+            r'${\Sigma}_{\bm g}^{ho}$',
         ]
 
         cmap = plt.get_cmap('inferno_r')

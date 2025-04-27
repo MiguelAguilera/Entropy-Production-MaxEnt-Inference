@@ -65,7 +65,7 @@ def correlations_theta(S, theta, i):
     """
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    theta_padded = add_i(theta,i)
     thf = (-2 * S[:, i]) * (S @ theta_padded)
     S1_S = -(-2 * S[:, i]) * torch.exp(-thf)
     Da = S1_S @ S / nflips
@@ -119,7 +119,7 @@ def norm_theta(S, theta, i):
     """
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
-    theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=theta.device), theta[i:]))
+    theta_padded = add_i(theta,i)
     thf = (-2 * S[:, i]) * (S @ theta_padded)
     Z = torch.sum(torch.exp(-thf)) / nflips
     return Z
@@ -153,6 +153,11 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     """
     Solve the linear system to compute theta using regularized inversion.
     """
+
+    assert not torch.isnan(Da).any() 
+    assert not torch.isnan(Da_th).any() 
+    assert not torch.isnan(Ks_th).any() 
+
     Dai    = remove_i(Da, i)
     Dai_th = remove_i(Da_th, i)
     Ks_no_diag_th = K_nodiag(Ks_th, i)
@@ -169,20 +174,24 @@ def solve_linear_theta(Da, Da_th, Ks_th, i, eps=1e-5, method='QR'):
     if method=='LS':
         dtheta = torch.linalg.lstsq(Ks_no_diag_th + eps * I, rhs_th).solution
     else:
+        dtheta = None
         while True:
+            if eps > 1:
+                print('Something is wrong, cannot regularize enough')
+                return torch.nan + torch.zeros_like(Dai)
             try:
                 if method=='solve':
                     dtheta = torch.linalg.solve(Ks_no_diag_th + eps * I, rhs_th)
                 elif method=='QR':
                     Q, R = torch.linalg.qr(Ks_no_diag_th + eps * I)
-                    dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
-                if not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
+                    # dtheta = torch.linalg.solve(R, Q.T @ rhs_th)
+                    dtheta = torch.linalg.solve_triangular( R, (Q.T @ rhs_th).unsqueeze(1), upper=True).squeeze()
+
+                if dtheta is not None and not torch.isinf(dtheta).any() and not torch.isnan(dtheta).any():
                     break
             except torch._C._LinAlgError:
-#                eps *= 10  # Increase regularization if matrix is singular
-#                print(f"Matrix is singular, increasing epsilon to {eps}")
-                dtheta = torch.linalg.lstsq(Ks_no_diag_th + eps * I, rhs_th).solution
-                break
+                print(f"Matrix is singular, increasing epsilon {eps} by 10")
+            eps *= 10  
         
     return dtheta
 
@@ -264,6 +273,10 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
 
+    if torch.isinf(Ks_th).any():
+        # Error occured, usually means theta is too big
+        return np.nan, theta_init*np.nan
+
     # Compute Newton step: Δθ = H⁻¹ (Da - Da_th)
     delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
 
@@ -274,18 +287,24 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
 
+    # Remove index i from Da for calculating log-partition contribution
+    Dai = remove_i(Da, i)
+    Dai_th = remove_i(Da_th, i)
+    
+    delta = delta_theta @ Da_th / (delta_theta @ (Dai-Da_th))
+    print('delta',delta)
     # Apply the update
     theta = theta_init + delta_theta
 
-    # Remove index i from Da for calculating log-partition contribution
-    Dai = remove_i(Da, i)
+
 
     # Compute surrogate objective (e.g., log-partition or entropy production)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10,delta=0.5):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
+    nflips,N = S.shape
     sig_old = sig_init
     theta_N = theta_init.clone()
     dsig = sig_old
@@ -306,11 +325,85 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         if rel_change <= tol:# or Z>0.1:
             break
 
+        #print(sig_new, np.log(nflips))
+        if sig_new > np.log(nflips):
+            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
+            break 
         if sig_new < sig_old or np.isnan(sig_new):
             print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             return sig_new, theta_N
-   
+        
     return sig_new, theta_N
+
+
+def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
+    nflips = int(S.shape[0]/2)
+    #print(S.shape, nflips)
+    S_trn = S[:nflips,:]
+    #print(S.shape, nflips)
+    S_tst = S[nflips:,:]
+    Dai_tst = remove_i(correlations(S_tst,i),i)
+
+
+    def get_test_objective(theta):
+        return (theta @ Dai_tst - torch.log(norm_theta(S_tst, theta, i))).item()
+
+    sig_new_trn, theta_N, Da = get_EP_Newton(S_trn, i)
+    #sig_new, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
+    sig_new_tst = get_test_objective(theta_N)
+    sig_old_trn = sig_old_tst = np.nan 
+    dsig_trn    = dsig_tst    = np.nan
+
+    count = 0
+    sig_N = sig_new_tst
+    eps = 1e-8  # small epsilon to avoid division by zero
+
+    if np.isnan(sig_new_tst) or np.isinf(sig_new_tst):
+        return sig_new_trn, theta_N 
+
+    while count < max_iter:
+        dsig_trn = sig_new_trn - sig_old_trn
+        dsig_tst = sig_new_tst - sig_old_tst
+
+        rel_change_trn = np.abs(dsig_trn) / (np.abs(sig_old_trn) + eps)
+        rel_change_tst = np.abs(dsig_tst) / (np.abs(sig_old_tst) + eps)
+
+        if rel_change_trn <= tol or rel_change_tst <= tol:
+            sig_N = sig_old_tst
+            break
+
+        if sig_new_tst > np.log(nflips) or sig_new_trn > np.log(nflips):
+            #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
+            sig_N = sig_old_tst
+            break 
+
+        if sig_new_tst < sig_old_tst or sig_new_trn < sig_old_trn: # early stopping
+            sig_N = sig_old_tst
+            break
+
+        if np.isnan(sig_new_tst) or np.isnan(sig_new_trn) or np.isinf(sig_new_tst) or np.isinf(sig_new_trn):
+            #print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            sig_N = sig_old_tst
+            break
+
+
+        sig_old_trn = sig_new_trn
+        sig_new_trn, theta_N = get_EP_Newton2(S_trn, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        
+        sig_old_tst = sig_new_tst
+        sig_new_tst = get_test_objective(theta_N)
+
+
+        sig_N    = sig_new_tst
+        count   += 1
+
+    #if np.isnan(sig_N):
+    #    print(sig_new_tst, sig_old_tst, count)
+    #    asdf
+
+    return sig_N, theta_N    
+
+>>>>>>> refs/remotes/origin/main
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
@@ -395,7 +488,8 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
 
     return sig_BFGS.item(), theta
     
-def get_objective(S_i, Da, theta,i):
+def get_objective_numpy(S_i, Da, theta,i):
+    # Perform calculation using float64 arithmetic for more accuracy
     Dai      = remove_i(Da, i).cpu().numpy().astype('float64')
     theta_np = theta.cpu().numpy().astype('float64')
     Snp      = S_i.cpu().numpy().astype('float64')
@@ -403,9 +497,12 @@ def get_objective(S_i, Da, theta,i):
     S_without_i = np.hstack((Snp[:, :i], Snp[:, i+1:]))
     X = -2 * S_only_i[:,None]*S_without_i
     thf = X@theta_np
-    Y = np.exp(-thf)
-    Z = np.mean(Y)
+    Z = np.exp(-thf).mean()
     return theta_np @ Dai - np.log(Z)
+
+
+def add_i(x,i):
+    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
 
 def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000, 
                      beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
@@ -436,9 +533,7 @@ def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000,
 
     nflips = S_i.shape[1]
 
-    theta = torch.cat((theta_init[:i], 
-                       torch.tensor([0.0], device=theta_init.device), 
-                       theta_init[i:])).contiguous()
+    theta = add_i(theta_init, i)
 
     m = torch.zeros_like(theta)
     v = torch.zeros_like(theta)
