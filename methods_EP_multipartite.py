@@ -296,12 +296,10 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         while np.abs(dlogZ)>0.01:
             alpha *= 0.95
             dlogZ = alpha * d1 + alpha**2 * d2
-        theta = theta_init + alpha*delta_theta
+        theta = theta_init + alpha*delta_theta/2
     # Remove index i from Da for calculating log-partition contribution
 
 
-
-    
     
 #    if delta is not None:
 #        max_step = delta * torch.norm(theta_init)
