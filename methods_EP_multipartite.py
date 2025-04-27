@@ -302,13 +302,14 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         dsig = sig_new - sig_old
         count += 1
         rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
-        if rel_change <= tol:
+        Z= torch.log(norm_theta(S, theta_N, i))
+        if rel_change <= tol:# or Z>0.1:
             break
 
         if sig_new < sig_old or np.isnan(sig_new):
             print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             return sig_new, theta_N
-
+   
     return sig_new, theta_N
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
