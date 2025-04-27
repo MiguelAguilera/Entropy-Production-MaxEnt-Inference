@@ -2,10 +2,8 @@ import os, argparse, time, pickle, psutil
 import numpy as np
 from collections import defaultdict 
 from tqdm import tqdm
-import gc
+#import gc
 
-import matplotlib.pyplot as plt 
-import seaborn as sns
             
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
@@ -31,19 +29,16 @@ def set_default_device():
         device = torch.device("mps")
         # Set MPS as default device
         torch.set_default_device(device)
-        print(f"Set MPS as default device: {device}")
         import warnings
         warnings.filterwarnings("ignore", message="The operator 'aten::_linalg_solve_ex.result' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
     elif torch.cuda.is_available():
         device = torch.device("cuda")
         # Set CUDA as default device
         torch.set_default_device(device)
-        print(f"Set CUDA as default device: {device}")
     else:
         device = torch.device("cpu")
         # CPU is already the default, but we can set it explicitly
         torch.set_default_device(device)
-        print("Set CPU as default device")
     return device
 def empty_cache():
     if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
@@ -114,6 +109,8 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
         #times['BFGS'] = time.time() - start_time_gd_i
 
         if False:  # histogram of g outcomes
+            import matplotlib.pyplot as plt 
+            import seaborn as sns
             ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
             stats = (ctheta2@S_i.T).cpu().numpy()
             stats -= stats.mean()
@@ -204,11 +201,11 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
 
                 del S_i, sigmas, times, thetas, res
                 
-                if i % 20 == 19:
-                    empty_cache()
-                    #stime = time.time()
-                    gc.collect()
-                    #print(time.time()-stime)
+                # if i % 20 == 19:
+                #     empty_cache()
+                #     #stime = time.time()
+                #     gc.collect()
+                #     #print(time.time()-stime)
                 memory_info  = process.memory_info()
                 memory_usage = memory_info.rss / 1024 / 1024
                 pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} NS={ep_sums['NS']:3.5f} NSh={ep_sums['NSH']:3.5f} mem={memory_usage:.1f}mb')
@@ -244,10 +241,15 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Estimate EP for file.")
     parser.add_argument("file_name", type=str)
+    parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
+    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
+    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
 
     args = parser.parse_args()
 
-    calc(args.file_name)
+    calc(args.file_name, overwrite=args.overwrite, 
+            grad=not args.nograd, 
+            newton=not args.nonewton)
 
 
 

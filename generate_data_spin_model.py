@@ -127,7 +127,7 @@ if not os.path.exists(BASE_DIR_MODE):
 for beta_ix, beta in enumerate(betas):
     beta = np.round(beta, 8)  # Avoid floating-point inconsistencies in filenames
 
-    print(f"\n** Running simulation {beta_ix+1}/{len(betas)} for N={args.size}, β={beta} **", flush=True)
+    print(f"\n# ** Running simulation {beta_ix+1}/{len(betas)} for N={args.size}, β={beta} **", flush=True)
 
     # Construct file name based on mode (sequential or parallel)
     if args.patterns is None:
@@ -151,10 +151,10 @@ for beta_ix, beta in enumerate(betas):
     # Handle file existence
     if os.path.exists(file_name):
         if not overwrite:
-            print(f"File {file_name} exists, skipping simulation.")
+            print(f"# File {file_name} exists, skipping simulation.")
             continue
         else:
-            print(f"File {file_name} exists, overwriting.")
+            print(f"# File {file_name} exists, overwriting.")
             os.remove(file_name)
 
     start_time = time.time()

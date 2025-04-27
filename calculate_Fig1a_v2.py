@@ -67,64 +67,79 @@ if __name__ == "__main__":
             continue
 
         # Main call!
-        res = calc.calc(BASE_DIR+file_name, 
-            overwrite=args.overwrite, 
-            grad=not args.nograd, 
-            newton=not args.nonewton)
+        if args.noplot:
+            print(f'python3 calc.py {BASE_DIR+file_name} '+
+                   ('--overwrite ' if args.overwrite else '')+
+                   ('--nonewton  ' if args.nonewton  else '')+
+                   ('--nograd    ' if args.nograd    else ''))
+            
+        else:
+            res = calc.calc(BASE_DIR+file_name, 
+                overwrite=args.overwrite, 
+                grad=not args.nograd, 
+                newton=not args.nonewton)
 
 
-        beta = res['beta']
-        betas.append( beta )
+            beta = res['beta']
+            betas.append( beta )
 
-        results.append(res)
-        EPvals.append( [res['emp'], res['TUR'], res['N1'], res['NS'],res['NSH']] ) 
+            results.append(res)
+            EPvals.append( [res['emp'], res['TUR'], res['N1'], res['NS'],res['NSH']] ) 
 
-        J      = res['J']
-        xvals = (J - J.T)[:]
-        yvals = {}
-        R2    = {}
-        for k in ['N1','NSH']:
-            Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
-                                for i,m in enumerate(res['theta_'+k])])
-            yy = (Thetas - Thetas.T)[:]
+            J      = res['J']
+            xvals = (J - J.T)[:]
+            yvals = {}
+            R2    = {}
+            r2methods = ['N1','NSH','NS']
+            r2labels = {'N1':r'$\hat{\theta}$','NS':r'$\theta^*$','NSH':r'$\theta^*_{ho}$' }
+            for k in r2methods:
+                Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
+                                    for i,m in enumerate(res['theta_'+k])])
+                yy = (Thetas - Thetas.T)[:]
 
-            R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
-            yvals[k]=yy
+                R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
+                print(np.mean( (yy-xvals)**2 ),np.mean( (yy-yy.mean())**2 ), yy.mean())
+                print(np.isnan(yy).any())
+                yvals[k]=yy
 
-        print(f'theta R2 values: NSH={R2['NSH']:3f}  N1={R2['N1']:3f}')
+            print(f'theta R2 values: NSH={R2['NSH']:3f}  N1={R2['N1']:3f}')
 
-        if False and beta >= 3.9:
-            plt.scatter(xvals, yvals['N1'], label=r'$\hat{\theta} \quad(R^2='+f'{R2['N1']:3.3f}'+')$', s=3)
-            plt.scatter(xvals, yvals['GD'], label=r'${\theta}^* \quad(R^2='+f'{R2['GD']:3.3f}'+')$', s=3)
-            lims = [1.1*xvals.min(), 1.1*xvals.max()]
-            plt.xlim( *lims )
-            plt.ylim( *lims )
-            plt.plot(lims, lims, lw=1, ls=":", c='k')
-            plt.legend()
-            plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
-            plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
-            plt.title(fr'$\beta={beta:3.3f}$')
-            plt.show()
+            if 4>beta >= 1.9:
+                m1,m2=0,0
+                for k in r2methods:
+                    m1 = max(m1,-yvals[k].min())
+                    m2 = max(m2, yvals[k].max())
+                    plt.scatter(xvals, yvals[k], alpha=0.3, 
+                        label=r2labels[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
+                lims = [-1.1*m1, 1.1*m2]
+                plt.xlim( *lims )
+                plt.ylim( *lims )
+                plt.plot(lims, lims, lw=1, ls=":", c='k')
+                plt.legend()
+                plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
+                plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
+                plt.title(fr'$\beta={beta:3.3f}$')
+                plt.show()
 
-        del xvals, yvals, R2, res, J
-        gc.collect()
+            del xvals, yvals, R2, res, J
+            gc.collect()
 
-    EP = np.array(EPvals).T
-    betas = np.array(betas)
-
-    # -------------------------------
-    # Save results
-    # -------------------------------
-    SAVE_DATA_DIR = BASE_DIR
-    if not os.path.exists(SAVE_DATA_DIR):
-        print(f'Creating base directory: {SAVE_DATA_DIR}')
-        os.makedirs(SAVE_DATA_DIR)
-    filename = f"{SAVE_DATA_DIR}plot_data.npz"
-    print(filename)
-    np.savez(filename, EP=EP, betas=betas)
-    print(f'Saved calculations to {filename}')
 
     if not args.noplot:
+        EP = np.array(EPvals).T
+        betas = np.array(betas)
+
+        # # -------------------------------
+        # # Save results
+        # # -------------------------------
+        # SAVE_DATA_DIR = BASE_DIR
+        # if not os.path.exists(SAVE_DATA_DIR):
+        #     print(f'Creating base directory: {SAVE_DATA_DIR}')
+        #     os.makedirs(SAVE_DATA_DIR)
+        # filename = f"{SAVE_DATA_DIR}plot_data.npz"
+        # print(filename)
+        # np.savez(filename, EP=EP, betas=betas)
+        # print(f'Saved calculations to {filename}')
         # -------------------------------
         # Plot Results
         # -------------------------------
