@@ -409,10 +409,6 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
         sig_N    = sig_new_tst
         count   += 1
 
-    #if np.isnan(sig_N):
-    #    print(sig_new_tst, sig_old_tst, count)
-    #    asdf
-
     return sig_N, theta_N    
 
             
