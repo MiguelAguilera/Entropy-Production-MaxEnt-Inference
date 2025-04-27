@@ -397,13 +397,10 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
         sig_N    = sig_new_tst
         count   += 1
 
-    #if np.isnan(sig_N):
-    #    print(sig_new_tst, sig_old_tst, count)
-    #    asdf
-
     return sig_N, theta_N    
 
->>>>>>> refs/remotes/origin/main
+
+
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
