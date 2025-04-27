@@ -124,59 +124,74 @@ def calc_spin(i_args):
 #    time_adam = time.time() - t0
 
     # Modify output file name to include spin index
-    spin_file_name = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+#    spin_file_name = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
 
-    # Save directly to .npz file
-    np.savez(
-        spin_file_name,
-        MTUR=MTUR,
-        time_tur=time_tur,
-        N1=N1,
-        theta_N1=theta_N1_np,
-        time_n1=time_n1,
-        N2=N2,
-        theta_N2=theta_N2_np,
-        time_n2=time_n2,
-        Emp=Emp
-    )
+#    # Save directly to .npz file
+#    np.savez(
+#        spin_file_name,
+#        MTUR=MTUR,
+#        time_tur=time_tur,
+#        N1=N1,
+#        theta_N1=theta_N1_np,
+#        time_n1=time_n1,
+#        N2=N2,
+#        theta_N2=theta_N2_np,
+#        time_n2=time_n2,
+#        Emp=Emp
+#    )
     del S_i_t
     torch.cuda.empty_cache()
     gc.collect()
 
-
+    # Save into h5
+    with h5py.File(file_name_out, 'a') as f_out:
+        spin_group_name = f"spins/{i}"
+        if spin_group_name in f_out:
+            del f_out[spin_group_name]  # 🚀 delete old group if it already exists
+        group = f_out.create_group(spin_group_name)
+        group.create_dataset("MTUR", data=MTUR)
+        group.create_dataset("time_tur", data=time_tur)
+        group.create_dataset("N1", data=N1)
+        group.create_dataset("theta_N1", data=theta_N1_np)
+        group.create_dataset("time_n1", data=time_n1)
+        group.create_dataset("N2", data=N2)
+        group.create_dataset("theta_N2", data=theta_N2_np)
+        group.create_dataset("time_n2", data=time_n2)
+        group.create_dataset("Emp", data=Emp)
         
-def merge_spins(file_name_out, N):
-    """
-    Merge individual spin HDF5 files into a single merged file.
+        
+#def merge_spins(file_name_out, N):
+#    """
+#    Merge individual spin HDF5 files into a single merged file.
 
-    Parameters:
-        file_name_out (str): Base output file (e.g., 'data_N_100_beta_2.5.h5')
-        N (int): System size (number of spins)
+#    Parameters:
+#        file_name_out (str): Base output file (e.g., 'data_N_100_beta_2.5.h5')
+#        N (int): System size (number of spins)
 
-    Returns:
-        str: Path to the merged HDF5 file
-    """
-    import os
-    import h5py
+#    Returns:
+#        str: Path to the merged HDF5 file
+#    """
+#    import os
+#    import h5py
 
-    print(f"[Merging] Target merged file: {file_name_out}")
-    
-    with h5py.File(file_name_out, 'w') as f_out:
-        for i in range(N):
-            spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
-            if not os.path.exists(spin_file):
-                print(f"[Error] Spin file not found: {spin_file}")
-                exit()
+#    print(f"[Merging] Target merged file: {file_name_out}")
+#    
+#    with h5py.File(file_name_out, 'w') as f_out:
+#        for i in range(N):
+#            spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+#            if not os.path.exists(spin_file):
+#                print(f"[Error] Spin file not found: {spin_file}")
+#                exit()
 
-            data = np.load(spin_file)
-            for key in data:
-                dataset_name = f"{key}_{i}"
-                f_out.create_dataset(dataset_name, data=data[key])
-    for i in range(N):
-        spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
-        os.remove(spin_file)
-    return file_name_out
-    
+#            data = np.load(spin_file)
+#            for key in data:
+#                dataset_name = f"{key}_{i}"
+#                f_out.create_dataset(dataset_name, data=data[key])
+#    for i in range(N):
+#        spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
+#        os.remove(spin_file)
+#    return file_name_out
+#    
 def load_results_from_file(file_name_out, N, return_parameters=False):
     S_Emp = S_TUR = S_N1 = S_N2 = time_tur = time_n1 = time_n2 = 0
     theta_N1_list = []
@@ -184,18 +199,19 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
 
     with h5py.File(file_name_out, 'r') as f_out:
         for i in range(N):
-            if f"Emp_{i}" not in f_out:
+            if f"spins/{i}/Emp" not in f_out:
                 continue
-            S_Emp += f_out[f"Emp_{i}"][()]
-            S_TUR += f_out[f"MTUR_{i}"][()]
-            S_N1 += f_out[f"N1_{i}"][()]
-            S_N2 += f_out[f"N2_{i}"][()]
-            time_tur += f_out[f"time_tur_{i}"][()]
-            time_n1 += f_out[f"time_n1_{i}"][()]
-            time_n2 += f_out[f"time_n2_{i}"][()]
+            group = f_out[f"spins/{i}"]
+            S_Emp += group["Emp"][()]
+            S_TUR += group["MTUR"][()]
+            S_N1 += group["N1"][()]
+            S_N2 += group["N2"][()]
+            time_tur += group["time_tur"][()]
+            time_n1 += group["time_n1"][()]
+            time_n2 += group["time_n2"][()]
             if return_parameters:
-                theta_N1_list.append(f_out[f"theta_N1_{i}"][:])
-                theta_N2_list.append(f_out[f"theta_N2_{i}"][:])
+                theta_N1_list.append(group["theta_N1"][:])
+                theta_N2_list.append(group["theta_N2"][:])
 
     if not return_parameters:
         return S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2
@@ -366,8 +382,9 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
 #            updater.join()
 
         
-    # Merge individual spin files into a single merged HDF5 file.
-    merge_spins(file_name_out, N)
+#    # Merge individual spin files into a single merged HDF5 file.
+#    merge_spins(file_name_out, N)
+
     # Aggregate results from HDF5
     results = load_results_from_file(file_name_out, N, return_parameters)
 
@@ -414,7 +431,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_steps", type=int, default=128, help="Number of time steps (default: 128)")
     parser.add_argument("--patterns", type=int, default=None,
                         help="Hopfield pattern density (optional)")
-    parser.add_argument("--merge", action="store_true", help="If set, merge all spin outputs for the given beta")
+#    parser.add_argument("--merge", action="store_true", help="If set, merge all spin outputs for the given beta")
 
     args = parser.parse_args()
     beta = round(args.beta, 8)
@@ -433,18 +450,18 @@ if __name__ == "__main__":
         file_in = f"{base_dir}/sequential/run_reps_{args.rep}_steps_{args.num_steps}_{args.N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
         file_out = f"{out_dir}/results_N_{args.N}_beta_{beta}_patterns_{args.patterns}.h5"
 
-    if args.merge:
-        print("=" * 70)
-        print(f"[MERGE MODE] Merging spin results for beta = {beta}")
-        print(f"Output merged file: {file_out}")
-        print("=" * 70)
-        merge_spins(file_out, args.N)
-    else:
-        print("=" * 70)
-        print(f"Running single spin calculation for i = {args.i}, beta = {beta:.4f}")
-        print(f"Input:  {file_in}")
-        print(f"Output: {file_out}")
-        print("=" * 70)
-        calc_spin((args.i, args.N, T, file_in, file_out))
+#    if args.merge:
+#        print("=" * 70)
+#        print(f"[MERGE MODE] Merging spin results for beta = {beta}")
+#        print(f"Output merged file: {file_out}")
+#        print("=" * 70)
+#        merge_spins(file_out, args.N)
+#    else:
+    print("=" * 70)
+    print(f"Running single spin calculation for i = {args.i}, beta = {beta:.4f}")
+    print(f"Input:  {file_in}")
+    print(f"Output: {file_out}")
+    print("=" * 70)
+    calc_spin((args.i, args.N, T, file_in, file_out))
 
 
