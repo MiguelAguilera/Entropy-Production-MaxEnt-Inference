@@ -272,7 +272,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
     # Normalize by partition function Z
     Da_th /= Z
     Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
-
+    
     if torch.isinf(Ks_th).any():
         # Error occured, usually means theta is too big
         return np.nan, theta_init*np.nan
@@ -286,24 +286,38 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         step_norm = torch.norm(delta_theta)
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
-
+    else:
+        Dai = remove_i(Da, i)
+        Dai_th = remove_i(Da_th, i)
+        alpha = 1
+        d1 = (delta_theta @ Dai_th).item()
+        d2 = (delta_theta @ (Dai-Dai_th)).item() / 2
+        dlogZ = alpha * d1 + alpha**2 * d2
+        while np.abs(dlogZ)>0.01:
+            alpha *= 0.95
+            dlogZ = alpha * d1 + alpha**2 * d2
+        theta = theta_init + alpha*delta_theta
     # Remove index i from Da for calculating log-partition contribution
-    Dai = remove_i(Da, i)
-    Dai_th = remove_i(Da_th, i)
+
+
+
     
-    delta = delta_theta @ Da_th / (delta_theta @ (Dai-Da_th))
-    print('delta',delta)
-    # Apply the update
-    theta = theta_init + delta_theta
-
-
+    
+#    if delta is not None:
+#        max_step = delta * torch.norm(theta_init)
+#        step_norm = torch.norm(delta_theta)
+#        if step_norm > max_step:
+#            delta_theta = delta_theta * (max_step / step_norm)
+##    print('delta',delta, delta_theta @ (2*Dai_th-Dai))
+#    theta = theta_init + delta*delta_theta
 
     # Compute surrogate objective (e.g., log-partition or entropy production)
+    Dai = remove_i(Da, i)
     sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=100):
     nflips,N = S.shape
     sig_old = sig_init
     theta_N = theta_init.clone()
@@ -403,7 +417,6 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
 
     return sig_N, theta_N    
 
->>>>>>> refs/remotes/origin/main
             
 def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-6):
     """
