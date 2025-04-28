@@ -127,5 +127,4 @@ if __name__ == "__main__":
 
         # Save and show figure
         plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
-        print('save')
         plt.show()
