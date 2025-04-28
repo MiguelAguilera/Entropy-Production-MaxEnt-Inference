@@ -312,7 +312,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
     return sig_N2.item(), theta
 
 
-def get_EP_TRON(S, theta_init, Da, i, th=0.1, num_chunks=None):
+def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.0001, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -376,8 +376,179 @@ def get_EP_TRON(S, theta_init, Da, i, th=0.1, num_chunks=None):
     return sig_N2.item(), theta
 
 
-
     
+
+
+def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
+    max_iters=20, tol=1e-3, 
+    trust_radius_init=0.5, trust_radius_max=1.0,
+    eta0=0.0, eta1=0.25, eta2=0.75):
+    theta = theta_init.clone().detach().requires_grad_(False)
+    trust_radius = trust_radius_init
+
+    Dai = remove_i(Da, i)
+    
+    for iteration in range(max_iters):
+    
+        Da_th, _ = correlations_theta(S, theta, i)
+        grad = Dai - remove_i(Da_th, i)
+        grad_norm = grad.norm()
+
+        if grad_norm < tol:
+#            print(f"Converged at iteration {iteration}")
+            break
+
+        Ks_th = correlations4_theta(S, theta, i, num_chunks)
+        Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
+        H = K_nodiag(Ks_th, i)
+        # Solve the trust region subproblem approximately
+        # using conjugate gradient with truncation
+        p = steihaug_toint_cg(grad, H, trust_radius)
+
+        # Predicted reduction
+        pred_red = (grad @ p + 0.5 * p @ (H @ p))
+
+        # Actual reduction
+        theta_new = theta + p
+        f_old = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
+        f_new = (theta_new @ Dai).item() -  log_norm_theta(S, theta_new, i)
+        act_red =  f_new - f_old
+
+        # Ratio of actual to predicted reduction
+        rho = act_red / pred_red
+
+        if rho < eta1:
+            trust_radius *= 0.25
+        elif rho > eta2 and p.norm() == trust_radius:
+            trust_radius = min(2.0 * trust_radius, trust_radius_max)
+
+        if rho > eta0:
+            theta = theta_new
+
+#        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e}, trust_radius = {trust_radius:.4f}")
+
+    f = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
+    return f, theta
+
+def steihaug_toint_cg(grad, H, trust_radius, tol=1e-10, max_iters=250):
+    x = torch.zeros_like(grad)
+    r = grad.clone()
+    d = r
+
+    for i in range(max_iters):
+        Hd = H @ d
+        dHd = d @ Hd
+
+        if dHd <= 0:
+            # Negative curvature, move to boundary
+            tau = find_tau(x, d, trust_radius)
+            return x + tau * d
+
+        alpha = (r @ r) / dHd
+        x_new = x + alpha * d
+
+        if x_new.norm() >= trust_radius:
+            tau = find_tau(x, d, trust_radius)
+            return x + tau * d
+
+        r_new = r + alpha * Hd
+
+        if r_new.norm() < tol:
+            return x_new
+
+        beta = (r_new @ r_new) / (r @ r)
+        d = -r_new + beta * d
+        x = x_new
+        r = r_new
+
+    return x
+
+def find_tau(x, d, trust_radius):
+    # Solve ||x + tau*d|| = trust_radius for tau
+    a = d @ d
+    b = 2 * (x @ d)
+    c = (x @ x) - trust_radius**2
+    sqrt_discriminant = torch.sqrt(b**2 - 4*a*c)
+    tau = (-b + sqrt_discriminant) / (2*a)
+    return tau
+    
+    
+#def get_EP_TRON(S, theta_init, Da, i, delta_init=0.5, tol=1e-3, num_chunks=None, 
+#                 eta0=0.1, eta1=0.5, eta2=1.5, gamma1=0.9, gamma2=1.1, max_iter=100):
+#    """
+#    TRON-style trust-region Newton update to refine parameter theta.
+
+#    Parameters:
+#    -----------
+#    S : torch.Tensor
+#    theta_init : torch.Tensor
+#    Da : torch.Tensor
+#    i : int
+#    delta_init : float
+#    th : float
+#    num_chunks : int or None
+#    Returns:
+#    --------
+#    sig_N2 : float
+#    theta : torch.Tensor
+#    """
+#    
+#    theta = theta_init.clone()
+#    delta = delta_init
+
+#    Dai = remove_i(Da, i)
+#    logZ_old = log_norm_theta(S, theta, i)
+#    for iter in range(max_iter):
+#        # Build local quadratic model
+#        Da_th, _ = correlations_theta(S, theta, i)
+#        Ks_th = correlations4_theta(S, theta, i, num_chunks)
+#        Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
+
+#        if torch.isinf(Ks_th).any():
+#            return np.nan, theta_init * np.nan
+
+#        Dai_th = remove_i(Da_th, i)
+
+#        # Solve trust-region subproblem: compute trial step
+#        delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
+#        step_norm = torch.norm(delta_theta)
+
+#        if step_norm > delta:
+#            delta_theta = delta_theta * (delta / step_norm)
+
+#        # Predicted Δψ
+#        d1 = (delta_theta @ Dai_th).item()
+#        d2 = (delta_theta @ (Dai - Dai_th)).item() / 2
+#        pred_red = d1 + d2
+
+#        # Actual Δψ
+#        logZ_new = log_norm_theta(S, theta + delta_theta, i)
+#        actual_red = logZ_new - logZ_old
+#        
+#        rho = np.abs(actual_red / pred_red-1)
+
+#        # Update trust region
+#        if rho < eta0:
+#            delta *=  min(delta * gamma2, 4)  # grow 
+#        elif rho > eta2:
+#            delta *= gamma1  # shrink
+
+#        # Step acceptance
+#        if rho < eta1:
+#            theta = theta + delta_theta
+#            logZ_old = logZ_new
+
+#        # Check convergence (small step)
+#        if torch.norm(delta_theta) < tol:
+#            break
+
+#    # Final computation
+#    sig_N2 = (theta @ Dai).item() - log_norm_theta(S, theta, i)
+
+#    return sig_N2, theta
+#    
+
+
 def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-4, max_iter=20):
     nflips,N = S.shape
     sig_old = sig_init
@@ -391,7 +562,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         sig_old = sig_new
         theta_old = theta_N.clone()
         sig_new = np.nan
-        sig_new, theta_N = get_EP_TRON(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        sig_new, theta_N = Newton(S, theta_N.clone(), Da, i, num_chunks=num_chunks, delta=0.5)
 
         dsig = sig_new - sig_old
         count += 1
