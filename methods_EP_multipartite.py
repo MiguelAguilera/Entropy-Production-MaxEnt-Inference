@@ -61,21 +61,20 @@ def correlations4(S, i, num_chunks=20):
 def correlations_theta(S, theta, i):
     """
     Compute weighted pairwise correlations using theta.
-    THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     """
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
     theta_padded = add_i(theta,i)
-    thf = (-2 * S[:, i]) * (S @ theta_padded)
-    S1_S = -(-2 * S[:, i]) * torch.exp(-thf)
+    th_g = (-2 * S[:, i]) * (S @ theta_padded)
+    th_g_min = torch.min(th_g)    # substract max of -th_g
+    S1_S = -(-2 * S[:, i]) * torch.exp(-th_g+th_g_min)
     Da = S1_S @ S / nflips
-    Z = torch.sum(torch.exp(-thf)) / nflips
-    return Da, Z
+    Z = torch.sum(torch.exp(-th_g+th_g_min)) / nflips
+    return Da/Z
 
 def correlations4_theta(S, theta, i, num_chunks=20):
     """
     Compute weighted 4th-order correlations using theta.
-    THESE ARE NOT YET DIVIDED BY THE NORMALIZATION CONSTANT.
     
     If `num_chunks` is provided, computes the matrix in chunks to save memory.
     """
@@ -85,10 +84,15 @@ def correlations4_theta(S, theta, i, num_chunks=20):
     # Pad theta with a zero at position i
     theta_padded = torch.cat((theta[:i], torch.tensor([0.0], device=device), theta[i:]))
 
+
+    th_g = (-2 * S[:, i]) * (S @ theta_padded)
+    th_g_min = torch.min(th_g)    # substract max of -th_g
+    Z = torch.sum(torch.exp(-th_g+th_g_min)) / nflips
+    
     if num_chunks is None:
         # Full computation
-        thf = (-2 * S[:, i]) * (S @ theta_padded)
-        K = (4 * torch.exp(-thf) * S.T) @ S / nflips
+        th_g = (-2 * S[:, i]) * (S @ theta_padded)
+        K = (4 * torch.exp(-th_g+th_g_min) * S.T) @ S / nflips
     else:
         # Chunked computation
         K = torch.zeros((N, N), device=device)
@@ -99,15 +103,15 @@ def correlations4_theta(S, theta, i, num_chunks=20):
             end = min((r + 1) * chunk_size, nflips)
             S_chunk = S[start:end]
             
-            thf_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
-            K += (4 * torch.exp(-thf_chunk) * S_chunk.T) @ S_chunk
+            th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
+            K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
 
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
 
         K /= nflips
 
-    return K
+    return K/Z
 
 # =======================
 # Partition Function Estimate
@@ -120,11 +124,23 @@ def norm_theta(S, theta, i):
     nflips, N = S.shape
 #    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
     theta_padded = add_i(theta,i)
-    thf = (-2 * S[:, i]) * (S @ theta_padded)
-    Z = torch.sum(torch.exp(-thf)) / nflips
+    th_g = (-2 * S[:, i]) * (S @ theta_padded)
+    Z = torch.sum(torch.exp(-th_g)) / nflips
     return Z
 
 
+def log_norm_theta(S, theta, i):
+    """
+    Estimate normalization constant Z from the partition function under theta.
+    """
+    nflips, N = S.shape
+#    S_without_i = torch.cat((S[:, :i], S[:, i+1:]), dim=1)  # remove spin i
+    theta_padded = add_i(theta,i)
+    th_g = (-2 * S[:, i]) * (S @ theta_padded)
+    th_g_min = torch.min(th_g)    # substract max of -th_g
+    logZ = torch.log(torch.sum(torch.exp(-th_g+th_g_min)) / nflips) - th_g_min
+    return logZ
+    
 
 # =======================
 # Matrix Processing Utilities
@@ -239,7 +255,7 @@ def get_EP_MTUR(S, i,num_chunks=None):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
+def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.2, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -266,12 +282,11 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
     """
 
     # Compute model-averaged first-order and fourth-order statistics (excluding index i)
-    Da_th, Z = correlations_theta(S, theta_init, i)
+    Da_th = correlations_theta(S, theta_init, i)
     Ks_th = correlations4_theta(S, theta_init, i,num_chunks)
 
-    # Normalize by partition function Z
-    Da_th /= Z
-    Ks_th = Ks_th / Z - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
+    # Transform into covariance
+    Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
     
     if torch.isinf(Ks_th).any():
         # Error occured, usually means theta is too big
@@ -313,7 +328,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
 
     # Compute surrogate objective (e.g., log-partition or entropy production)
     Dai = remove_i(Da, i)
-    sig_N2 = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
+    sig_N2 = (theta * Dai).sum() - log_norm_theta(S, theta, i)
 
     return sig_N2.item(), theta
 
@@ -339,7 +354,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         dsig = sig_new - sig_old
         count += 1
         rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
-        Z= torch.log(norm_theta(S, theta_N, i))
+#        Z= log_norm_theta(S, theta_N, i)
         if rel_change <= tol:# or Z>0.1:
             break
 
@@ -390,7 +405,7 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
     Dai_tst = remove_i(correlations(S_tst,i),i)
 
     def get_test_objective(theta):
-        return (theta @ Dai_tst - torch.log(norm_theta(S_tst, theta, i))).item()
+        return (theta @ Dai_tst - log_norm_theta(S_tst, theta, i)).item()
 
     sig_new_trn, theta_N, Da = get_EP_Newton(S_trn, i)
     #sig_new, theta_N  = get_EP_Newton2(S, theta_init, Da, i, num_chunks=num_chunks)
@@ -483,8 +498,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
     I = torch.eye(n)
     
     # Initial model estimate and gradient
-    Da_th, Z = correlations_theta(S, theta, i)
-    Da_th /= Z
+    Da_th, = correlations_theta(S, theta, i)
     Da_th_wo_i = remove_i(Da_th, i)
     grad = Dai - Da_th_wo_i
 
@@ -501,8 +515,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
         theta_new = theta + alpha * p
 
         # Compute new gradient
-        Da_th_new, Z_new = correlations_theta(S, theta_new, i)
-        Da_th_new /= Z_new
+        Da_th_new= correlations_theta(S, theta_new, i)
         grad_new = Dai - remove_i(Da_th_new, i)
 
         # BFGS update
@@ -525,7 +538,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
     theta = theta + alpha * p
 
     # Final objective
-    sig_BFGS = (theta * Dai).sum() - torch.log(norm_theta(S, theta, i))
+    sig_BFGS = (theta * Dai).sum() - tlog_norm_theta(S, theta, i)
 
     return sig_BFGS.item(), theta
     
@@ -537,8 +550,8 @@ def get_objective_numpy(S_i, Da, theta,i):
     S_only_i = Snp[:,i]
     S_without_i = np.hstack((Snp[:, :i], Snp[:, i+1:]))
     X = -2 * S_only_i[:,None]*S_without_i
-    thf = X@theta_np
-    Z = np.exp(-thf).mean()
+    th_g = X@theta_np
+    Z = np.exp(-th_g).mean()
     return theta_np @ Dai - np.log(Z)
 
 
@@ -589,9 +602,9 @@ def get_EP_Adam(S_i, Da, theta_init, i, num_iters=1000,
     cur_val  = torch.tensor(np.nan)
 
     for t in range(1, num_iters + 1):
-        thf = theta@X
+        th_g = theta@X
         
-        Y = torch.exp(-thf)
+        Y = torch.exp(-th_g)
         Z = torch.mean(Y)
         S1_S = twice_S_onlyi * Y # -(-2 * S_onlyi) * Y
 
