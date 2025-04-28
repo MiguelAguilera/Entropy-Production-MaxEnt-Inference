@@ -312,7 +312,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
     return sig_N2.item(), theta
 
 
-def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.0001, num_chunks=None):
+def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.01, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -549,7 +549,7 @@ def find_tau(x, d, trust_radius):
 #    
 
 
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-4, max_iter=20):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-4, max_iter=20, mode='Newton2'):
     nflips,N = S.shape
     sig_old = sig_init
     theta_N = theta_init.clone()
@@ -562,8 +562,11 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         sig_old = sig_new
         theta_old = theta_N.clone()
         sig_new = np.nan
-        sig_new, theta_N = Newton(S, theta_N.clone(), Da, i, num_chunks=num_chunks, delta=0.5)
-
+        if mode == 'Newton2':
+            sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks, delta=0.5)
+        if mode == 'trust-method';
+            sig_new, theta_N = get_EP_trust_region_Newton(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        
         dsig = sig_new - sig_old
         count += 1
         rel_change = np.abs(dsig) / (np.abs(sig_old) + eps)
