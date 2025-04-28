@@ -239,7 +239,7 @@ def get_EP_MTUR(S, i,num_chunks=None):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
+def get_EP_Newton2(S, theta_init, Da, i, delta=None, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
