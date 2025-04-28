@@ -11,14 +11,6 @@ import torch
 from methods_EP_multipartite import *
 
 
-LABELS = {'emp'  : 'Empirical', 
-          'N1'   : 'Newton 1-step', 
-          'TUR'  : 'MTUR', 
-          'NS'   : 'Newton', 
-          'NSH'  : 'NewtonHoldout', 
-          'GD'   : 'Grad Ascent',
-          'BFGS' : 'BFGS'}
-
 def set_default_device():
     """
     Determines the best available device for PyTorch operations and sets it as default.
@@ -49,13 +41,6 @@ def empty_cache():
 def calc_spin(S_i, J_i, i, grad=False, newton=False):
     verbose=False
 
-    #print(i, time.time() - start_time_i)
-    # S_i_t = torch.from_numpy(S_i).to(device)
-
-    #if S_i.shape[1] <= 10:
-    #    print(f"  [Warning] Skipping spin {i}: insufficient time steps")
-    #    continue
-
     sigmas, times, thetas = {}, {}, {}
 
     stime = time.time()
@@ -72,10 +57,10 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     #gc.collect()
 
     if newton:
-        #stime = time.time()
-        #sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
-        #thetas['NS'] = theta2.cpu().numpy()
-        #times[ 'NS'] = time.time() - stime
+        stime = time.time()
+        sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
+        thetas['NS'] = theta2.cpu().numpy()
+        times[ 'NS'] = time.time() - stime
     
         #gc.collect()
 
@@ -110,14 +95,10 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
             stats = (ctheta2@S_i.T).cpu().numpy()
             stats -= stats.mean()
-            print(np.mean( stats**3 ) )
-            print(np.mean( stats**4 ) - 3*np.mean( stats**2 )**2  )
-            #print(np.mean( (stats - stats.mean())**4-3*np.mean(stats - stats.mean())**2)
             sns.kdeplot( stats, label='Original')# , bins=20, color='red', alpha=0.3, label='Original') 
             
             stats2 = np.random.normal(loc=0, scale=stats.std(), size=len(stats))
             stats2 -= stats2.mean()
-            #plt.hist( stats, bins=20, alpha=0.3, color='k', label='Gaussian')
             sns.kdeplot( stats2, label='Gaussian')
             #plt.yscale('log')
 
@@ -130,102 +111,75 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     return sigmas, times, thetas
 
 
-def calc(file_name, overwrite=False, newton=False, grad=False):
+def calc(file_name, newton=False, grad=False):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
-    start_time = time.time()
     process = psutil.Process(os.getpid())
 
-    epdata = None
+    print()
+    print(f"[Loading] Reading data from file:\n  → {file_name}\n")
+    data = np.load(file_name)
+    assert(np.all(data['H']==0))  # We do not support local fields in our analysis
+    with torch.no_grad():
+        S      = torch.from_numpy(data["S"]).to(device)
+        rep, N = S.shape
+        F      = torch.from_numpy(data["F"]).to(device).bool()
 
-    out_filename = os.path.dirname(file_name)+'/epdata_' + os.path.basename(file_name)+'.pkl'
-    if os.path.exists(out_filename):
-        print(f'{out_filename} exists! '+('loading' if not overwrite else 'overwriting'))
-        if not overwrite:
-            with open(out_filename, 'rb') as file:
-                epdata = pickle.load(file)
-                
+        if False:
+            vvv=data['J'].reshape([1,-1])[0,:]
+            plt.hist(vvv)
+            #sns.kdeplot(vvv)
+            plt.show()
+            #asf
 
-    if epdata is None:
-        print()
-        print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        data = np.load(file_name)
-        assert(np.all(data['H']==0))  # We do not support local fields in our analysis
-        with torch.no_grad():
-            S      = torch.from_numpy(data["S"]).to(device)
-            rep, N = S.shape
-            F      = torch.from_numpy(data["F"]).to(device).bool()
+        J = torch.from_numpy(data['J']).to(device)
 
-            if False:
-                vvv=data['J'].reshape([1,-1])[0,:]
-                plt.hist(vvv)
-                #sns.kdeplot(vvv)
-                plt.show()
-                #asf
+        frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
+        epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
+                  'thetas':{}, 'ep':{}, 'times':{}}
 
-            J = torch.from_numpy(data['J']).to(device)
+        pbar = tqdm(range(N))
 
-            frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
-            epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
-            'thetas':{}, 'ep':{}}
+        print("=" * 70)
+        print(f"  Starting EP estimation | System size: {N}")
+        print("=" * 70)
 
-            pbar = tqdm(range(N))
+        for i in pbar:
+            S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
 
-            print("=" * 70)
-            print(f"  Starting EP estimation | System size: {N}")
-            print("=" * 70)
+            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
 
-            for i in pbar:
-                S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
+            epdata[i] = res 
+            sigmas, times, thetas = res
 
-                res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
+            for k,v in sigmas.items():
+                ep_sums[k]   += frequencies[i]*v
+                time_sums[k] += times.get(k, np.nan)
+                if k not in epdata['thetas']:
+                    epdata['thetas'][k] = []
+                epdata['thetas'][k].append(thetas.get(k, np.nan))
 
-                epdata[i] = res 
-                sigmas, times, thetas = res
+            del S_i, sigmas, times, thetas, res
+            
+            # if i % 20 == 19:
+            #     empty_cache()
+            #     #stime = time.time()
+            #     gc.collect()
+            #     #print(time.time()-stime)
+            memory_usage = process.memory_info().rss / 1024 / 1024
+            pbar.set_description(f'emp={ep_sums.get('emp',np.nan):3.5f} '+
+                                 f'N1={ep_sums.get('N1',np.nan):3.5f} ' +
+                                 f'NS={ep_sums.get('NS',np.nan):3.5f} ' +
+                                 f'NSh={ep_sums.get('NSH',np.nan):3.5f} '+
+                                 f'mem={memory_usage:.1f}mb')
 
-                for k,v in sigmas.items():
-                    ep_sums[k]   += frequencies[i]*v
-                    time_sums[k] += times.get(k, np.nan)
-                    if k not in epdata['thetas']:
-                        epdata['thetas'][k] = []
-                    epdata['thetas'][k].append(thetas.get(k, np.nan))
+        for k,v in ep_sums.items():
+            epdata['ep'][k]=v
+        for k,v in time_sums.items():
+            epdata['times'][k]=v
 
-                del S_i, sigmas, times, thetas, res
-                
-                # if i % 20 == 19:
-                #     empty_cache()
-                #     #stime = time.time()
-                #     gc.collect()
-                #     #print(time.time()-stime)
-                memory_usage = process.memory_info().rss / 1024 / 1024
-                pbar.set_description(f'emp={ep_sums.get('emp',np.nan):3.5f} '+
-                                     f'N1={ep_sums.get('N1',np.nan):3.5f} ' +
-                                     f'NS={ep_sums.get('NS',np.nan):3.5f} ' +
-                                     f'NSh={ep_sums.get('NSH',np.nan):3.5f} '+
-                                     f'mem={memory_usage:.1f}mb')
-
-            for k,v in ep_sums.items():
-                epdata['ep'][k]=v
-
-
-            with open(out_filename, 'wb') as file:
-                pickle.dump(epdata, file)
-                print(f'Saved to {out_filename}')
-
-            del S, F, J
-        del data
-
-    empty_cache()
-    gc.collect()
-
-    memory_usage = process.memory_info().rss / 1024 / 1024
-
-    print(f"\n[Results] {time.time()-start_time:3f}s  mem={memory_usage:.1f}mb")
-    for k,lbl in LABELS.items():
-        if k in epdata['ep']:
-            print(f"  EP ({lbl:15s})    : {epdata['ep'][k]:.6f}   {time_sums.get(k,np.nan):3f}s")
-    print("-" * 70)
-
+        del S, F, J
+    del data
 
     return epdata
 
@@ -240,6 +194,7 @@ torch.set_grad_enabled(False)
 #              # 2 for our Adam
 
 if __name__ == "__main__":
+    raise Exception()
 
     parser = argparse.ArgumentParser(description="Estimate EP for file.")
     parser.add_argument("file_name", type=str)

@@ -1,18 +1,23 @@
-import os, argparse, time, gc
+import os, argparse, time, gc, multiprocessing, pickle, psutil
 import numpy as np
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
-from matplotlib import pyplot as plt
-from methods_EP_multipartite import *
-
-import calc
 
 R2_LABELS = {'N1':r'$\hat{\theta}$','NS':r'$\theta^*$','NSH':r'$\theta^*_{ho}$' }
 
 
+LABELS = {'emp'  : 'Empirical', 
+          'N1'   : 'Newton 1-step', 
+          'TUR'  : 'MTUR', 
+          'NS'   : 'Newton', 
+          'NSH'  : 'NewtonHoldout', 
+          'GD'   : 'Grad Ascent',
+          'BFGS' : 'BFGS'}
+
 if __name__ == "__main__":
+    process = psutil.Process(os.getpid())
 
     # -------------------------------
     # Argument Parsing
@@ -64,74 +69,95 @@ if __name__ == "__main__":
     # results = []
 
     for file_name in sorted(os.listdir(BASE_DIR))[::-1]:
+        start_time = time.time()
+
         if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
             continue
 
-        # Main call!
-        if args.noplot:
-            print(f'python3 calc.py {BASE_DIR+file_name} '+
-                   ('--overwrite ' if args.overwrite else '')+
-                   ('--nonewton  ' if args.nonewton  else '')+
-                   ('--nograd    ' if args.nograd    else ''))
-            
-        else:
-            res = calc.calc(BASE_DIR+file_name, 
-                overwrite=args.overwrite, 
-                grad=not args.nograd, 
-                newton=not args.nonewton)
+        res = None
+
+        out_filename = BASE_DIR+'epdata_' + os.path.basename(file_name)+'.pkl'
+        if os.path.exists(out_filename):
+            print(f'{out_filename} exists! '+('loading' if not args.overwrite else 'overwriting'))
+            if not args.overwrite:
+                with open(out_filename, 'rb') as file:
+                    res = pickle.load(file)
+                    
+        if res is None:
+            import calc
+            with multiprocessing.Pool(processes=1) as pool:
+                res = pool.apply(calc.calc, 
+                    args=(BASE_DIR+file_name,), 
+                    kwds=dict(grad=not args.nograd, newton=not args.nonewton))
+
+            with open(out_filename, 'wb') as file:
+                pickle.dump(res, file)
+                print(f'Saved to {out_filename}')
+
+        memory_usage = process.memory_info().rss / 1024 / 1024
+
+        print(f"\n[Results] {time.time()-start_time:3f}s  mem={memory_usage:.1f}mb")
+        for k,lbl in LABELS.items():
+            if k in res['ep']:
+                print(f"  EP ({lbl:15s})    : {res['ep'][k]:.6f}   {res['times'].get(k,np.nan):3f}s")
+        print("-" * 70)
+
+        # res = calc.calc(BASE_DIR+file_name, 
+        #     overwrite=args.overwrite, 
+        #     grad=not args.nograd, 
+        #     newton=not args.nonewton)
 
 
-            beta = res['beta']
-            # betas.append( beta )
+        beta = res['beta']
+        for k, v in res['ep'].items():
+            if k not in EPvals:
+                EPvals[k] = []
+            EPvals[k].append( (beta, v) )
 
-            # results.append(res)
+        J      = res['J']
+        xvals = (J - J.T)[:]
+        yvals = {}
+        R2    = {}
+        r2methods = ['N1','NSH'] #,'NS']
+        for k in r2methods:
+            Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
+                                for i,m in enumerate(res['thetas'][k])])
+            yy = (Thetas - Thetas.T)[:]
 
-            # print(res.keys())
-            for k, v in res['ep'].items():
-                if k not in EPvals:
-                    EPvals[k] = []
-                EPvals[k].append( (beta, v) )
+            R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
+            #print(np.mean( (yy-xvals)**2 ),np.mean( (yy-yy.mean())**2 ), yy.mean())
+            #print(np.isnan(yy).any())
+            yvals[k]=yy
 
-            J      = res['J']
-            xvals = (J - J.T)[:]
-            yvals = {}
-            R2    = {}
-            r2methods = ['N1','NSH'] #,'NS']
+        print(f'theta R2 values: ' + 
+            " ".join([k+f'={v:3f}' for k,v in R2.items()]) )
+
+        if False and 4>beta >= 1.9:
+            from matplotlib import pyplot as plt
+
+            m1,m2=0,0
             for k in r2methods:
-                Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
-                                    for i,m in enumerate(res['thetas'][k])])
-                yy = (Thetas - Thetas.T)[:]
+                m1 = max(m1,-yvals[k].min())
+                m2 = max(m2, yvals[k].max())
+                plt.scatter(xvals, yvals[k], alpha=0.3, 
+                    label=R2_LABELS[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
+            lims = [-1.1*m1, 1.1*m2]
+            plt.xlim( *lims )
+            plt.ylim( *lims )
+            plt.plot(lims, lims, lw=1, ls=":", c='k')
+            plt.legend()
+            plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
+            plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
+            plt.title(fr'$\beta={beta:3.3f}$')
+            plt.show()
 
-                R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
-                print(np.mean( (yy-xvals)**2 ),np.mean( (yy-yy.mean())**2 ), yy.mean())
-                print(np.isnan(yy).any())
-                yvals[k]=yy
-
-            print(f'theta R2 values: ' + 
-                " ".join([k+f'={v:3f}' for k,v in R2.items()]) )
-
-            if False and 4>beta >= 1.9:
-                m1,m2=0,0
-                for k in r2methods:
-                    m1 = max(m1,-yvals[k].min())
-                    m2 = max(m2, yvals[k].max())
-                    plt.scatter(xvals, yvals[k], alpha=0.3, 
-                        label=R2_LABELS[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
-                lims = [-1.1*m1, 1.1*m2]
-                plt.xlim( *lims )
-                plt.ylim( *lims )
-                plt.plot(lims, lims, lw=1, ls=":", c='k')
-                plt.legend()
-                plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
-                plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
-                plt.title(fr'$\beta={beta:3.3f}$')
-                plt.show()
-
-            del xvals, yvals, R2, res, J
-            gc.collect()
+        del xvals, yvals, R2, res, J
+        gc.collect()
 
 
     if not args.noplot:
+        from matplotlib import pyplot as plt
+
         #EP    = np.array(EPvals).T
         #betas = np.array(betas)
 

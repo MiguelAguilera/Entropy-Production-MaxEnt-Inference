@@ -237,7 +237,7 @@ def get_EP_Newton(S, i, num_chunks=None):
     sig_N1 = theta @ Dai - torch.log(Z)
     v = sig_N1.item()
     if np.isinf(v):
-        print(theta, Da, Z, theta @ Dai)
+        print('get_EP_newton, v is inf', theta, Da, Z, theta @ Dai)
 
     return v, theta, Da
 
@@ -331,6 +331,10 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.5, num_chunks=None):
     sig_N2 = (theta * Dai).sum() - log_norm_theta(S, theta, i)
 
     return sig_N2.item(), theta
+
+
+
+
     
 def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
     nflips,N = S.shape
@@ -359,7 +363,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
             #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
             break 
         if sig_new < sig_old or np.isnan(sig_new):
-            print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
+            # print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
             return sig_new, theta_N
         
     return sig_new, theta_N
