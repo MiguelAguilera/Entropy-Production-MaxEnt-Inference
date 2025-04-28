@@ -564,7 +564,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         sig_new = np.nan
         if mode == 'Newton2':
             sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks, delta=0.5)
-        if mode == 'trust-region';
+        if mode == 'trust-region':
             sig_new, theta_N = get_EP_trust_region_Newton(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
         
         dsig = sig_new - sig_old
