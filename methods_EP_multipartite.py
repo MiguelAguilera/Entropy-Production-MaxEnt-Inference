@@ -282,7 +282,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.5, num_chunks=None):
     """
 
     # Compute model-averaged first-order and fourth-order statistics (excluding index i)
-    Da_th = correlations_theta(S, theta_init, i)
+    Da_th, Z = correlations_theta(S, theta_init, i)
     Ks_th = correlations4_theta(S, theta_init, i,num_chunks)
 
     # Transform into covariance
@@ -498,7 +498,7 @@ def get_EP_BFGS(S, theta_init, Da, i, alpha=1., delta=0.05, max_iter=10, tol=1e-
     I = torch.eye(n)
     
     # Initial model estimate and gradient
-    Da_th, = correlations_theta(S, theta, i)
+    Da_th, Z= correlations_theta(S, theta, i)
     Da_th_wo_i = remove_i(Da_th, i)
     grad = Dai - Da_th_wo_i
 
