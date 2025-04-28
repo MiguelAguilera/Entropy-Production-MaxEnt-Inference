@@ -286,6 +286,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         step_norm = torch.norm(delta_theta)
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
+        theta = theta_init + delta*delta_theta
     else:
         Dai = remove_i(Da, i)
         Dai_th = remove_i(Da_th, i)
@@ -349,13 +350,39 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
 
 
 def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
-    nflips = int(S.shape[0]/2)
-    #print(S.shape, nflips)
-    S_trn = S[:nflips,:]
-    #print(S.shape, nflips)
-    S_tst = S[nflips:,:]
-    Dai_tst = remove_i(correlations(S_tst,i),i)
 
+    def newton_step_trn(theta_init, delta=.25):
+        Da_th, Z = correlations_theta(S_trn, theta_init, i)
+        Ks_th    = correlations4_theta(S_trn, theta_init, i) / Z
+
+        Da_th   /= Z
+        Ks_th    = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
+    
+        if torch.isinf(Ks_th).any():
+            return np.nan, theta_init*np.nan
+
+        delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
+
+        if delta is not None:
+             max_step = delta * torch.norm(theta_init)
+             step_norm = torch.norm(delta_theta)
+             if step_norm > max_step:
+                 delta_theta = delta_theta * (max_step / step_norm)
+
+
+        theta = theta_init + delta_theta
+
+        sig   = theta @ Dai_trn - torch.log(norm_theta(S, theta, i))
+
+        return sig.item(), theta_init + delta_theta
+
+
+    nflips = int(S.shape[0]/2)
+    # nflips = S.shape[0]
+    S_trn = S[:nflips,:]
+    S_tst = S[nflips:,:]
+    Dai_trn = remove_i(correlations(S_trn,i),i)
+    Dai_tst = remove_i(correlations(S_tst,i),i)
 
     def get_test_objective(theta):
         return (theta @ Dai_tst - torch.log(norm_theta(S_tst, theta, i))).item()
@@ -400,7 +427,7 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
 
 
         sig_old_trn = sig_new_trn
-        sig_new_trn, theta_N = get_EP_Newton2(S_trn, theta_N.clone(), Da, i, num_chunks=num_chunks)
+        sig_new_trn, theta_N = newton_step_trn(theta_N)
         
         sig_old_tst = sig_new_tst
         sig_new_tst = get_test_objective(theta_N)
@@ -409,6 +436,8 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
         sig_N    = sig_new_tst
         count   += 1
 
+    # Dai = remove_i(correlations(S,i),i)
+    # sig_N = (theta_N @ Dai - torch.log(norm_theta(S, theta_N, i))).item()
     return sig_N, theta_N    
 
             
