@@ -126,7 +126,7 @@ def norm_theta(S, theta, i):
     theta_padded = add_i(theta,i)
     th_g = (-2 * S[:, i]) * (S @ theta_padded)
     Z = torch.sum(torch.exp(-th_g)) / nflips
-    return Z
+    return Z.item()
 
 
 def log_norm_theta(S, theta, i):
@@ -139,7 +139,7 @@ def log_norm_theta(S, theta, i):
     th_g = (-2 * S[:, i]) * (S @ theta_padded)
     th_g_min = torch.min(th_g)    # substract max of -th_g
     logZ = torch.log(torch.sum(torch.exp(-th_g+th_g_min)) / nflips) - th_g_min
-    return logZ
+    return logZ.item()
     
 
 # =======================
@@ -227,14 +227,14 @@ def get_EP_Newton(S, i, num_chunks=None):
     for _ in range(100):  # regularize until  we get a non-zero Z
         theta = solve_linear_theta(Da, -Da, Ks, i, eps=eps)
         Z = norm_theta(S, theta, i)
-        if not np.isclose(Z.item(),0) and not np.isinf(Z.item()):
+        if not np.isclose(Z,0) and not np.isinf(Z):
             break
         eps *= 10
     else:
         print('get_EP_Newton cannot regularize enough!')
         return np.nan, theta, Da
 
-    sig_N1 = theta @ Dai - torch.log(Z)
+    sig_N1 = theta @ Dai - np.log(Z)
     v = sig_N1.item()
     if np.isinf(v):
         print('get_EP_newton, v is inf', theta, Da, Z, theta @ Dai)
@@ -255,7 +255,7 @@ def get_EP_MTUR(S, i,num_chunks=None):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.5, num_chunks=None):
+def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -301,30 +301,73 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.5, num_chunks=None):
         step_norm = torch.norm(delta_theta)
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
-        theta = theta_init + delta*delta_theta
     else:
-        Dai = remove_i(Da, i)
-        Dai_th = remove_i(Da_th, i)
-        alpha = 1
-        d1 = (delta_theta @ Dai_th).item()
-        d2 = (delta_theta @ (Dai-Dai_th)).item() / 2
-        dlogZ = alpha * d1 + alpha**2 * d2
-#        print(dlogZ)
-        while np.abs(dlogZ)>th:
-            alpha *= 0.95
-            dlogZ = alpha * d1 + alpha**2 * d2
-        theta = theta_init + alpha*delta_theta
-    # Remove index i from Da for calculating log-partition contribution
+        delta=1
+    theta = theta_init + delta*delta_theta
+
+    # Compute surrogate objective (e.g., log-partition or entropy production)
+    Dai = remove_i(Da, i)
+    sig_N2 = (theta * Dai).sum() - log_norm_theta(S, theta, i)
+
+    return sig_N2.item(), theta
 
 
+def get_EP_TRON(S, theta_init, Da, i, th=0.1, num_chunks=None):
+    """
+    Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
+
+    Parameters:
+    -----------
+    S : torch.Tensor
+        Binary spin configurations of shape (N, nflips).
+    theta_init : torch.Tensor
+        Current estimate of the parameter vector theta (with zero at index i).
+    Da : torch.Tensor
+        Empirical first-order correlations (e.g., ⟨s_j⟩).
+    i : int
+        Index of the spin being updated (excluded from optimization).
+    delta : float or None, optional
+        If provided, sets a maximum relative norm for the update step 
+        (default: 1.0, meaning ||Δθ|| ≤ delta * ||θ||).
+
+    Returns:
+    --------
+    sig_N2 : float
+        Updated estimate of the log-partition function contribution (e.g., entropy production).
+    delta_theta : torch.Tensor
+        Computed Newton step (Δθ).
+    """
+
+    # Compute model-averaged first-order and fourth-order statistics (excluding index i)
+    Da_th, Z = correlations_theta(S, theta_init, i)
+    Ks_th = correlations4_theta(S, theta_init, i,num_chunks)
+
+    # Transform into covariance
+    Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
     
-#    if delta is not None:
-#        max_step = delta * torch.norm(theta_init)
-#        step_norm = torch.norm(delta_theta)
-#        if step_norm > max_step:
-#            delta_theta = delta_theta * (max_step / step_norm)
-##    print('delta',delta, delta_theta @ (2*Dai_th-Dai))
-#    theta = theta_init + delta*delta_theta
+    if torch.isinf(Ks_th).any():
+        # Error occured, usually means theta is too big
+        return np.nan, theta_init*np.nan
+
+    # Compute Newton step: Δθ = H⁻¹ (Da - Da_th)
+    delta_theta = solve_linear_theta(Da, Da_th, Ks_th, i)
+
+    # Constrain the step to be within a trust region
+    Dai = remove_i(Da, i)
+    Dai_th = remove_i(Da_th, i)
+    alpha = 1
+    d1 = (delta_theta @ Dai_th).item()
+    d2 = (delta_theta @ (Dai-Dai_th)).item() / 2
+    
+    logZ = log_norm_theta(S, theta_init, i)
+    dlogZ = log_norm_theta(S, theta_init + alpha*delta_theta, i) - logZ
+    dlogZ_approx = alpha * d1 + alpha**2 * d2
+    while np.abs((dlogZ_approx-dlogZ)/(dlogZ_approx+0.01))>th:
+        alpha *= 0.95
+#            dlogZ = alpha * d1 + alpha**2 * d2
+        dlogZ = log_norm_theta(S, theta_init + alpha*delta_theta, i) - logZ
+        dlogZ_approx = alpha * d1 + alpha**2 * d2
+    theta = theta_init + alpha*delta_theta
 
     # Compute surrogate objective (e.g., log-partition or entropy production)
     Dai = remove_i(Da, i)
@@ -334,9 +377,8 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.5, num_chunks=None):
 
 
 
-
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-4, max_iter=20):
     nflips,N = S.shape
     sig_old = sig_init
     theta_N = theta_init.clone()
@@ -349,7 +391,7 @@ def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-
         sig_old = sig_new
         theta_old = theta_N.clone()
         sig_new = np.nan
-        sig_new, theta_N = get_EP_Newton2(S, theta_N.clone(), Da, i, num_chunks=num_chunks,delta=None)
+        sig_new, theta_N = get_EP_TRON(S, theta_N.clone(), Da, i, num_chunks=num_chunks)
 
         dsig = sig_new - sig_old
         count += 1
