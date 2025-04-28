@@ -70,7 +70,7 @@ def correlations_theta(S, theta, i):
     S1_S = -(-2 * S[:, i]) * torch.exp(-th_g+th_g_min)
     Da = S1_S @ S / nflips
     Z = torch.sum(torch.exp(-th_g+th_g_min)) / nflips
-    return Da/Z, Z*np.exp(-th_g_min)
+    return Da/Z, Z*torch.exp(-th_g_min)
 
 def correlations4_theta(S, theta, i, num_chunks=20):
     """
