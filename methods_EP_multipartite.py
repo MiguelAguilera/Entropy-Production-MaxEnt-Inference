@@ -362,7 +362,7 @@ def get_EP_TRON(S, theta_init, Da, i, th=0.1, num_chunks=None):
     logZ = log_norm_theta(S, theta_init, i)
     dlogZ = log_norm_theta(S, theta_init + alpha*delta_theta, i) - logZ
     dlogZ_approx = alpha * d1 + alpha**2 * d2
-    while np.abs((dlogZ_approx-dlogZ)/(dlogZ_approx+0.01))>th:
+    while np.abs((dlogZ_approx-dlogZ)/(dlogZ_approx+1E-5))>th:
         alpha *= 0.95
 #            dlogZ = alpha * d1 + alpha**2 * d2
         dlogZ = log_norm_theta(S, theta_init + alpha*delta_theta, i) - logZ
