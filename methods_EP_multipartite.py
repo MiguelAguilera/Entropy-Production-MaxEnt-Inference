@@ -239,7 +239,7 @@ def get_EP_MTUR(S, i,num_chunks=None):
 
 
 
-def get_EP_Newton2(S, theta_init, Da, i, delta=None, num_chunks=None):
+def get_EP_Newton2(S, theta_init, Da, i, delta=None, th=0.1, num_chunks=None):
     """
     Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -295,7 +295,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=None, num_chunks=None):
         d2 = (delta_theta @ (Dai-Dai_th)).item() / 2
         dlogZ = alpha * d1 + alpha**2 * d2
 #        print(dlogZ)
-        while np.abs(dlogZ)>0.1:
+        while np.abs(dlogZ)>th:
             alpha *= 0.95
             dlogZ = alpha * d1 + alpha**2 * d2
         theta = theta_init + alpha*delta_theta
