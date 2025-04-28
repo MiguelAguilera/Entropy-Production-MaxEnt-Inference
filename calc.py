@@ -2,7 +2,7 @@ import os, argparse, time, pickle, psutil
 import numpy as np
 from collections import defaultdict 
 from tqdm import tqdm
-#import gc
+import gc
 
             
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
@@ -72,10 +72,10 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     #gc.collect()
 
     if newton:
-        stime = time.time()
-        sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
-        thetas['NS'] = theta2.cpu().numpy()
-        times[ 'NS'] = time.time() - stime
+        #stime = time.time()
+        #sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
+        #thetas['NS'] = theta2.cpu().numpy()
+        #times[ 'NS'] = time.time() - stime
     
         #gc.collect()
 
@@ -85,10 +85,6 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             thetas['NSH'] = theta2.cpu().numpy()
             times[ 'NSH'] = time.time() - stime
             #gc.collect()
-
-    else:
-        sigmas['NS'] = times['NS'] = np.nan
-        thetas['NS'] = np.zeros(theta_N1.shape)
 
     stime = time.time()
     sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
@@ -131,10 +127,6 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             plt.show()
             #asdf
 
-    else:
-        sigmas['GD'] = times['GD'] = np.nan
-        thetas['GD'] = np.zeros(theta_N1.shape)
-
     return sigmas, times, thetas
 
 
@@ -158,8 +150,7 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
         print()
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         data = np.load(file_name)
-        H = data['H']
-        assert(np.all(H==0))  # We do not support local fields in our analysis
+        assert(np.all(data['H']==0))  # We do not support local fields in our analysis
         with torch.no_grad():
             S      = torch.from_numpy(data["S"]).to(device)
             rep, N = S.shape
@@ -175,7 +166,8 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
             J = torch.from_numpy(data['J']).to(device)
 
             frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
-            epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta']}
+            epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
+            'thetas':{}, 'ep':{}}
 
             pbar = tqdm(range(N))
 
@@ -194,10 +186,9 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
                 for k,v in sigmas.items():
                     ep_sums[k]   += frequencies[i]*v
                     time_sums[k] += times.get(k, np.nan)
-                    kk = 'theta_'+k
-                    if kk not in epdata:
-                        epdata[kk] = []
-                    epdata[kk].append(thetas.get(k, np.nan))
+                    if k not in epdata['thetas']:
+                        epdata['thetas'][k] = []
+                    epdata['thetas'][k].append(thetas.get(k, np.nan))
 
                 del S_i, sigmas, times, thetas, res
                 
@@ -206,22 +197,33 @@ def calc(file_name, overwrite=False, newton=False, grad=False):
                 #     #stime = time.time()
                 #     gc.collect()
                 #     #print(time.time()-stime)
-                memory_info  = process.memory_info()
-                memory_usage = memory_info.rss / 1024 / 1024
-                pbar.set_description(f'emp={ep_sums['emp']:3.5f}, N1={ep_sums['N1']:3.5f} NS={ep_sums['NS']:3.5f} NSh={ep_sums['NSH']:3.5f} mem={memory_usage:.1f}mb')
+                memory_usage = process.memory_info().rss / 1024 / 1024
+                pbar.set_description(f'emp={ep_sums.get('emp',np.nan):3.5f} '+
+                                     f'N1={ep_sums.get('N1',np.nan):3.5f} ' +
+                                     f'NS={ep_sums.get('NS',np.nan):3.5f} ' +
+                                     f'NSh={ep_sums.get('NSH',np.nan):3.5f} '+
+                                     f'mem={memory_usage:.1f}mb')
 
             for k,v in ep_sums.items():
-                epdata[k]=v
+                epdata['ep'][k]=v
 
 
             with open(out_filename, 'wb') as file:
                 pickle.dump(epdata, file)
                 print(f'Saved to {out_filename}')
 
-    print(f"\n[Results] {time.time()-start_time:3f}s")
+            del S, F, J
+        del data
+
+    empty_cache()
+    gc.collect()
+
+    memory_usage = process.memory_info().rss / 1024 / 1024
+
+    print(f"\n[Results] {time.time()-start_time:3f}s  mem={memory_usage:.1f}mb")
     for k,lbl in LABELS.items():
-        if k in epdata and not np.isnan(epdata[k]):
-            print(f"  EP ({lbl:15s})    : {epdata[k]:.6f}   {time_sums.get(k,np.nan):3f}s")
+        if k in epdata['ep']:
+            print(f"  EP ({lbl:15s})    : {epdata['ep'][k]:.6f}   {time_sums.get(k,np.nan):3f}s")
     print("-" * 70)
 
 

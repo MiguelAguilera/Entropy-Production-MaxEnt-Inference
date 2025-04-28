@@ -9,6 +9,7 @@ from methods_EP_multipartite import *
 
 import calc
 
+R2_LABELS = {'N1':r'$\hat{\theta}$','NS':r'$\theta^*$','NSH':r'$\theta^*_{ho}$' }
 
 
 if __name__ == "__main__":
@@ -57,10 +58,10 @@ if __name__ == "__main__":
     # -------------------------------
     # Run Experiments Across Beta Values
     # -------------------------------
-    EPvals = []
+    EPvals = {}
     betas = []
 
-    results = []
+    # results = []
 
     for file_name in sorted(os.listdir(BASE_DIR))[::-1]:
         if not file_name.endswith('.npz') or file_name == 'plot_data.npz':
@@ -81,20 +82,24 @@ if __name__ == "__main__":
 
 
             beta = res['beta']
-            betas.append( beta )
+            # betas.append( beta )
 
-            results.append(res)
-            EPvals.append( [res['emp'], res['TUR'], res['N1'], res['NS'],res['NSH']] ) 
+            # results.append(res)
+
+            # print(res.keys())
+            for k, v in res['ep'].items():
+                if k not in EPvals:
+                    EPvals[k] = []
+                EPvals[k].append( (beta, v) )
 
             J      = res['J']
             xvals = (J - J.T)[:]
             yvals = {}
             R2    = {}
-            r2methods = ['N1','NSH','NS']
-            r2labels = {'N1':r'$\hat{\theta}$','NS':r'$\theta^*$','NSH':r'$\theta^*_{ho}$' }
+            r2methods = ['N1','NSH'] #,'NS']
             for k in r2methods:
                 Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
-                                    for i,m in enumerate(res['theta_'+k])])
+                                    for i,m in enumerate(res['thetas'][k])])
                 yy = (Thetas - Thetas.T)[:]
 
                 R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )
@@ -102,15 +107,16 @@ if __name__ == "__main__":
                 print(np.isnan(yy).any())
                 yvals[k]=yy
 
-            print(f'theta R2 values: NSH={R2['NSH']:3f}  N1={R2['N1']:3f}')
+            print(f'theta R2 values: ' + 
+                " ".join([k+f'={v:3f}' for k,v in R2.items()]) )
 
-            if 4>beta >= 1.9:
+            if False and 4>beta >= 1.9:
                 m1,m2=0,0
                 for k in r2methods:
                     m1 = max(m1,-yvals[k].min())
                     m2 = max(m2, yvals[k].max())
                     plt.scatter(xvals, yvals[k], alpha=0.3, 
-                        label=r2labels[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
+                        label=R2_LABELS[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
                 lims = [-1.1*m1, 1.1*m2]
                 plt.xlim( *lims )
                 plt.ylim( *lims )
@@ -126,8 +132,8 @@ if __name__ == "__main__":
 
 
     if not args.noplot:
-        EP = np.array(EPvals).T
-        betas = np.array(betas)
+        #EP    = np.array(EPvals).T
+        #betas = np.array(betas)
 
         # # -------------------------------
         # # Save results
@@ -148,30 +154,29 @@ if __name__ == "__main__":
         plt.rc('legend', fontsize=20)
         plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-        labels = [
-            r'$\Sigma$', 
-            r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
-            r'$\widehat{\Sigma}_{\bm g}$', 
+        labels = {
+            'emp':r'$\Sigma$', 
+            'TUR':r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
+            'N1':r'$\widehat{\Sigma}_{\bm g}$', 
             # r'${\Sigma}_{\bm g}$',
-            r'${\Sigma}_{\bm g}$',
-            r'${\Sigma}_{\bm g}^{ho}$',
-        ]
-
-        cmap = plt.get_cmap('inferno_r')
-        colors = [cmap(0.25), cmap(0.5), cmap(0.75),cmap(0.95)]
+            # r'${\Sigma}_{\bm g}$',
+            'NSH':r'${\Sigma}_{\bm g}^{ho}$',
+        }
 
         plt.figure(figsize=(5, 5), layout='constrained')
+        cmap = plt.get_cmap('inferno_r')
+        b1,b2 = 0,0
+        mxep  = 0
 
-        # Plot each EP estimator
-        s_ixs = np.argsort(betas)
-        print(betas[s_ixs])
-        # plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
-        for i in range(1, EP.shape[0]):
-            plt.plot(betas[s_ixs], EP[i, s_ixs], label=labels[i], color=colors[i-1], lw=2)
-        plt.plot(betas[s_ixs], EP[0, s_ixs], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
+        for k, v in EPvals.items():
+            betas, eps = map(np.array, zip(*v))
+            s_ixs = np.argsort(betas)
+            plt.plot(betas[s_ixs], eps[s_ixs], label=labels[k], lw=2) # color=colors[i-1], lw=2)
+            b1 = min(b1, betas.min())
+            b2 = max(b2, betas.max())
+            mxep = max(mxep, eps.max())
 
-        # Axes and labels
-        plt.axis([betas.min(), betas.max(), 0, np.nanmax(EP) * 1.05])
+        plt.axis([b1, b2, 0, mxep * 1.05])
         plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
         plt.xlabel(r'$\beta$')
 
