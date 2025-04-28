@@ -286,6 +286,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         step_norm = torch.norm(delta_theta)
         if step_norm > max_step:
             delta_theta = delta_theta * (max_step / step_norm)
+        theta = theta_init + delta*delta_theta
     else:
         Dai = remove_i(Da, i)
         Dai_th = remove_i(Da_th, i)
@@ -293,10 +294,11 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
         d1 = (delta_theta @ Dai_th).item()
         d2 = (delta_theta @ (Dai-Dai_th)).item() / 2
         dlogZ = alpha * d1 + alpha**2 * d2
-        while np.abs(dlogZ)>0.01:
+#        print(dlogZ)
+        while np.abs(dlogZ)>0.1:
             alpha *= 0.95
             dlogZ = alpha * d1 + alpha**2 * d2
-        theta = theta_init + alpha*delta_theta/2
+        theta = theta_init + alpha*delta_theta
     # Remove index i from Da for calculating log-partition contribution
 
 
@@ -315,7 +317,7 @@ def get_EP_Newton2(S, theta_init, Da, i, delta=0.25, num_chunks=None):
 
     return sig_N2.item(), theta
     
-def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=100):
+def get_EP_Newton_steps(S, theta_init, sig_init, Da, i, num_chunks=None, tol=1e-3, max_iter=10):
     nflips,N = S.shape
     sig_old = sig_init
     theta_N = theta_init.clone()
