@@ -375,7 +375,7 @@ def get_EP_Newton_steps_holdout(S, i, num_chunks=None, tol=1e-3, max_iter=50):
         Da_th, Z = correlations_theta(S_trn, theta_init, i)
         Ks_th    = correlations4_theta(S_trn, theta_init, i) / Z
 
-        Da_th   /= Z
+#        Da_th   /= Z
         Ks_th    = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)  # Covariance estimate
     
         if torch.isinf(Ks_th).any():
