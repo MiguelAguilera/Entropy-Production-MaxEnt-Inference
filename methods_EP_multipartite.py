@@ -380,8 +380,8 @@ def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.01, num_chunks=None):
 
 
 def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
-    max_iters=20, tol=1e-2, 
-    trust_radius_init=0.5, trust_radius_max=1.0,
+    max_iters=100, tol=1e-2, 
+    trust_radius_init=0.5, trust_radius_max=1000.0,
     eta0=0.0, eta1=0.25, eta2=0.75):
     theta = theta_init.clone().detach().requires_grad_(False)
     trust_radius = trust_radius_init
@@ -423,14 +423,14 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         rho = act_red / pred_red
 
         if rho < eta1:
-            trust_radius *= 0.25
+            trust_radius *= 0.5
         elif rho > eta2 and p.norm() == trust_radius:
             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
         if rho > eta0:
             theta = theta_new
 
-#        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e}, trust_radius = {trust_radius:.4f}")
+#        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e},  ||p grad|| = {step_norm:.6e}, trust_radius = {trust_radius:.4f}")
 
     f = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
     return f, theta
