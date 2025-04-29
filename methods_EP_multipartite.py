@@ -377,73 +377,76 @@ def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.01, num_chunks=None):
 
 
     
-
-
 def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
-    max_iters=100, tol=1e-2, 
+    max_iters=100, tol=1e-3, 
     trust_radius_init=0.25, trust_radius_max=1000.0,
-    eta0=0.0, eta1=0.25, eta2=0.75):
+    eta0=0.0, eta1=0.25, eta2=0.75,
+    holdout=True):
+    
+    if holdout:
+        S_train, S_valid = S.chunk(2, dim=0)
+    else:
+        S_train = S
+        S_valid = None  # unused
+
     theta = theta_init.clone().detach().requires_grad_(False)
     trust_radius = trust_radius_init
-
-    Dai = remove_i(Da, i)
+#    Dai = remove_i(Da, i)
+    Dai_train= remove_i(correlations(S_train, i), i)
     
-    Da_th, _ = correlations_theta(S, theta, i)
-    grad = Dai - remove_i(Da_th, i)
-    Ks_th = correlations4_theta(S, theta, i, num_chunks)
+    # Initial gradient and Hessian
+    Da_th, _ = correlations_theta(S_train, theta, i)
+    grad = Dai_train - remove_i(Da_th, i)
+    Ks_th = correlations4_theta(S_train, theta, i, num_chunks)
     Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
     H = K_nodiag(Ks_th, i)
     
+    # Track validation objective
+    f_valid_prev = None
+    if holdout:
+        Dai_valid= remove_i(correlations(S_valid, i), i)
+        f_valid_prev = (theta @ Dai_valid).item() - log_norm_theta(S_valid, theta, i)
 
     for iteration in range(max_iters):
-    
         grad_norm = grad.norm()
 
-        # Solve the trust region subproblem approximately
-        # using conjugate gradient with truncation
+        # Solve TR subproblem
         p = steihaug_toint_cg(grad, H, trust_radius)
         step_norm = p.norm()
 
-        if trust_radius < trust_radius_init/10 or  step_norm< tol:
+        if grad.abs().max() < tol:
             break
-#        r_tol = tol * (1 + theta.norm())
-#        if p.abs().max() < tol:
-#            break
-#        if grad_norm < tol + tol * theta.norm():
-##            print(f"Converged at iteration {iteration}")
-#            break
 
-        # Predicted reduction
         pred_red = (grad @ p + 0.5 * p @ (H @ p))
-
-        # Actual reduction
         theta_new = theta + p
-        f_old = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
-        f_new = (theta_new @ Dai).item() -  log_norm_theta(S, theta_new, i)
-        act_red =  f_new - f_old
-
-        # Ratio of actual to predicted reduction
+        f_old = (theta @ Dai_train).item() - log_norm_theta(S_train, theta, i)
+        f_new = (theta_new @ Dai_train).item() - log_norm_theta(S_train, theta_new, i)
+        act_red = f_new - f_old
         rho = act_red / pred_red
-        
+
+        # Optional holdout early stopping
+        if holdout:
+            f_valid = (theta_new @ Dai_valid).item() - log_norm_theta(S_valid, theta_new, i)
+            if f_valid < f_valid_prev:
+                break
+            f_valid_prev = f_valid
+
         if rho < eta1:
             trust_radius *= 0.25
-        
-        if rho < 0.1:
-            break
-        elif rho > eta2 and p.norm() == trust_radius:
+        elif rho > eta2:
             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
         if rho > eta0:
             theta = theta_new
-        Da_th, _ = correlations_theta(S, theta, i)
-        grad = Dai - remove_i(Da_th, i)
-        Ks_th = correlations4_theta(S, theta, i, num_chunks)
-        Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
-        H = K_nodiag(Ks_th, i)
-#        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e},  ||p grad|| = {step_norm:.6e}, trust_radius = {trust_radius:.4f}")
+            Da_th, _ = correlations_theta(S_train, theta, i)
+            grad = Dai_train - remove_i(Da_th, i)
+            Ks_th = correlations4_theta(S_train, theta, i, num_chunks)
+            Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
+            H = K_nodiag(Ks_th, i)
 
-    f = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
-    return f, theta
+    f_final = (theta @ Dai_train).item() - log_norm_theta(S_train, theta, i)
+    return f_final, theta
+
 
 def steihaug_toint_cg(grad, H, trust_radius, tol=1e-10, max_iters=250):
     x = torch.zeros_like(grad)
