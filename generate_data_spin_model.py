@@ -172,7 +172,7 @@ for beta_ix, beta in enumerate(betas):
         num_neighbors=args.num_neighbors,
     )
 
-    print('Sampled states: %d' % S.shape[1])
+    print('Sampled states: %d' % S.shape[0])
     print('   - state changes : %d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
     
     save_data(file_name, J, H, S, F, beta, args)
