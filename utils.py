@@ -41,15 +41,27 @@ def solve_linear_psd(A, b, method=None, eps=0):
     assert not torch.isinf(A).any() and not torch.isinf(A).any()
 
     if method is None:
-        method = 'solve'
+        method = 'solve_ex'
         
 
     do_lstsq = False
     A2 = A if eps == 0 else A + eye_like(A)*eps
 
     try:
-        if method == 'Cholesky':
+        if method=='solve':
+            x = torch.linalg.solve(A2, b)
+
+        elif method=='solve_ex':
+            x = torch.linalg.solve_ex(A2, b)[0]
+
+        elif method == 'cholesky':
             L = torch.linalg.cholesky(A2)
+            x = torch.cholesky_solve(b.unsqueeze(-1), L, upper=False)
+            
+            return  x.squeeze()
+
+        elif method == 'cholesky_ex':
+            L = torch.linalg.cholesky_ex(A2)[0]
             x = torch.cholesky_solve(b.unsqueeze(-1), L, upper=False)
             
             return  x.squeeze()
@@ -58,18 +70,15 @@ def solve_linear_psd(A, b, method=None, eps=0):
             Q, R = torch.linalg.qr(A2)
             x = torch.linalg.solve_triangular( R, (Q.T @ b).unsqueeze(1), upper=True).squeeze()
 
-
-        elif method=='solve':
-            x = torch.linalg.solve(A2, b)
-
-        elif method=='solve_ex':
-            x = torch.linalg.solve_ex(A2, b)
-
         elif method=='inv':
             x = torch.linalg.inv(A2)@b
 
         elif method=='lstsq':
             do_lstsq = True
+
+        #elif method=='CG':
+        #    import linalg 
+        #    x, _ = linalg.CG(A2, b, max_iter=10)
 
         else:
             assert False, f"Unknown method {method} in solve_linear_psd"

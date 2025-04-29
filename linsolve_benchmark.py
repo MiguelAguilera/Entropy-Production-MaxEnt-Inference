@@ -14,15 +14,16 @@ def get_A_b():
     b = torch.randn(n)
     return A, b
 
-num_runs = 100
+num_runs = 10
 
-for method in ['Cholesky','QR','solve','solve_ex','lstsq','inv']:
+for method in ['solve','solve_ex','cholesky','cholesky_ex','QR','lstsq','inv']:
     tot_time = 0
-    for _ in range(num_runs):
+    for i in range(num_runs):
+        torch.manual_seed(i)
         A, b = get_A_b()
         stime = time.time()
         x = utils.solve_linear_psd(A, b, method=method)
         tot_time += time.time() - stime
         utils.empty_cache()
         #print(x[:4].cpu().numpy())
-    print(f'{method:10s} {tot_time:3f}')
+    print(f'{method:15s} {tot_time:3f}')

@@ -27,7 +27,6 @@ ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 1000 --num_beta 25  --BASE_DIR ~/M
 
 ARGS="--beta_min 0 --J0 0 --beta_max 4 --size 200 --num_beta 25  --BASE_DIR ~/MaxEntData200diluted"
 
-ARGS="--beta_min 3 --J0 0 --beta_max 4 --size 500 --num_beta 1  --BASE_DIR ~/MaxEntDataTest500"
 
 ARGS="--beta_min 0 --J0 0 --beta_max 5 --size 300 --num_beta 25  --BASE_DIR ~/MaxEntData300diluted"
 
@@ -44,11 +43,14 @@ ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta
 ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 25  --BASE_DIR ~/MaxEntDataTest50v4"
 
 ARGS="--beta_min 0 --rep 200000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v6"
-ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v10"
+#ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v10"
 
-#ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 3.5 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntDataTest1000v2"
+#ARGS="--beta_min 0 --rep 200000 --DJ 1 --J0 0 --beta_max 3.5 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntDataTest1000v3"
 #ARGSEP="--nograd --overwrite"
+# ARGS="--beta_min 3.5 --J0 0 --DJ 1 --beta_max 4 --size 500 --num_beta 1  --BASE_DIR ~/MaxEntDataTest500dj1"
 
+ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 500 --num_beta 10  --BASE_DIR ~/MaxEntData500dil"
+#rm -rf ~/MaxEntData500dilS
 # rm -rf ~/MaxEntData40v2
 #ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000v11"
 #ARGS="--patterns 100 --beta_min 1 --rep 1000000 --beta_max 4 --size 10 --num_beta 5  --BASE_DIR ~/MaxEntData10"
