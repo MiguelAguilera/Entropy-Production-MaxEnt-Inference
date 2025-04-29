@@ -35,11 +35,60 @@ def eye_like(A):
     return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
 
 
-def solve_linear_psd(A, b, method=None, eps=0):
-    # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
-    assert not torch.isnan(b).any() and not torch.isnan(b).any()
-    assert not torch.isinf(A).any() and not torch.isinf(A).any()
+def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
+    assert trust_radius is not None
+    
+    def find_tau(x, d, trust_radius):
+        # Solve ||x + tau*d|| = trust_radius for tau
+        a = d @ d
+        b = 2 * (x @ d)
+        c = (x @ x) - trust_radius**2
+        sqrt_discriminant = torch.sqrt(b**2 - 4*a*c)
+        tau = (-b + sqrt_discriminant) / (2*a)
+        return tau
 
+    x = torch.zeros_like(b)
+    r = b.clone()
+    d = r
+
+    for i in range(max_iter):
+        Hd = A @ d
+        dHd = d @ Hd
+
+        if dHd <= 0:
+            # Negative curvature, move to boundary
+            tau = find_tau(x, d, trust_radius)
+            return x + tau * d
+
+        alpha = (r @ r) / dHd
+        x_new = x + alpha * d
+
+        if x_new.norm() >= trust_radius:
+            tau = find_tau(x, d, trust_radius)
+            return x + tau * d
+
+        r_new = r + alpha * Hd
+
+        if r_new.norm() < tol:
+            return x_new
+
+        beta = (r_new @ r_new) / (r @ r)
+        d = -r_new + beta * d
+        x = x_new
+        r = r_new
+
+    return x
+
+
+def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
+    # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
+    #assert not is_infnan(b.sum())
+    #assert not is_infnan(A.sum())
+
+    if trust_radius is not None:
+        if method is not None and method != 'steihaug':
+            assert False, 'trust_radius only supported by steihaug method'
+        method = 'steihaug'
     if method is None:
         method = 'solve_ex'
         
@@ -50,6 +99,9 @@ def solve_linear_psd(A, b, method=None, eps=0):
     try:
         if method=='solve':
             x = torch.linalg.solve(A2, b)
+
+        elif method == 'steihaug':
+            x = steihaug_toint_cg(A2, b, trust_radius=trust_radius)
 
         elif method=='solve_ex':
             x = torch.linalg.solve_ex(A2, b)[0]

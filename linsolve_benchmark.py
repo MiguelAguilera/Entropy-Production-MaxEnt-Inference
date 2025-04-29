@@ -1,11 +1,21 @@
-import time 
-import os
+import time, os, argparse
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 
 import torch
 import utils
 
 utils.set_default_device()
+
+parser = argparse.ArgumentParser(description='Benchmark linear solvers')
+    
+# Add the --printx argument that stores True when used
+parser.add_argument('--printx', action='store_true', default=False, help='Print solution')
+    
+# Parse the arguments
+args = parser.parse_args()
+    
+
+
 def get_A_b():
     n = 1000
     rand_mat = torch.randn(n, n)
@@ -16,14 +26,16 @@ def get_A_b():
 
 num_runs = 10
 
-for method in ['solve','solve_ex','cholesky','cholesky_ex','QR','lstsq','inv']:
+for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lstsq','inv']:
     tot_time = 0
     for i in range(num_runs):
         torch.manual_seed(i)
         A, b = get_A_b()
+        kw_args = {} if method != 'steihaug' else dict(trust_radius=10)
         stime = time.time()
-        x = utils.solve_linear_psd(A, b, method=method)
+        x = utils.solve_linear_psd(A, b, method=method, **kw_args)
         tot_time += time.time() - stime
         utils.empty_cache()
-        #print(x[:4].cpu().numpy())
+        if args.printx:
+            print(x[:4].cpu().numpy())
     print(f'{method:15s} {tot_time:3f}')
