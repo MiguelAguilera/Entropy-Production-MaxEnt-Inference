@@ -11,12 +11,13 @@ import ep_multipartite as epm
             
 
 
-def calc_spin(S_i, J_i, i, grad=False, newton=False):
+def calc_spin(S_i, J_i, i):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
 
     obj = epm.EPEstimators(S_i, i)
+
 
     stime = time.time()
     sigmas['N1'], thetas['N1'] = obj.get_EP_Newton()
@@ -31,33 +32,34 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     sigmas['Emp'] = float(utils.remove_i(J_i,i) @ obj.g_mean())
     times[ 'Emp'] = time.time() - stime
 
-    if newton:
-        if False:
-            theta_init = thetas['N1']
-            stime = time.time()
-            sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps(newton_step_args=dict(delta=0.25))
-            times[ 'Ntrst'] = time.time() - stime
-        
-            stime = time.time()
-            sigmas['Nthr'], thetas['Nthr'] = obj.get_EP_Newton_steps(newton_step_args=dict(th=0.01))
-            times[ 'Nthr'] = time.time() - stime
+    if False:
+        stime = time.time()
+        sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps(newton_step_args=dict(delta=1))
+        times[ 'Ntrst'] = time.time() - stime
+    
+    if False:
+        stime = time.time()
+        sigmas['Nthr'], thetas['Nthr'] = obj.get_EP_Newton_steps(newton_step_args=dict(th=0.01))
+        times[ 'Nthr'] = time.time() - stime
 
+    if False:
         stime = time.time()
         sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
         times[ 'Ntron'] = time.time() - stime
 
-    
-        if True:
-            stime = time.time()
-            sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps_holdout()
-            times[ 'Nhld'] = time.time() - stime
 
-            stime = time.time()
-            sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps_holdout(
-                newton_step_args=dict(delta=0.5))
-            times[ 'Nhld2'] = time.time() - stime
+    if True:
+        stime = time.time()
+        sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps_holdout()
+        times[ 'Nhld'] = time.time() - stime
+
+    if False:
+        stime = time.time()
+        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps_holdout(
+            newton_step_args=dict(delta=.1))
+        times[ 'Nhld2'] = time.time() - stime
         
-    if grad:
+    if True: # Grad
         x0=torch.zeros(len(J_i)-1)
         stime = time.time()
         sigmas['Grad'], thetas['Grad'] = obj.get_EP_Adam(theta_init=x0) 
@@ -97,7 +99,7 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
     return sigmas, times, thetas
 
 
-def calc(file_name, newton=False, grad=False):
+def calc(file_name):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     process = psutil.Process(os.getpid())
@@ -133,7 +135,7 @@ def calc(file_name, newton=False, grad=False):
         for i in pbar:
             S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
 
-            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
+            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i)
 
             epdata[i] = res 
             sigmas, times, thetas = res
@@ -177,14 +179,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Estimate EP for file.")
     parser.add_argument("file_name", type=str)
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
-    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
-    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
 
     args = parser.parse_args()
 
-    calc(args.file_name, overwrite=args.overwrite, 
-            grad=not args.nograd, 
-            newton=not args.nonewton)
+    calc(args.file_name, overwrite=args.overwrite)
 
 
 

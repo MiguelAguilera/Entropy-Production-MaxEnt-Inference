@@ -255,19 +255,31 @@ class EPEstimators(object):
         return sig_new, theta
 
 
-    def get_EP_Newton_steps_holdout(self, tol=1e-3, max_iter=100, newton_step_args={}):
+    def get_EP_Newton_steps_holdout(self, tol=1e-3, max_iter=1000, newton_step_args={}):
         nflips = int(self.nflips/2)
         i      = self.i 
 
         trn = EPEstimators(self.S[:nflips,:], i)
         tst = EPEstimators(self.S[nflips:,:], i)
 
-        sig_old_trn, theta = trn.get_EP_Newton()
-        #sig_new, theta  = newton_step(S, theta_init, g, i, num_chunks=num_chunks)
-        sig_old_tst = tst.get_objective(theta)
-        
-        if is_infnan(sig_old_tst):
-            return sig_old_trn, theta 
+        if False:
+            sig_old_trn, theta = trn.get_EP_Newton()
+            #sig_new, theta  = newton_step(S, theta_init, g, i, num_chunks=num_chunks)
+            sig_old_tst = tst.get_objective(theta)
+
+            if is_infnan(sig_old_tst):
+                return sig_old_trn, theta 
+
+        else:
+            sig_old_trn, sig_old_tst = 0.0, 0.0
+            theta = torch.zeros(self.N-1)
+            #print('here',tst.get_objective(theta))
+            #sig_new_trn, new_theta = trn.newton_step(theta_init=theta)
+            #print(sig_new_trn, new_theta)
+            #sig_new_trn, new_theta = trn.newton_step(theta_init=theta, **newton_step_args)
+            #print(sig_new_trn, new_theta)
+            #asdf
+
 
         for _ in range(max_iter):
             sig_new_trn, new_theta = trn.newton_step(theta_init=theta, **newton_step_args)
@@ -379,7 +391,7 @@ class EPEstimators(object):
         return f_old, theta        
 
 
-    def get_EP_Adam(theta_init, max_iter=1000, 
+    def get_EP_Adam(self, theta_init, max_iter=1000, 
                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                     tol=1e-4, skip_warm_up=False,
                     timeout=60):
@@ -467,7 +479,7 @@ class EPEstimators(object):
 
             theta[i]=0.0
 
-        return cur_val, remove_i(theta)
+        return cur_val, remove_i(theta,i)
 
 
 

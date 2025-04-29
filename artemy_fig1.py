@@ -66,8 +66,6 @@ if __name__ == "__main__":
     # parser.add_argument("--patterns", type=int, default=None,
     #                     help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
-    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
-    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
     args = parser.parse_known_args()[0]
 
     #N = args.size
@@ -104,12 +102,12 @@ if __name__ == "__main__":
                     
         if res is None:
             import calc
-            f, f_args, f_kwargs = calc.calc, (BASE_DIR+file_name,), dict(grad=not args.nograd, newton=not args.nonewton)
+            f, f_kwargs = calc.calc, dict(file_name = BASE_DIR+file_name,)
             if True:
                 with multiprocessing.Pool(processes=1) as pool:
-                    res = pool.apply(f, args=f_args, kwds=f_kwargs)
+                    res = pool.apply(f, kwds=f_kwargs)
             else:
-                res = f(*f_args, **f_kwargs)
+                res = f(**f_kwargs)
 
             with open(out_filename, 'wb') as file:
                 pickle.dump(res, file)
