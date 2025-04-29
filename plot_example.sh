@@ -55,7 +55,8 @@ ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta
 # ARGS="--patterns 10 --beta_max 3.5 --beta_min 1 --num_steps 10000 --rep 100000 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData4" 
 #rm -rf ~/MaxEntData4
 
-python generate_data_spin_model.py --seed 42   --num_neighbors 5  $ARGS 
-python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --nograd    --overwrite 
+#python generate_data_spin_model.py --seed 42   --num_neighbors 5  $ARGS 
+python artemy_fig1.py                    $ARGS  $ARGSEP --nograd --overwrite  --nograd  #--nograd   --overwrite 
  
+# python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 
