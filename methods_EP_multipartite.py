@@ -402,13 +402,15 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         # using conjugate gradient with truncation
         p = steihaug_toint_cg(grad, H, trust_radius)
         step_norm = p.norm()
-        
-        r_tol = tol * (1 + theta.norm())
-        if step_norm < r_tol:
+
+        if trust_radius < trust_radius_init/10 or  grad.abs().max() < tol:
             break
-        if grad_norm < tol + tol * theta.norm():
-#            print(f"Converged at iteration {iteration}")
-            break
+#        r_tol = tol * (1 + theta.norm())
+#        if p.abs().max() < tol:
+#            break
+#        if grad_norm < tol + tol * theta.norm():
+##            print(f"Converged at iteration {iteration}")
+#            break
 
         # Predicted reduction
         pred_red = (grad @ p + 0.5 * p @ (H @ p))
@@ -419,11 +421,13 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         f_new = (theta_new @ Dai).item() -  log_norm_theta(S, theta_new, i)
         act_red =  f_new - f_old
 
+#        if np.abs(act_red) < tol:
+#            break
         # Ratio of actual to predicted reduction
         rho = act_red / pred_red
 
         if rho < eta1:
-            trust_radius *= 0.5
+            trust_radius *= 0.2
         elif rho > eta2 and p.norm() == trust_radius:
             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
