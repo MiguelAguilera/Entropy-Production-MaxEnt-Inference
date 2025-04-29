@@ -290,7 +290,7 @@ class EPEstimators(object):
         sig_old_trn = sig_old_tst = 0.0
         theta = torch.zeros(self.N-1)
 
-        max_norm = 0.1
+        max_norm = 1.0
         for _ in range(max_iter):
             
             new_theta = trn.newton_step(theta_init=theta) # , **newton_step_args)
