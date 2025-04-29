@@ -15,11 +15,13 @@ LABELS = {'Emp'   : 'Empirical',
           'N1'    : 'Newton 1step', 
           'TUR'   : 'MTUR', 
           'Ntrst' : 'Newton Trust', 
+          'Nls'   : 'Newton LS', 
           'Nthr'  : 'Newton Thresh', 
           'Nhld'  : 'Newton Holdout', 
           'Nhld2' : 'Newton Holdout2', 
           'Ntron' : 'TRON',
           'Grad'  : 'Grad Ascent',
+          'GradHld'  : 'Grad Holdout',
           'BFGS'  : 'BFGS'}
 
 LEGEND_LABELS = {

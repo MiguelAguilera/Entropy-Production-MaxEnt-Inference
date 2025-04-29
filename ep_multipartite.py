@@ -10,7 +10,9 @@ import os, time
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 
 import numpy as np
+import scipy
 import torch
+
 
 from utils import * 
 
@@ -77,6 +79,19 @@ class EPEstimators(object):
             self.g_covariance_ = self.g_secondmoments() - torch.outer(gmean, gmean)
         return self.g_covariance_
 
+    def g_mean_theta(self, theta):
+        # Compute expectation of g under reverse distribution titled by theta
+        i = self.i
+        theta_padded = add_i(theta, i)
+        th_g     = (-2 * self.S[:, i]) * (self.S @ theta_padded)
+        th_g_min = torch.min(th_g)    # substract max of -th_g for numerical stability
+        Y        = torch.exp(-th_g+th_g_min)
+        Z        = torch.sum(Y) / self.nflips
+        S1_S     = -(-2 * self.S[:, i]) * Y
+
+        mean = S1_S @ self.S / (self.nflips * Z)
+        return remove_i(mean, i)
+
 
     def g_mean_and_covariance_theta(self, theta):
         # Compute expectation and covariance of g under reverse distribution titled by theta
@@ -128,7 +143,7 @@ class EPEstimators(object):
         return float(theta @ self.g_mean()) - self.log_norm_theta(theta)
 
 
-    def newton_step(self, theta_init, delta=None, th=None, logZpad=1e-5):
+    def newton_step(self, theta_init, delta=None, th=None, logZpad=1e-5,do_linesearch=False):
         """
         Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -162,7 +177,59 @@ class EPEstimators(object):
         delta_theta = solve_linear_psd(K_theta, rhs, eps=self.linsolve_eps, method=self.linsolve_method)
 
         step_size = 1
-        if delta is not None:
+
+        if do_linesearch:
+            def g(alpha):
+                return self.objective(theta_init + alpha * delta_theta)
+    
+            def dg(alpha):
+                df = self.g_mean() - self.g_mean_theta(theta=theta_init + alpha * delta_theta)
+                return -df @ delta_theta
+
+            def get_step_size(g, dg):
+        
+                a, b = 0.0, 1.0                         # Initialize the search interval [0,1]
+                 
+                initial_derivative = dg(0)              # Initial check for descent direction
+                if initial_derivative >= 0:
+                    return 0.0  # No step taken
+                
+                final_derivative = dg(1.0)              # Check if full step is acceptable
+                if final_derivative >= 0: # and final_derivative <= tol:
+                    return 1.0 
+                
+                # Apply bisection with Newton's method
+                max_iter_ls = 4
+                for i in range(max_iter_ls):
+                    # Use Newton's method to estimate alpha within the interval
+                    if dg(a) != dg(b):  # Avoid division by zero
+                        alpha = a - dg(a) * (b - a) / (dg(b) - dg(a))
+                    else:
+                        alpha = (a + b) / 2.0
+                    
+                    # If Newton's step falls outside [0,1], use bisection
+                    if alpha <= a or alpha >= b:
+                        alpha = (a + b) / 2.0
+                    
+                    # Compute derivative at the new point
+                    derivative = dg(alpha)
+                    
+                    # Check for convergence
+                    if abs(derivative) < 1e-3: # tol:
+                        return alpha
+                    
+                    # Update the interval
+                    if derivative > 0:
+                        b = alpha
+                    else:
+                        a = alpha
+                
+                # Return the midpoint of the final interval if max iterations reached
+                return (a + b) / 2.0
+            step_size = get_step_size(g,dg)
+            #print("ls:", step_size)
+
+        elif delta is not None:
             # Constrain the step to be within a trust region
             max_step = delta * torch.norm(theta_init)
             step_norm = torch.norm(delta_theta)
@@ -287,17 +354,31 @@ class EPEstimators(object):
                 break
 
             sig_new_tst = tst.get_objective(new_theta) 
-            if is_infnan(sig_new_tst) or sig_new_tst <= sig_old_tst or sig_new_tst > np.log(nflips):
+            if is_infnan(sig_new_tst) or sig_new_tst > np.log(nflips):
                 break
 
-            sig_old_tst, sig_old_trn, theta = sig_new_tst, sig_new_trn, new_theta
+            if sig_new_tst <= sig_old_tst:
+                
+                # delta_theta = new_theta - theta
+                # def dfunc(x):
+                #     v = theta + x * delta_theta
+                #     return float( (tst.g_mean() - tst.g_mean_theta(v))@delta_theta )
 
-            rel_change_trn = np.abs((sig_new_trn - sig_old_trn) / sig_old_trn)
-            rel_change_tst = np.abs((sig_new_tst - sig_old_tst) / sig_old_tst)
+                # if np.sign(dfunc(0)) == np.sign(dfunc(1)):
+                #     break
+
+                # x_max = scipy.optimize.bisect(dfunc, 0, 1, rtol=1e-3)
+                # theta = theta + x_max * delta_theta
+                # sig_old_tst = tst.get_objective(theta)
+                
+                break
 
             if np.abs(sig_new_trn - sig_old_trn) <= tol*np.abs(sig_old_trn) or \
                np.abs(sig_new_tst - sig_old_tst) <= tol*np.abs(sig_old_tst):
+                #print('here?')
                 break
+
+            sig_old_tst, sig_old_trn, theta = sig_new_tst, sig_new_trn, new_theta
 
         return sig_old_tst, theta
 
@@ -391,7 +472,7 @@ class EPEstimators(object):
         return f_old, theta        
 
 
-    def get_EP_Adam(self, theta_init, max_iter=1000, 
+    def get_EP_Adam(self, theta_init, holdout=False, max_iter=1000, 
                     beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, 
                     tol=1e-4, skip_warm_up=False,
                     timeout=60):
@@ -416,10 +497,20 @@ class EPEstimators(object):
             theta     : final updated theta
         """
 
-        i = self.i
-        g_withi = add_i(self.g_mean(),i)
+        i      = self.i 
+        nflips = self.nflips
 
-        S      = self.S.T.contiguous()   # Transpose for quicker calculations
+        if holdout:
+            nflips = int(self.nflips/2)
+            trn = EPEstimators(self.S[:nflips,:], i)
+            tst = EPEstimators(self.S[nflips:,:], i)
+        else:
+            trn = self
+        
+        trn_g_withi = add_i(trn.g_mean(),i)
+
+
+        S      = trn.S.T.contiguous()   # Transpose for quicker calculations
 
         theta = add_i(theta_init, i)
 
@@ -441,9 +532,12 @@ class EPEstimators(object):
             Z = torch.mean(Y)
             S1_S = twice_S_onlyi * Y 
 
-            g_theta = torch.einsum('r,jr->j', S1_S, S) / self.nflips / Z
+            g_theta = torch.einsum('r,jr->j', S1_S, S) / (nflips * Z)
 
-            cur_val = float(theta @ g_withi - torch.log(Z))
+            if holdout:
+                cur_val = tst.get_objective(remove_i(theta,i)) 
+            else:
+                cur_val = float(theta @ trn_g_withi - torch.log(Z))
 
             if is_infnan(cur_val):
                 break
@@ -455,7 +549,7 @@ class EPEstimators(object):
 
             last_val = cur_val
 
-            grad = g_withi - g_theta
+            grad = trn_g_withi - g_theta
 
             if False:
                 # regular gradient descent

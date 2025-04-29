@@ -32,6 +32,12 @@ def calc_spin(S_i, J_i, i):
     sigmas['Emp'] = float(utils.remove_i(J_i,i) @ obj.g_mean())
     times[ 'Emp'] = time.time() - stime
 
+    #stime = time.time()
+    #sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps(newton_step_args=dict(do_linesearch=True))
+    #times[ 'Nls'] = time.time() - stime
+    # stime = time.time()
+    # sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps_holdout(newton_step_args=dict(do_linesearch=True))
+    # times[ 'Nls'] = time.time() - stime
     if False:
         stime = time.time()
         sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps(newton_step_args=dict(delta=1))
@@ -59,7 +65,13 @@ def calc_spin(S_i, J_i, i):
             newton_step_args=dict(delta=.1))
         times[ 'Nhld2'] = time.time() - stime
         
-    if True: # Grad
+    if False: # Grad
+        x0=torch.zeros(len(J_i)-1)
+        stime = time.time()
+        sigmas['GradHld'], thetas['GradHld'] = obj.get_EP_Adam(theta_init=x0, holdout=True) 
+        times[ 'GradHld']  = time.time() - stime
+
+    if False: # Grad
         x0=torch.zeros(len(J_i)-1)
         stime = time.time()
         sigmas['Grad'], thetas['Grad'] = obj.get_EP_Adam(theta_init=x0) 
@@ -150,7 +162,8 @@ def calc(file_name):
             del S_i, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
-            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Grad'] if k in ep_sums]
+            show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Grad','GradHld', 'Nls']
+            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in show_methods if k in ep_sums]
             pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
         for k,v in ep_sums.items():
