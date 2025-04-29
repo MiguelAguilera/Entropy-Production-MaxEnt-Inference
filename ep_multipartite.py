@@ -281,31 +281,22 @@ class EPEstimators(object):
         trn = EPEstimators(self.S[:nflips,:], i)
         tst = EPEstimators(self.S[nflips:,:], i)
 
-        if True:
-            sig_old_trn, theta = trn.get_EP_Newton()
-            #sig_new, theta  = newton_step(S, theta_init, g, i, num_chunks=num_chunks)
-            sig_old_tst = tst.get_objective(theta)
+        # sig_old_trn, theta = trn.get_EP_Newton()
+        # sig_old_tst = tst.get_objective(theta)
 
-            if is_infnan(sig_old_tst) or sig_old_tst <= 0:
-                return 0.0, torch.zeros(self.N-1) 
+        # if is_infnan(sig_old_tst) or sig_old_tst <= 0:
+        #     return 0.0, torch.zeros(self.N-1) 
 
-        else:
-            sig_old_trn, sig_old_tst = 0.0, 0.0
-            theta = torch.zeros(self.N-1)
-            #print('here',tst.get_objective(theta))
-            #sig_new_trn, new_theta = trn.newton_step(theta_init=theta)
-            #print(sig_new_trn, new_theta)
-            #sig_new_trn, new_theta = trn.newton_step(theta_init=theta, **newton_step_args)
-            #print(sig_new_trn, new_theta)
-            #asdf
+        sig_old_trn = sig_old_tst = 0.0
+        theta = torch.zeros(self.N-1)
 
-
+        max_norm = 0.1
         for _ in range(max_iter):
             
             new_theta = trn.newton_step(theta_init=theta) # , **newton_step_args)
 
             delta_theta = new_theta - theta
-            new_theta   = theta + delta_theta / max(1, torch.norm(delta_theta))
+            new_theta   = theta + delta_theta / max(max_norm, torch.norm(delta_theta))
             sig_new_trn = self.get_objective(new_theta)
 
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):
