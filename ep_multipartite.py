@@ -288,7 +288,9 @@ class EPEstimators(object):
         #     return 0.0, torch.zeros(self.N-1) 
 
         sig_old_trn = sig_old_tst = 0.0
-        theta = torch.zeros(self.N-1)
+        
+        device = self.S.device
+        theta = torch.zeros(self.N - 1, device=device)
 
         max_norm = 1
         for _ in range(max_iter):
@@ -336,10 +338,10 @@ class EPEstimators(object):
 
 
 
-    def get_EP_TRON(self,  
-            max_iter=100, tol=1e-3, 
-            trust_radius_init=0.5, trust_radius_max=1.0,
-            eta0=0.0, eta1=0.25, eta2=0.75):
+    def get_EP_TRON(self, tol=1e-3, max_iter=100, 
+                    trust_radius_init=0.5, trust_radius_max=1.0,
+                    eta0=0.0, eta1=0.25, eta2=0.75,
+                    holdout=False):
 
         def steihaug_toint_cg(grad, H, trust_radius, tol=1e-10, max_iters=250):
             x = torch.zeros_like(grad)
@@ -383,45 +385,63 @@ class EPEstimators(object):
             tau = (-b + sqrt_discriminant) / (2*a)
             return tau
 
+        nflips = int(self.nflips / 2)
+        i = self.i
 
-        f_old, theta = self.get_EP_Newton()
+        if holdout:
+            trn = EPEstimators(self.S[:nflips, :], i, num_chunks=self.num_chunks)
+            tst = EPEstimators(self.S[nflips:, :], i, num_chunks=self.num_chunks)
+        else:
+            trn = EPEstimators(self.S, i, num_chunks=self.num_chunks, device=self.device())
+            tst = None  # unused
+
+        f_old_trn, theta = trn.get_EP_Newton()
         trust_radius = trust_radius_init
-        
-        for iteration in range(max_iter):
-            g_theta, K_theta = self.g_mean_and_covariance_theta(theta=theta)
-            grad = self.g_mean() - g_theta
-            grad_norm = grad.norm()
 
+        g = trn.g_mean()
+        g_theta, H_theta = trn.g_mean_and_covariance_theta(theta)
+        grad = g - g_theta
+        grad_norm = grad.abs().max()
+
+        f_old_trn = trn.get_objective(theta)
+        f_old_val = tst.get_objective(theta) if holdout else None
+
+        for iteration in range(max_iter):
             if grad_norm < tol:
                 break
 
-            # Solve the trust region subproblem approximately
-            # using conjugate gradient with truncation
-            p = steihaug_toint_cg(grad, K_theta, trust_radius)
+            p = steihaug_toint_cg(grad, H_theta, trust_radius)
+            pred_red = grad @ p + 0.5 * p @ (H_theta @ p)
 
-            # Predicted reduction
-            pred_red = (grad @ p + 0.5 * p @ (K_theta @ p))
-
-            # Actual reduction
             theta_new = theta + p
-            f_new     = self.get_objective(theta_new)
-            act_red   = f_new - f_old
-
-            # Ratio of actual to predicted reduction
+            f_new_trn = trn.get_objective(theta_new)
+            act_red = f_new_trn - f_old_trn
             rho = act_red / pred_red
 
+            if holdout:
+                f_new_val = tst.get_objective(theta_new)
+                if f_new_val < f_old_val:
+                    break
+            else:
+                f_new_val = None
+
+            # Accept step
+            if rho > eta0:
+                theta = theta_new
+                f_old_trn = f_new_trn
+                if holdout:
+                    f_old_val = f_new_val
+                g_theta, H_theta = trn.g_mean_and_covariance_theta(theta)
+                grad = g - g_theta
+                grad_norm = grad.abs().max()
+
+            # Update trust radius
             if rho < eta1:
                 trust_radius *= 0.25
             elif rho > eta2 and p.norm() == trust_radius:
                 trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
-            if rho > eta0:
-                theta = theta_new
-                f_old = f_new
-
-            #        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e}, trust_radius = {trust_radius:.4f}")
-
-        return f_old, theta        
+        return (f_old_val if holdout else f_old_trn), theta
 
 
     def get_EP_Adam(self, theta_init, holdout=False, max_iter=1000, 
