@@ -40,7 +40,16 @@ class EPEstimators(object):
         self.linsolve_args = linsolve_args.copy()
         if 'eps' not in linsolve_args:
             self.linsolve_args['eps'] = 1e-4
-
+            
+        # Store args for easy copying later
+        self._init_args = dict(
+            i=self.i,
+            num_chunks=num_chunks,
+            linsolve_args=self.linsolve_args,
+        )
+        
+    def spawn(self, S_new):
+        return EPEstimators(S_new, **self._init_args)
 
     def g_mean(self):
         # Compute  means of g observables
@@ -283,8 +292,8 @@ class EPEstimators(object):
         nflips = int(self.nflips/2)
         i      = self.i 
 
-        trn = EPEstimators(self.S[:nflips,:], i)
-        tst = EPEstimators(self.S[nflips:,:], i)
+        trn = self.spawn(self.S[:nflips,:])
+        tst = self.spawn(self.S[nflips:,:])
 
         # sig_old_trn, theta = trn.get_EP_Newton()
         # sig_old_tst = tst.get_objective(theta)
@@ -355,10 +364,10 @@ class EPEstimators(object):
         i = self.i
 
         if holdout:
-            trn = EPEstimators(self.S[:nflips, :], i, num_chunks=self.num_chunks)
-            tst = EPEstimators(self.S[nflips:, :], i, num_chunks=self.num_chunks)
+            trn = self.spawn(self.S[:nflips,:])
+            tst = self.spawn(self.S[nflips:,:])
         else:
-            trn = EPEstimators(self.S, i, num_chunks=self.num_chunks)
+            trn = self.spawn(self.S)
             tst = None  # unused
 
         f_old_trn, theta = trn.get_EP_Newton()
@@ -442,8 +451,8 @@ class EPEstimators(object):
 
         if holdout:
             nflips = int(self.nflips/2)
-            trn = EPEstimators(self.S[:nflips,:], i)
-            tst = EPEstimators(self.S[nflips:,:], i)
+            trn = self.spawn(self.S[:nflips,:])
+            tst = self.spawn(self.S[nflips:,:])
         else:
             trn = self
         
