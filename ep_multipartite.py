@@ -49,7 +49,6 @@ class EPEstimators(object):
         )
         
     def spawn(self, S_new):
-        if i_new is None:
         return EPEstimators(S_new, **self._init_args)
 
     def g_mean(self):
