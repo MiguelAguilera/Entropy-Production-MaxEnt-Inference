@@ -341,49 +341,6 @@ class EPEstimators(object):
             trust_radius_init=0.5, trust_radius_max=1.0,
             eta0=0.0, eta1=0.25, eta2=0.75):
 
-        def steihaug_toint_cg(grad, H, trust_radius, tol=1e-10, max_iters=250):
-            x = torch.zeros_like(grad)
-            r = grad.clone()
-            d = r
-
-            for i in range(max_iters):
-                Hd = H @ d
-                dHd = d @ Hd
-
-                if dHd <= 0:
-                    # Negative curvature, move to boundary
-                    tau = find_tau(x, d, trust_radius)
-                    return x + tau * d
-
-                alpha = (r @ r) / dHd
-                x_new = x + alpha * d
-
-                if x_new.norm() >= trust_radius:
-                    tau = find_tau(x, d, trust_radius)
-                    return x + tau * d
-
-                r_new = r + alpha * Hd
-
-                if r_new.norm() < tol:
-                    return x_new
-
-                beta = (r_new @ r_new) / (r @ r)
-                d = -r_new + beta * d
-                x = x_new
-                r = r_new
-
-            return x
-
-        def find_tau(x, d, trust_radius):
-            # Solve ||x + tau*d|| = trust_radius for tau
-            a = d @ d
-            b = 2 * (x @ d)
-            c = (x @ x) - trust_radius**2
-            sqrt_discriminant = torch.sqrt(b**2 - 4*a*c)
-            tau = (-b + sqrt_discriminant) / (2*a)
-            return tau
-
-
         f_old, theta = self.get_EP_Newton()
         trust_radius = trust_radius_init
         
@@ -397,7 +354,7 @@ class EPEstimators(object):
 
             # Solve the trust region subproblem approximately
             # using conjugate gradient with truncation
-            p = steihaug_toint_cg(grad, K_theta, trust_radius)
+            p = steihaug_toint_cg(A=K_theta, b=grad, trust_radius=trust_radius)
 
             # Predicted reduction
             pred_red = (grad @ p + 0.5 * p @ (K_theta @ p))
