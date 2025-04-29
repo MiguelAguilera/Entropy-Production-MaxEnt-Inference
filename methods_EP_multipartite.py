@@ -380,7 +380,7 @@ def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.01, num_chunks=None):
 
 
 def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
-    max_iters=20, tol=1e-3, 
+    max_iters=20, tol=1e-2, 
     trust_radius_init=0.5, trust_radius_max=1.0,
     eta0=0.0, eta1=0.25, eta2=0.75):
     theta = theta_init.clone().detach().requires_grad_(False)
@@ -394,9 +394,6 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         grad = Dai - remove_i(Da_th, i)
         grad_norm = grad.norm()
 
-        if grad_norm < tol:
-#            print(f"Converged at iteration {iteration}")
-            break
 
         Ks_th = correlations4_theta(S, theta, i, num_chunks)
         Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
@@ -404,6 +401,14 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         # Solve the trust region subproblem approximately
         # using conjugate gradient with truncation
         p = steihaug_toint_cg(grad, H, trust_radius)
+        step_norm = p.norm()
+        
+        r_tol = tol * (1 + theta.norm())
+        if step_norm < r_tol:
+            break
+        if grad_norm < tol + tol * theta.norm():
+#            print(f"Converged at iteration {iteration}")
+            break
 
         # Predicted reduction
         pred_red = (grad @ p + 0.5 * p @ (H @ p))
