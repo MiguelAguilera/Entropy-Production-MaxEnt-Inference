@@ -168,7 +168,7 @@ class EPEstimators(object):
         i = self.i
         g_theta, K_theta = self.g_mean_and_covariance_theta(theta=theta_init)
         
-        if torch.isinf(K_theta).any():
+        if is_infnan(K_theta.sum()):
             # Error occured, usually means theta is too big
             return np.nan, theta_init*np.nan
 

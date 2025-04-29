@@ -36,7 +36,6 @@ def eye_like(A):
 
 
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
-
     def find_tau(x, d, trust_radius):
         # Solve ||x + tau*d|| = trust_radius for tau
         a = d @ d
@@ -45,7 +44,7 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
         sqrt_discriminant = torch.sqrt(b**2 - 4*a*c)
         tau = (-b + sqrt_discriminant) / (2*a)
         return tau
-            
+
     x = torch.zeros_like(b)
     r = b.clone()
     d = r
@@ -81,15 +80,15 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
 
 def solve_linear_psd(A, b, method=None, eps=0):
     # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
-    assert not torch.isnan(b).any() and not torch.isnan(b).any()
-    assert not torch.isinf(A).any() and not torch.isinf(A).any()
+    assert not is_infnan(b.sum())
+    assert not is_infnan(A.sum())
 
     if method is None:
         method = 'solve_ex'
         
 
     do_lstsq = False
-    A2 = A if eps == 0 else A + eye_like(A)*eps
+    A2 = A #if eps == 0 else A + eye_like(A)*eps
 
     try:
         if method=='solve':
