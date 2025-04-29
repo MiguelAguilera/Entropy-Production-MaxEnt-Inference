@@ -286,8 +286,8 @@ class EPEstimators(object):
             #sig_new, theta  = newton_step(S, theta_init, g, i, num_chunks=num_chunks)
             sig_old_tst = tst.get_objective(theta)
 
-            if is_infnan(sig_old_tst):
-                return sig_old_trn, theta 
+            if is_infnan(sig_old_tst) or sig_old_tst <= 0:
+                return 0.0, torch.zeros(self.N-1) 
 
         else:
             sig_old_trn, sig_old_tst = 0.0, 0.0
