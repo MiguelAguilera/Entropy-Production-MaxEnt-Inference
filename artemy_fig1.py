@@ -5,16 +5,37 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 
 import torch
 
-R2_LABELS = {'N1':r'$\hat{\theta}$','NS':r'$\theta^*$','NSH':r'$\theta^*_{ho}$' }
+R2_LABELS = {'N1':r'$\hat{\theta}$',
+'Nhld':r'$\theta^*_{hld}$' ,
+'Nhld2':r'$\theta^*_{hld2}$' ,
+}
 
 
-LABELS = {'emp'  : 'Empirical', 
-          'N1'   : 'Newton 1-step', 
-          'TUR'  : 'MTUR', 
-          'NS'   : 'Newton', 
-          'NSH'  : 'NewtonHoldout', 
-          'GD'   : 'Grad Ascent',
-          'BFGS' : 'BFGS'}
+LABELS = {'Emp'   : 'Empirical', 
+          'N1'    : 'Newton 1step', 
+          'TUR'   : 'MTUR', 
+          'Ntrst' : 'Newton Trust', 
+          'Nls'   : 'Newton LS', 
+          'Nthr'  : 'Newton Thresh', 
+          'Nhld'  : 'Newton Holdout', 
+          'Nhld2' : 'Newton Holdout2', 
+          'Ntron' : 'TRON',
+          'Grad'  : 'Grad Ascent',
+          'GradHld'  : 'Grad Holdout',
+          'BFGS'  : 'BFGS'}
+
+LEGEND_LABELS = {
+    'Emp':r'$\Sigma$', 
+    'TUR':r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
+    'N1':r'$\widehat{\Sigma}_{\bm g}$', 
+    # r'${\Sigma}_{\bm g}$',
+    # r'${\Sigma}_{\bm g}$',
+    'Ntrst':r'${\Sigma}_{\bm g}^{trst}$',
+    'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
+    'Nhld2':r'${\Sigma}_{\bm g}^{hld2}$',
+    'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
+}
+
 
 if __name__ == "__main__":
     process = psutil.Process(os.getpid())
@@ -47,8 +68,6 @@ if __name__ == "__main__":
     # parser.add_argument("--patterns", type=int, default=None,
     #                     help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
-    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
-    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
     args = parser.parse_known_args()[0]
 
     #N = args.size
@@ -85,10 +104,12 @@ if __name__ == "__main__":
                     
         if res is None:
             import calc
-            with multiprocessing.Pool(processes=1) as pool:
-                res = pool.apply(calc.calc, 
-                    args=(BASE_DIR+file_name,), 
-                    kwds=dict(grad=not args.nograd, newton=not args.nonewton))
+            f, f_kwargs = calc.calc, dict(file_name = BASE_DIR+file_name,)
+            if True:
+                with multiprocessing.Pool(processes=1) as pool:
+                    res = pool.apply(f, kwds=f_kwargs)
+            else:
+                res = f(**f_kwargs)
 
             with open(out_filename, 'wb') as file:
                 pickle.dump(res, file)
@@ -118,8 +139,11 @@ if __name__ == "__main__":
         xvals = (J - J.T)[:]
         yvals = {}
         R2    = {}
-        r2methods = ['N1','NSH'] #,'NS']
+        r2methods = ['N1',#'Nhld',
+            'Nhld2'] #,'NS']
         for k in r2methods:
+            if k not in res['thetas']:
+                continue
             Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
                                 for i,m in enumerate(res['thetas'][k])])
             yy = (Thetas - Thetas.T)[:]
@@ -134,22 +158,38 @@ if __name__ == "__main__":
 
         if False and 4>beta >= 1.9:
             from matplotlib import pyplot as plt
-
-            m1,m2=0,0
+            plt.figure(figsize=(8,4), layout='constrained')
+            m1a,m2a,m1b,m2b=0,0,0,0
             for k in r2methods:
-                m1 = max(m1,-yvals[k].min())
-                m2 = max(m2, yvals[k].max())
-                plt.scatter(xvals, yvals[k], alpha=0.3, 
+                cyy = yvals[k]
+                m1a = max(m1a,-cyy.min())
+                m2a = max(m2a, cyy.max())
+                plt.subplot(1,2,1)
+                plt.scatter(xvals, cyy, alpha=0.3, 
                     label=R2_LABELS[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
-            lims = [-1.1*m1, 1.1*m2]
-            plt.xlim( *lims )
-            plt.ylim( *lims )
-            plt.plot(lims, lims, lw=1, ls=":", c='k')
+                plt.subplot(1,2,2)
+                cyy[np.abs(xvals)>2]=np.nan
+                # xvals[np.isclose(xvals,0)]=np.nan
+                m1b = max(m1b,-np.nanmin(cyy))
+                m2b = max(m2b, np.nanmax(cyy))
+                plt.scatter(xvals, cyy, alpha=0.3, 
+                    label=R2_LABELS[k]+r'$\quad(R^2='+f'{R2[k]:3.3f}'+')$', s=5, edgecolor='none')
+            for sbi in [1,2]:
+                plt.subplot(1,2,sbi)
+                m1,m2=(m1a,m2a) if sbi==1 else (m1b,m2b)
+                lims = [-1.1*m1, 1.1*m2]
+                print(lims)
+                plt.xlim( *lims )
+                plt.ylim( *lims )
+                plt.plot(lims, lims, lw=1, ls=":", c='k')
+
             plt.legend()
             plt.xlabel(r'$\beta(w_{ij}-w_{ji})$')
             plt.ylabel(r'$\theta_{ij}-\theta_{ji}$')
             plt.title(fr'$\beta={beta:3.3f}$')
             plt.show()
+
+            asdf
 
         del xvals, yvals, R2, res, J
         gc.collect()
@@ -180,14 +220,6 @@ if __name__ == "__main__":
         plt.rc('legend', fontsize=20)
         plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-        labels = {
-            'emp':r'$\Sigma$', 
-            'TUR':r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
-            'N1':r'$\widehat{\Sigma}_{\bm g}$', 
-            # r'${\Sigma}_{\bm g}$',
-            # r'${\Sigma}_{\bm g}$',
-            'NSH':r'${\Sigma}_{\bm g}^{ho}$',
-        }
 
         plt.figure(figsize=(5, 5), layout='constrained')
         cmap = plt.get_cmap('inferno_r')
@@ -197,10 +229,11 @@ if __name__ == "__main__":
         for k, v in EPvals.items():
             betas, eps = map(np.array, zip(*v))
             s_ixs = np.argsort(betas)
-            plt.plot(betas[s_ixs], eps[s_ixs], label=labels[k], lw=2) # color=colors[i-1], lw=2)
+            plt.plot(betas[s_ixs], eps[s_ixs], label=LEGEND_LABELS[k], lw=2) # color=colors[i-1], lw=2)
             b1 = min(b1, betas.min())
             b2 = max(b2, betas.max())
-            mxep = max(mxep, eps.max())
+            if eps.max() < 10:
+                mxep = max(mxep, eps.max())
 
         plt.axis([b1, b2, 0, mxep * 1.05])
         plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)

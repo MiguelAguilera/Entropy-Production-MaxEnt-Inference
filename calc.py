@@ -1,91 +1,83 @@
-import os, argparse, time, pickle, psutil
-import numpy as np
+import os, argparse, time, psutil
 from collections import defaultdict 
 from tqdm import tqdm
-import gc
 
-            
+import numpy as np
+
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
-
 import torch
-from methods_EP_multipartite import *
+import utils
+import ep_multipartite as epm
+            
 
 
-def set_default_device():
-    """
-    Determines the best available device for PyTorch operations and sets it as default.
-    Returns:
-        torch.device: The device that was set as default ('mps', 'cuda', or 'cpu')
-    """
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-        # Set MPS as default device
-        torch.set_default_device(device)
-        import warnings
-        warnings.filterwarnings("ignore", message="The operator 'aten::_linalg_solve_ex.result' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-        # Set CUDA as default device
-        torch.set_default_device(device)
-    else:
-        device = torch.device("cpu")
-        # CPU is already the default, but we can set it explicitly
-        torch.set_default_device(device)
-    return device
-def empty_cache():
-    if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
-        torch.cuda.empty_cache()
-    elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-
-def calc_spin(S_i, J_i, i, grad=False, newton=False):
+def calc_spin(S_i, J_i, i):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
 
-    stime = time.time()
-    sigmas['TUR'] = get_EP_MTUR(S_i, i)
-    times[ 'TUR']  = time.time() - stime
+    obj = epm.EPEstimators(S_i, i)
 
-    #gc.collect()
 
     stime = time.time()
-    sigmas['N1'], theta_N1, Da = get_EP_Newton(S_i, i)
-    thetas['N1'] = theta_N1.cpu().numpy()
+    sigmas['N1'], thetas['N1'] = obj.get_EP_Newton()
     times[ 'N1']  = time.time() - stime
 
-    #gc.collect()
-
-    if newton:
-        stime = time.time()
-        sigmas['NS'], theta2  = get_EP_Newton_steps(S_i, theta_init=theta_N1, sig_init=sigmas['N1'], Da=Da, i=i)
-        thetas['NS'] = theta2.cpu().numpy()
-        times[ 'NS'] = time.time() - stime
-    
-        #gc.collect()
-
-        if True:
-            stime = time.time()
-            sigmas['NSH'], theta2  = get_EP_Newton_steps_holdout(S_i, i=i)
-            thetas['NSH'] = theta2.cpu().numpy()
-            times[ 'NSH'] = time.time() - stime
-            #gc.collect()
+    stime = time.time()
+    sigmas['TUR'] = obj.get_EP_MTUR()
+    times[ 'TUR'] = time.time() - stime
 
     stime = time.time()
-    sigmas['emp'] = exp_EP_spin_model(Da, J_i, i)
-    times[ 'emp']  = time.time() - stime
-    #gc.collect()
+    # Compute empirical EP for spin i
+    sigmas['Emp'] = float(utils.remove_i(J_i,i) @ obj.g_mean())
+    times[ 'Emp'] = time.time() - stime
 
-        
-    if grad:
-        x0=torch.zeros_like(theta_N1)
+    #stime = time.time()
+    #sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps(newton_step_args=dict(do_linesearch=True))
+    #times[ 'Nls'] = time.time() - stime
+    # stime = time.time()
+    # sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps_holdout(newton_step_args=dict(do_linesearch=True))
+    # times[ 'Nls'] = time.time() - stime
+    if False:
         stime = time.time()
-        sigmas['GD'], ctheta  = get_EP_Adam(S_i, Da=Da, theta_init=x0, i=i) 
-        thetas['GD'] = ctheta.cpu().numpy()
-        times[ 'GD']  = time.time() - stime
-        #gc.collect()
+        sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps(newton_step_args=dict(delta=1))
+        times[ 'Ntrst'] = time.time() - stime
+    
+    if False:
+        stime = time.time()
+        sigmas['Nthr'], thetas['Nthr'] = obj.get_EP_Newton_steps(newton_step_args=dict(th=0.01))
+        times[ 'Nthr'] = time.time() - stime
 
-        #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, Da=Da, theta_init=torch.zeros_like(theta_N1), i=i) 
+    if False:
+        stime = time.time()
+        sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
+        times[ 'Ntron'] = time.time() - stime
+
+
+    if False:
+        stime = time.time()
+        sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps_holdout()
+        times[ 'Nhld'] = time.time() - stime
+
+    if True:
+        stime = time.time()
+        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps_holdout(
+            newton_step_args=dict(delta=1))
+        times[ 'Nhld2'] = time.time() - stime
+        
+    if False: # Grad
+        x0=torch.zeros(len(J_i)-1)
+        stime = time.time()
+        sigmas['GradHld'], thetas['GradHld'] = obj.get_EP_Adam(theta_init=x0, holdout=True) 
+        times[ 'GradHld']  = time.time() - stime
+
+    if False: # Grad
+        x0=torch.zeros(len(J_i)-1)
+        stime = time.time()
+        sigmas['Grad'], thetas['Grad'] = obj.get_EP_Adam(theta_init=x0) 
+        times[ 'Grad']  = time.time() - stime
+
+        #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, g=g, theta_init=torch.zeros_like(theta_N1), i=i) 
         #thetas['BFGS']  = ctheta.cpu().numpy()
         #times['BFGS'] = time.time() - start_time_gd_i
 
@@ -108,10 +100,18 @@ def calc_spin(S_i, J_i, i, grad=False, newton=False):
             plt.show()
             #asdf
 
+    del obj
+    utils.empty_cache()
+
+    for k in sigmas:
+        sigmas[k] = float(sigmas[k])
+        if k in thetas:
+            thetas[k] = thetas[k].cpu().numpy()
+
     return sigmas, times, thetas
 
 
-def calc(file_name, newton=False, grad=False):
+def calc(file_name):
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     process = psutil.Process(os.getpid())
@@ -147,7 +147,7 @@ def calc(file_name, newton=False, grad=False):
         for i in pbar:
             S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
 
-            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i , grad=grad, newton=newton)
+            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i)
 
             epdata[i] = res 
             sigmas, times, thetas = res
@@ -157,21 +157,14 @@ def calc(file_name, newton=False, grad=False):
                 time_sums[k] += times.get(k, np.nan)
                 if k not in epdata['thetas']:
                     epdata['thetas'][k] = []
-                epdata['thetas'][k].append(thetas.get(k, np.nan))
+                epdata['thetas'][k].append(thetas[k] if k in thetas else None)
 
             del S_i, sigmas, times, thetas, res
             
-            # if i % 20 == 19:
-            #     empty_cache()
-            #     #stime = time.time()
-            #     gc.collect()
-            #     #print(time.time()-stime)
             memory_usage = process.memory_info().rss / 1024 / 1024
-            pbar.set_description(f'emp={ep_sums.get('emp',np.nan):3.5f} '+
-                                 f'N1={ep_sums.get('N1',np.nan):3.5f} ' +
-                                 f'NS={ep_sums.get('NS',np.nan):3.5f} ' +
-                                 f'NSh={ep_sums.get('NSH',np.nan):3.5f} '+
-                                 f'mem={memory_usage:.1f}mb')
+            show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Grad','GradHld', 'Nls']
+            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in show_methods if k in ep_sums]
+            pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
         for k,v in ep_sums.items():
             epdata['ep'][k]=v
@@ -185,7 +178,7 @@ def calc(file_name, newton=False, grad=False):
 
 
 
-device = set_default_device()
+device = utils.set_default_device()
 torch.set_grad_enabled(False)
 
 # DO_NEWTON2 = True
@@ -199,14 +192,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Estimate EP for file.")
     parser.add_argument("file_name", type=str)
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
-    parser.add_argument("--nograd", action="store_true",  default=False, help="Skip gradient ascent method")
-    parser.add_argument("--nonewton", action="store_true",  default=False, help="Skip Newton steps method")
 
     args = parser.parse_args()
 
-    calc(args.file_name, overwrite=args.overwrite, 
-            grad=not args.nograd, 
-            newton=not args.nonewton)
+    calc(args.file_name, overwrite=args.overwrite)
 
 
 
