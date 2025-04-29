@@ -300,8 +300,8 @@ class EPEstimators(object):
         max_norm = 1
         for _ in range(max_iter):
             
-            if False:
-                new_theta = trn.newton_step(theta_init=theta, trust_radius=max_norm)
+            if True:
+                new_theta = trn.newton_step(theta_init=theta, trust_radius=100000)
             else:
                 new_theta = trn.newton_step(theta_init=theta)
                 delta_theta  = new_theta - theta
