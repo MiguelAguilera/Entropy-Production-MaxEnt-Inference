@@ -19,7 +19,7 @@ from utils import *
 
 
 class EPEstimators(object):
-    def __init__(self, S, i, num_chunks=None, linsolve_eps=1e-4, linsolve_method=None):
+    def __init__(self, S, i, num_chunks=None, linsolve_args={}):
         # TODO: Explain input format of S
         #
         # Parameters
@@ -37,8 +37,9 @@ class EPEstimators(object):
         self.num_chunks = num_chunks
         self.nflips, self.N = S.shape
 
-        self.linsolve_eps = 1e-4  # regularize covariance matrices to solve linear system
-        self.linsolve_method = linsolve_method
+        self.linsolve_args = linsolve_args.copy()
+        if 'eps' not in linsolve_args:
+            self.linsolve_args['eps'] = 1e-4
 
 
     def g_mean(self):
@@ -143,7 +144,7 @@ class EPEstimators(object):
         return float(theta @ self.g_mean()) - self.log_norm_theta(theta)
 
 
-    def newton_step(self, theta_init, delta=None, th=None, logZpad=1e-5,do_linesearch=False):
+    def newton_step(self, theta_init, trust_radius=None):
         """
         Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
 
@@ -174,34 +175,39 @@ class EPEstimators(object):
 
         # Compute Newton step: Δθ = H⁻¹ (g - g_theta)
         rhs = self.g_mean() - g_theta
-        delta_theta = solve_linear_psd(K_theta, rhs, eps=self.linsolve_eps, method=self.linsolve_method)
+
+        ls_args = self.linsolve_args.copy()
+        if trust_radius is not None:
+            ls_args['trust_radius'] = trust_radius
+
+        delta_theta = solve_linear_psd(K_theta, rhs, **ls_args)
 
         step_size = 1
 
-        if delta is not None:
-            # TODO : I think there are errors here -AK
-            # Constrain the step to be within a trust region
-            max_step = delta * torch.norm(theta_init)
-            step_norm = torch.norm(delta_theta)
-            if step_norm > max_step:
-                delta_theta = delta_theta * (max_step / step_norm)
-            step_size = delta
+        # if delta is not None:
+        #     # TODO : I think there are errors here -AK
+        #     # Constrain the step to be within a trust region
+        #     max_step = delta * torch.norm(theta_init)
+        #     step_norm = torch.norm(delta_theta)
+        #     if step_norm > max_step:
+        #         delta_theta = delta_theta * (max_step / step_norm)
+        #     step_size = delta
 
 
-        elif th is not None:
-            alpha = 1
-            d1 = float(delta_theta @ g_theta)
-            d2 = float(delta_theta @ (self.g_mean()-g_theta)) / 2
+        # elif th is not None:
+        #     alpha = 1
+        #     d1 = float(delta_theta @ g_theta)
+        #     d2 = float(delta_theta @ (self.g_mean()-g_theta)) / 2
             
-            logZ = self.log_norm_theta(theta_init)
-            dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
-            dlogZ_approx = alpha * d1 + alpha**2 * d2
+        #     logZ = self.log_norm_theta(theta_init)
+        #     dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
+        #     dlogZ_approx = alpha * d1 + alpha**2 * d2
 
-            while np.abs(dlogZ_approx-dlogZ)>th*np.abs(dlogZ_approx + logZpad):
-                alpha *= 0.95
-                dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
-                dlogZ_approx = alpha * d1 + alpha**2 * d2
-            step_size = alpha
+        #     while np.abs(dlogZ_approx-dlogZ)>th*np.abs(dlogZ_approx + logZpad):
+        #         alpha *= 0.95
+        #         dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
+        #         dlogZ_approx = alpha * d1 + alpha**2 * d2
+        #     step_size = alpha
         
         theta = theta_init + step_size*delta_theta
 
@@ -216,8 +222,7 @@ class EPEstimators(object):
         # Compute entropy production estimate using the MTUR method
         #    method (str) : which method to use to solve linear system
         gmean = self.g_mean()
-        theta = solve_linear_psd(self.g_secondmoments(), 2*gmean, 
-                                 eps=self.linsolve_eps, method=self.linsolve_method)
+        theta = solve_linear_psd(self.g_secondmoments(), 2*gmean, **self.linsolve_args)
         return float(theta @ gmean)
 
 
@@ -225,14 +230,14 @@ class EPEstimators(object):
         # Estimate EP using the 1-step Newton method for spin i.
         if not hasattr(self, 'newton_1step_'):
             # Cache the returned values as they are used by several other methods
-            eps = self.linsolve_eps
+            ls_args = self.linsolve_args.copy()
+            assert 'eps' in ls_args
 
             while True:  # regularize until we get a non-zero Z
-                if eps > 1:
+                if ls_args['eps'] > 1:
                     print('get_EP_Newton cannot regularize enough!')
                     return np.nan, theta
-                theta = solve_linear_psd(self.g_covariance(), 2*self.g_mean(), 
-                                         eps=eps, method=self.linsolve_method)
+                theta = solve_linear_psd(self.g_covariance(), 2*self.g_mean(), **ls_args)
 
                 # Z = self.norm_theta(theta)
                 theta_padded = add_i(theta, self.i)
@@ -242,7 +247,7 @@ class EPEstimators(object):
                 if torch.abs(Z)>1e-30 and not is_infnan(Z):
                     break
 
-                eps *= 10
+                ls_args['eps'] *= 10
 
             sig_N1 = float(theta @ self.g_mean() - torch.log(Z))
             self.newton_1step_ = (sig_N1, theta)
@@ -293,12 +298,14 @@ class EPEstimators(object):
         max_norm = 1
         for _ in range(max_iter):
             
-            new_theta = trn.newton_step(theta_init=theta) # , **newton_step_args)
-
-            delta_theta  = new_theta - theta
-            dnorm        = torch.norm(delta_theta)
-            delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
-            new_theta    = theta + delta_theta
+            if False:
+                new_theta = trn.newton_step(theta_init=theta, trust_radius=max_norm)
+            else:
+                new_theta = trn.newton_step(theta_init=theta)
+                delta_theta  = new_theta - theta
+                delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
+                new_theta    = theta + delta_theta
+                
             sig_new_trn  = self.get_objective(new_theta)
 
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):
