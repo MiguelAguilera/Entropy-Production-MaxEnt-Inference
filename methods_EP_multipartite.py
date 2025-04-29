@@ -381,29 +381,30 @@ def get_EP_trust_region_Newton(S, theta_init, Da, i, th=0.01, num_chunks=None):
 
 def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
     max_iters=100, tol=1e-2, 
-    trust_radius_init=0.5, trust_radius_max=1000.0,
+    trust_radius_init=0.25, trust_radius_max=1000.0,
     eta0=0.0, eta1=0.25, eta2=0.75):
     theta = theta_init.clone().detach().requires_grad_(False)
     trust_radius = trust_radius_init
 
     Dai = remove_i(Da, i)
     
+    Da_th, _ = correlations_theta(S, theta, i)
+    grad = Dai - remove_i(Da_th, i)
+    Ks_th = correlations4_theta(S, theta, i, num_chunks)
+    Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
+    H = K_nodiag(Ks_th, i)
+    
+
     for iteration in range(max_iters):
     
-        Da_th, _ = correlations_theta(S, theta, i)
-        grad = Dai - remove_i(Da_th, i)
         grad_norm = grad.norm()
 
-
-        Ks_th = correlations4_theta(S, theta, i, num_chunks)
-        Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
-        H = K_nodiag(Ks_th, i)
         # Solve the trust region subproblem approximately
         # using conjugate gradient with truncation
         p = steihaug_toint_cg(grad, H, trust_radius)
         step_norm = p.norm()
 
-        if trust_radius < trust_radius_init/10 or  grad.abs().max() < tol:
+        if trust_radius < trust_radius_init/10 or  step_norm< tol:
             break
 #        r_tol = tol * (1 + theta.norm())
 #        if p.abs().max() < tol:
@@ -421,19 +422,24 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         f_new = (theta_new @ Dai).item() -  log_norm_theta(S, theta_new, i)
         act_red =  f_new - f_old
 
-#        if np.abs(act_red) < tol:
-#            break
         # Ratio of actual to predicted reduction
         rho = act_red / pred_red
-
+        
         if rho < eta1:
-            trust_radius *= 0.2
+            trust_radius *= 0.25
+        
+        if rho < 0.1:
+            break
         elif rho > eta2 and p.norm() == trust_radius:
             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
         if rho > eta0:
             theta = theta_new
-
+        Da_th, _ = correlations_theta(S, theta, i)
+        grad = Dai - remove_i(Da_th, i)
+        Ks_th = correlations4_theta(S, theta, i, num_chunks)
+        Ks_th = Ks_th - torch.einsum('j,k->jk', Da_th, Da_th)
+        H = K_nodiag(Ks_th, i)
 #        print(f"Iter {iteration}: f = {f_old:.6f}, ||grad|| = {grad_norm:.6e},  ||p grad|| = {step_norm:.6e}, trust_radius = {trust_radius:.4f}")
 
     f = (theta @ Dai).item() -  log_norm_theta(S, theta, i)
