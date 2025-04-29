@@ -427,7 +427,7 @@ def get_EP_TRON(S, theta_init, Da, i, num_chunks=None,
         rho = act_red / pred_red
 
         if rho < eta1:
-            trust_radius *= 0.25
+            trust_radius *= 0.2
         elif rho > eta2 and p.norm() == trust_radius:
             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
