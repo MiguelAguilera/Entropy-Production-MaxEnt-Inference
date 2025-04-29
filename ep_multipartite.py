@@ -178,64 +178,16 @@ class EPEstimators(object):
 
         step_size = 1
 
-        if do_linesearch:
-            def g(alpha):
-                return self.objective(theta_init + alpha * delta_theta)
-    
-            def dg(alpha):
-                df = self.g_mean() - self.g_mean_theta(theta=theta_init + alpha * delta_theta)
-                return -df @ delta_theta
-
-            def get_step_size(g, dg):
-        
-                a, b = 0.0, 1.0                         # Initialize the search interval [0,1]
-                 
-                initial_derivative = dg(0)              # Initial check for descent direction
-                if initial_derivative >= 0:
-                    return 0.0  # No step taken
-                
-                final_derivative = dg(1.0)              # Check if full step is acceptable
-                if final_derivative >= 0: # and final_derivative <= tol:
-                    return 1.0 
-                
-                # Apply bisection with Newton's method
-                max_iter_ls = 4
-                for i in range(max_iter_ls):
-                    # Use Newton's method to estimate alpha within the interval
-                    if dg(a) != dg(b):  # Avoid division by zero
-                        alpha = a - dg(a) * (b - a) / (dg(b) - dg(a))
-                    else:
-                        alpha = (a + b) / 2.0
-                    
-                    # If Newton's step falls outside [0,1], use bisection
-                    if alpha <= a or alpha >= b:
-                        alpha = (a + b) / 2.0
-                    
-                    # Compute derivative at the new point
-                    derivative = dg(alpha)
-                    
-                    # Check for convergence
-                    if abs(derivative) < 1e-3: # tol:
-                        return alpha
-                    
-                    # Update the interval
-                    if derivative > 0:
-                        b = alpha
-                    else:
-                        a = alpha
-                
-                # Return the midpoint of the final interval if max iterations reached
-                return (a + b) / 2.0
-            step_size = get_step_size(g,dg)
-            #print("ls:", step_size)
-
-        elif delta is not None:
+        if delta is not None:
+            # TODO : I think there are errors here -AK
             # Constrain the step to be within a trust region
             max_step = delta * torch.norm(theta_init)
             step_norm = torch.norm(delta_theta)
             if step_norm > max_step:
                 delta_theta = delta_theta * (max_step / step_norm)
             step_size = delta
+
+
         elif th is not None:
             alpha = 1
             d1 = float(delta_theta @ g_theta)
@@ -253,7 +205,7 @@ class EPEstimators(object):
         
         theta = theta_init + step_size*delta_theta
 
-        return self.get_objective(theta), theta
+        return theta
 
 
     # =======================
@@ -305,8 +257,8 @@ class EPEstimators(object):
         for _ in range(max_iter):
             sig_old   = sig_new
             theta_old = theta
-            sig_new   = np.nan
-            sig_new, theta = self.newton_step(theta_init=theta, **newton_step_args)
+            theta     = self.newton_step(theta_init=theta, **newton_step_args)
+            sig_new   = self.get_objective(theta)
 
             dsig = sig_new - sig_old
             if np.abs(dsig) <= tol*np.abs(sig_old):  # relative change test
@@ -329,7 +281,7 @@ class EPEstimators(object):
         trn = EPEstimators(self.S[:nflips,:], i)
         tst = EPEstimators(self.S[nflips:,:], i)
 
-        if False:
+        if True:
             sig_old_trn, theta = trn.get_EP_Newton()
             #sig_new, theta  = newton_step(S, theta_init, g, i, num_chunks=num_chunks)
             sig_old_tst = tst.get_objective(theta)
@@ -349,7 +301,13 @@ class EPEstimators(object):
 
 
         for _ in range(max_iter):
-            sig_new_trn, new_theta = trn.newton_step(theta_init=theta, **newton_step_args)
+            
+            new_theta = trn.newton_step(theta_init=theta) # , **newton_step_args)
+
+            delta_theta = new_theta - theta
+            new_theta   = theta + delta_theta / max(1, torch.norm(delta_theta))
+            sig_new_trn = self.get_objective(new_theta)
+
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):
                 break
 
@@ -370,7 +328,7 @@ class EPEstimators(object):
                 # x_max = scipy.optimize.bisect(dfunc, 0, 1, rtol=1e-3)
                 # theta = theta + x_max * delta_theta
                 # sig_old_tst = tst.get_objective(theta)
-                
+
                 break
 
             if np.abs(sig_new_trn - sig_old_trn) <= tol*np.abs(sig_old_trn) or \
