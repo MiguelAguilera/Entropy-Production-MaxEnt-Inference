@@ -377,7 +377,7 @@ class EPEstimators(object):
             if grad_norm < tol:
                 break
 
-            p = steihaug_toint_cg(A=grad, b=H_theta, trust_radius=trust_radius)
+            p = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
             pred_red = grad @ p + 0.5 * p @ (H_theta @ p)
 
             theta_new = theta + p
