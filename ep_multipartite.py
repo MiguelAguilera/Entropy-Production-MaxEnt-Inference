@@ -290,13 +290,16 @@ class EPEstimators(object):
         sig_old_trn = sig_old_tst = 0.0
         theta = torch.zeros(self.N-1)
 
-        max_norm = 1.0
+        max_norm = .5
         for _ in range(max_iter):
             
             new_theta = trn.newton_step(theta_init=theta) # , **newton_step_args)
 
             delta_theta = new_theta - theta
-            new_theta   = theta + delta_theta / max(max_norm, torch.norm(delta_theta))
+            dnorm       = torch.norm(delta_theta)
+            if dnorm > max_norm:
+                delta_theta *= max_norm/dnorm
+            new_theta   = theta + delta_theta
             sig_new_trn = self.get_objective(new_theta)
 
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):

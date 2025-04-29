@@ -44,7 +44,7 @@ ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta
 ARGS="--beta_min 0 --rep 2000000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 25  --BASE_DIR ~/MaxEntDataTest50v4"
 
 ARGS="--beta_min 0 --rep 200000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v6"
-#ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v10"
+ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntDataTest50v10"
 
 #ARGS="--beta_min 0 --rep 20000 --DJ 1 --J0 0 --beta_max 3.5 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntDataTest1000v2"
 #ARGSEP="--nograd --overwrite"
