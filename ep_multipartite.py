@@ -339,7 +339,7 @@ class EPEstimators(object):
 
 
     def get_EP_TRON(self, tol=1e-3, max_iter=100, 
-                    trust_radius_init=0.5, trust_radius_max=1.0,
+                    trust_radius_init=0.5, trust_radius_max=1000.0,
                     eta0=0.0, eta1=0.25, eta2=0.75,
                     holdout=False, update_trust_region=True):
 
