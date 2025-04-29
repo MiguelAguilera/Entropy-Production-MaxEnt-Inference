@@ -35,10 +35,14 @@ def eye_like(A):
     return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
 
 
-def solve_linear_psd(A, b, method='solve', eps=0):
+def solve_linear_psd(A, b, method=None, eps=0):
     # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
     assert not torch.isnan(b).any() and not torch.isnan(b).any()
     assert not torch.isinf(A).any() and not torch.isinf(A).any()
+
+    if method is None:
+        method = 'solve'
+        
 
     do_lstsq = False
     A2 = A if eps == 0 else A + eye_like(A)*eps

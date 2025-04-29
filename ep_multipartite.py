@@ -17,9 +17,18 @@ from utils import *
 
 
 class EPEstimators(object):
-    def __init__(self, S, i, num_chunks=None):
-        #  TODO: Explain input format of S
-        # num_chunks is to reduce memory requirements
+    def __init__(self, S, i, num_chunks=None, linsolve_eps=1e-4, linsolve_method=None):
+        # TODO: Explain input format of S
+        #
+        # Parameters
+        # ----------
+        # num_chunks : int
+        #   chunk covariance computations to reduce memory requirements
+        # linsolve_eps : float 
+        #   regularize covariance matrices for numerical stability of linear solver
+        # linsolve_method : str
+        #   method used to solve linear system (None for default)
+
         self.S = S
         self.i = i
         self.device = S.device
@@ -27,6 +36,7 @@ class EPEstimators(object):
         self.nflips, self.N = S.shape
 
         self.linsolve_eps = 1e-4  # regularize covariance matrices to solve linear system
+        self.linsolve_method = linsolve_method
 
 
     def g_mean(self):
@@ -134,10 +144,10 @@ class EPEstimators(object):
 
         Returns:
         --------
-        sig_N2 : float
+        sigma : float
             Updated estimate of the objective value
-        delta_theta : torch.Tensor
-            Computed Newton step (Δθ).
+        theta : torch.Tensor
+            new theta value
         """
 
         i = self.i
@@ -149,7 +159,7 @@ class EPEstimators(object):
 
         # Compute Newton step: Δθ = H⁻¹ (g - g_theta)
         rhs = self.g_mean() - g_theta
-        delta_theta = solve_linear_psd(K_theta, rhs, eps=self.linsolve_eps)
+        delta_theta = solve_linear_psd(K_theta, rhs, eps=self.linsolve_eps, method=self.linsolve_method)
 
         step_size = 1
         if delta is not None:
@@ -185,8 +195,10 @@ class EPEstimators(object):
 
     def get_EP_MTUR(self):
         # Compute entropy production estimate using the MTUR method
+        #    method (str) : which method to use to solve linear system
         gmean = self.g_mean()
-        theta = solve_linear_psd(self.g_secondmoments(), 2*gmean, eps=self.linsolve_eps)
+        theta = solve_linear_psd(self.g_secondmoments(), 2*gmean, 
+                                 eps=self.linsolve_eps, method=self.linsolve_method)
         return float(theta @ gmean)
 
 
@@ -200,7 +212,8 @@ class EPEstimators(object):
                 if eps > 1:
                     print('get_EP_Newton cannot regularize enough!')
                     return np.nan, theta
-                theta = solve_linear_psd(self.g_covariance(), 2*self.g_mean(), eps=eps)
+                theta = solve_linear_psd(self.g_covariance(), 2*self.g_mean(), 
+                                         eps=eps, method=self.linsolve_method)
 
                 # Z = self.norm_theta(theta)
                 theta_padded = add_i(theta, self.i)
