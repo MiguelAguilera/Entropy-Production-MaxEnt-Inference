@@ -48,10 +48,9 @@ class EPEstimators(object):
             linsolve_args=self.linsolve_args,
         )
         
-    def spawn(self, S_new, i_new=None):
+    def spawn(self, S_new):
         if i_new is None:
-            i_new = self.i
-        return EPEstimators(S_new, i_new, **self._init_args)
+        return EPEstimators(S_new, **self._init_args)
 
     def g_mean(self):
         # Compute  means of g observables
