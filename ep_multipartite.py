@@ -356,7 +356,7 @@ class EPEstimators(object):
 
     def get_EP_TRON(self, tol=1e-3, max_iter=100, 
                     trust_radius_init=0.5, trust_radius_max=1000.0,
-                    eta0=0.0, eta1=0.25, eta2=0.75, tol_val=1e-1,
+                    eta0=0.0, eta1=0.25, eta2=0.75, tol_val=1e-2,
                     holdout=True, tron=True):
 
         nflips = int(self.nflips / 2)
@@ -394,7 +394,7 @@ class EPEstimators(object):
 
             if holdout:
                 f_new_val = tst.get_objective(theta_new)
-                if f_new_val + tol_val * abs(f_old_val) < f_old_val :
+                if f_new_val + tol_val * p.norm().item() < f_old_val :
                     break
 
             # Accept step
