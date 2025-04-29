@@ -36,49 +36,71 @@ def eye_like(A):
 
 
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
-    assert trust_radius is not None
+    """
+    Steihaug-Toint Conjugate Gradient method for approximately solving
+    min_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
+    where A is symmetric (and possibly only positive semi-definite).
     
+    Args:
+        A (torch.Tensor): Symmetric matrix (n x n).
+        b (torch.Tensor): Right-hand side vector (n).
+        trust_radius (float): Trust region radius.
+        tol (float): Tolerance for convergence on residual norm.
+        max_iter (int): Maximum number of iterations.
+    
+    Returns:
+        torch.Tensor: Approximate solution x.
+    """
     def find_tau(x, d, trust_radius):
-        # Solve ||x + tau*d|| = trust_radius for tau
+        # Solve quadratic equation for tau: ||x + tau*d||^2 = trust_radius^2
         a = d @ d
-        b = 2 * (x @ d)
+        b_lin = 2 * (x @ d)
         c = (x @ x) - trust_radius**2
-        sqrt_discriminant = torch.sqrt(b**2 - 4*a*c)
-        tau = (-b + sqrt_discriminant) / (2*a)
+        discriminant = b_lin**2 - 4 * a * c
+        if discriminant < 0:
+            discriminant = torch.tensor(0.0, dtype=x.dtype, device=x.device)
+        sqrt_discriminant = torch.sqrt(discriminant)
+        tau = (-b_lin + sqrt_discriminant) / (2 * a)
         return tau
 
+    n = b.shape[0]
     x = torch.zeros_like(b)
     r = b.clone()
-    d = r
+    d = r.clone()
 
-    for i in range(max_iter):
+    if r.norm() < tol:
+        return x
+
+    for k in range(max_iter):
         Hd = A @ d
         dHd = d @ Hd
 
         if dHd <= 0:
-            # Negative curvature, move to boundary
+            # Negative curvature detected → move to boundary
             tau = find_tau(x, d, trust_radius)
             return x + tau * d
 
         alpha = (r @ r) / dHd
-        x_new = x + alpha * d
+        x_next = x + alpha * d
 
-        if x_new.norm() >= trust_radius:
+        if x_next.norm() >= trust_radius:
+            # Exceeding trust region → project onto boundary
             tau = find_tau(x, d, trust_radius)
             return x + tau * d
 
-        r_new = r + alpha * Hd
+        r_next = r - alpha * Hd
 
-        if r_new.norm() < tol:
-            return x_new
+        if r_next.norm() < tol:
+            # Converged
+            return x_next
 
-        beta = (r_new @ r_new) / (r @ r)
-        d = -r_new + beta * d
-        x = x_new
-        r = r_new
+        beta = (r_next @ r_next) / (r @ r)
+        d = r_next + beta * d
+
+        x = x_next
+        r = r_next
 
     return x
-
 
 def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
     # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
