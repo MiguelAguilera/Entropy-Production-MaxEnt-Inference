@@ -357,7 +357,7 @@ class EPEstimators(object):
     def get_EP_TRON(self, tol=1e-3, max_iter=100, 
                     trust_radius_init=0.5, trust_radius_max=1000.0,
                     eta0=0.0, eta1=0.25, eta2=0.75,
-                    holdout=False, update_trust_region=True):
+                    holdout=False, update_trust_radius=True):
 
 
         nflips = int(self.nflips / 2)
@@ -412,7 +412,7 @@ class EPEstimators(object):
                 grad_norm = grad.abs().max()
 
             # Update trust radius
-            if update_trust_region:
+            if update_trust_radius:
                 if rho < eta1:
                     trust_radius *= 0.25
                 elif rho > eta2 and p.norm() == trust_radius:
