@@ -358,7 +358,7 @@ class EPEstimators(object):
             trn = EPEstimators(self.S[:nflips, :], i, num_chunks=self.num_chunks)
             tst = EPEstimators(self.S[nflips:, :], i, num_chunks=self.num_chunks)
         else:
-            trn = EPEstimators(self.S, i, num_chunks=self.num_chunks, device=self.device())
+            trn = EPEstimators(self.S, i, num_chunks=self.num_chunks)
             tst = None  # unused
 
         f_old_trn, theta = trn.get_EP_Newton()
