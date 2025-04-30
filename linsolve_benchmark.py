@@ -33,7 +33,7 @@ for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lsts
     for i in range(num_runs):
         torch.manual_seed(i)
         A, b = get_A_b()
-        kw_args = {} if method != 'steihaug' else dict(trust_radius=10)
+        kw_args = {} if method != 'steihaug' else dict(trust_radius=10000)
         stime = time.time()
         x = utils.solve_linear_psd(A, b, method=method, **kw_args)
         tot_time += time.time() - stime
