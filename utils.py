@@ -64,7 +64,7 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
         return tau
 
     n = b.shape[0]
-    max_iter = max_iter or 2 * n
+    max_iter = max_iter or 10 * n
     x = torch.zeros_like(b)
     r = b.clone()
     d = r.clone()
