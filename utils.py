@@ -88,14 +88,14 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
             tau = find_tau(x, d, trust_radius)
             return x + tau * d
 
-        r_next = r + alpha * Hd
+        r_next = r - alpha * Hd
 
         if r_next.norm() < tol:
             # Converged
             return x_next
 
         beta = (r_next @ r_next) / (r @ r)
-        d = - r_next + beta * d
+        d = r_next + beta * d
 
         x = x_next
         r = r_next
