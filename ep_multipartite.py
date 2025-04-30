@@ -356,15 +356,17 @@ class EPEstimators(object):
 
     def get_EP_TRON(self, tol=1e-3, max_iter=100, 
                     trust_radius_init=0.5, trust_radius_max=1000.0,
-                    eta0=0.0, eta1=0.25, eta2=0.75, tol_val=1e-2,
+                    eta0=0.0, eta1=0.25, eta2=0.75, tol_val=0,
                     holdout=True, tron=True):
 
         nflips = int(self.nflips / 2)
         i = self.i
 
+        perm = np.random.permutation(self.S.shape[0])
+        S_shuffled = self.S[perm]
         if holdout:
-            trn = self.spawn(self.S[:nflips,:])
-            tst = self.spawn(self.S[nflips:,:])
+            trn = self.spawn(S_shuffled[:nflips,:])
+            tst = self.spawn(S_shuffled[nflips:,:])
         else:
             trn = self.spawn(self.S)
             tst = None  # unused
@@ -392,13 +394,12 @@ class EPEstimators(object):
             act_red = f_new_trn - f_old_trn
             rho = act_red / pred_red
 
-            if holdout:
-                f_new_val = tst.get_objective(theta_new)
-                if f_new_val + tol_val * p.norm().item() < f_old_val :
-                    break
-
             # Accept step
             if rho > eta0 or (not tron):
+                if holdout:
+                    f_new_val = tst.get_objective(theta_new)
+                    if f_new_val + tol_val * trust_radius < f_old_val:
+                        break
                 theta = theta_new
                 f_old_trn = f_new_trn
                 if holdout:
@@ -414,7 +415,7 @@ class EPEstimators(object):
                 elif rho > eta2 and p.norm() == trust_radius:
                     trust_radius = min(2.0 * trust_radius, trust_radius_max)
         
-        return tst.get_objective(theta), theta
+        return self.get_objective(theta), theta
 
 
     def get_EP_Adam(self, theta_init, holdout=False, max_iter=1000, 
