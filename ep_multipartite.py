@@ -304,8 +304,8 @@ class EPEstimators(object):
 
 
 
-        # return self.get_objective(theta), theta
-        return sig_old_tst if holdout else sig_old_trn, theta
+        return self.get_objective(theta), theta
+#        return sig_old_tst if holdout else sig_old_trn, theta
 
 
 
