@@ -153,26 +153,19 @@ class EPEstimators(object):
         return float(theta @ self.g_mean()) - self.log_norm_theta(theta)
 
 
-    def newton_step(self, theta_init, trust_radius=None):
+    def newton_step(self, theta_init):
         """
-        Perform one iteration of a constrained Newton-Raphson update to refine the parameter theta.
+        Perform a Newton-Raphson update to refine the parameter theta.
 
         Parameters:
         -----------
         theta_init : torch.Tensor
             Current estimate of the parameter vector theta (with zero at index i).
-        th : float
-            Threshold ?
-        delta : float or None, optional
-            If provided, sets a maximum relative norm for the update step 
-            (default: 1.0, meaning ||Δθ|| ≤ delta * ||θ||).
 
         Returns:
         --------
-        sigma : float
-            Updated estimate of the objective value
-        theta : torch.Tensor
-            new theta value
+        delta_theta : torch.Tensor
+            direction of update
         """
 
         i = self.i
@@ -182,45 +175,15 @@ class EPEstimators(object):
             # Error occured, usually means theta is too big
             return np.nan, theta_init*np.nan
 
-        # Compute Newton step: Δθ = H⁻¹ (g - g_theta)
         rhs = self.g_mean() - g_theta
 
         ls_args = self.linsolve_args.copy()
         if trust_radius is not None:
             ls_args['trust_radius'] = trust_radius
 
-        delta_theta = solve_linear_psd(K_theta, rhs, **ls_args)
+        # Compute Newton step: Δθ = H⁻¹ (g - g_theta)
+        return solve_linear_psd(K_theta, rhs, **ls_args)
 
-        step_size = 1
-
-        # if delta is not None:
-        #     # TODO : I think there are errors here -AK
-        #     # Constrain the step to be within a trust region
-        #     max_step = delta * torch.norm(theta_init)
-        #     step_norm = torch.norm(delta_theta)
-        #     if step_norm > max_step:
-        #         delta_theta = delta_theta * (max_step / step_norm)
-        #     step_size = delta
-
-
-        # elif th is not None:
-        #     alpha = 1
-        #     d1 = float(delta_theta @ g_theta)
-        #     d2 = float(delta_theta @ (self.g_mean()-g_theta)) / 2
-            
-        #     logZ = self.log_norm_theta(theta_init)
-        #     dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
-        #     dlogZ_approx = alpha * d1 + alpha**2 * d2
-
-        #     while np.abs(dlogZ_approx-dlogZ)>th*np.abs(dlogZ_approx + logZpad):
-        #         alpha *= 0.95
-        #         dlogZ = self.log_norm_theta(theta_init + alpha*delta_theta) - logZ
-        #         dlogZ_approx = alpha * d1 + alpha**2 * d2
-        #     step_size = alpha
-        
-        theta = theta_init + step_size*delta_theta
-
-        return theta
 
 
     # =======================
@@ -265,35 +228,20 @@ class EPEstimators(object):
 
 
 
-    def get_EP_Newton_steps(self, tol=1e-3, max_iter=20, newton_step_args={}):
-        # Estimate EP using multiple steps of Newton's method
-        sig_new, theta = self.get_EP_Newton()
-        for _ in range(max_iter):
-            sig_old   = sig_new
-            theta_old = theta
-            theta     = self.newton_step(theta_init=theta, **newton_step_args)
-            sig_new   = self.get_objective(theta)
-
-            dsig = sig_new - sig_old
-            if np.abs(dsig) <= tol*np.abs(sig_old):  # relative change test
-                break
-
-            if sig_new > np.log(self.nflips):
-                #print(f'Break at iteration {count}: log(nflips)={np.log(nflips):.4e}, sig_new={sig_new:.4e}')
-                break 
-            if sig_new < sig_old or is_infnan(sig_new):
-                # print(f'Break at iteration {count}: sig_old={sig_old:.4e}, sig_new={sig_new:.4e}')
-                return sig_old, theta
-            
-        return sig_new, theta
-
-
-    def get_EP_Newton_steps_holdout(self, tol=1e-3, max_iter=1000, newton_step_args={}):
-        nflips = int(self.nflips/2)
+    def get_EP_Newton_steps(self, holdout=False, tol=1e-4, max_iter=1000, newton_step_args={}):
         i      = self.i 
+        nflips = self.nflips 
 
-        trn = self.spawn(self.S[:nflips,:])
-        tst = self.spawn(self.S[nflips:,:])
+        if holdout:
+            nflips = int(self.nflips/2)
+
+            trn = self.spawn(self.S[:nflips,:])
+            tst = self.spawn(self.S[nflips:,:])
+        else:
+            nflips = self.nflips
+            trn = self
+
+
 
         # sig_old_trn, theta = trn.get_EP_Newton()
         # sig_old_tst = tst.get_objective(theta)
@@ -301,7 +249,7 @@ class EPEstimators(object):
         # if is_infnan(sig_old_tst) or sig_old_tst <= 0:
         #     return 0.0, torch.zeros(self.N-1) 
 
-        sig_old_trn = sig_old_tst = 0.0
+        sig_old_trn = sig_old_tst, sig_new_trn, sig_new_tst = 0.0
         
         device = self.S.device
         theta = torch.zeros(self.N - 1, device=device)
@@ -310,48 +258,48 @@ class EPEstimators(object):
 
         for _ in range(max_iter):
             
-            if False:
-                new_theta = trn.newton_step(theta_init=theta, trust_radius=100000)
-            else:
-                new_theta = trn.newton_step(theta_init=theta)
-                delta_theta  = new_theta - theta
-                delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
-                new_theta    = theta + delta_theta
+            delta_theta = trn.newton_step(theta_init=theta)
+            delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
+            new_theta    = theta + delta_theta
                 
             sig_new_trn  = self.get_objective(new_theta)
 
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):
                 break
 
-            sig_new_tst = tst.get_objective(new_theta) 
-            if is_infnan(sig_new_tst) or sig_new_tst > np.log(nflips):
-                break
-
-            if sig_new_tst <= sig_old_tst:
-                
-                # delta_theta = new_theta - theta
-                # def dfunc(x):
-                #     v = theta + x * delta_theta
-                #     return float( (tst.g_mean() - tst.g_mean_theta(v))@delta_theta )
-
-                # if np.sign(dfunc(0)) == np.sign(dfunc(1)):
-                #     break
-
-                # x_max = scipy.optimize.bisect(dfunc, 0, 1, rtol=1e-3)
-                # theta = theta + x_max * delta_theta
-                # sig_old_tst = tst.get_objective(theta)
-
-                break
-
-            if np.abs(sig_new_trn - sig_old_trn) <= tol*np.abs(sig_old_trn) or \
-               np.abs(sig_new_tst - sig_old_tst) <= tol*np.abs(sig_old_tst):
-                #print('here?')
-                break
+            if holdout:
+                sig_new_tst = tst.get_objective(new_theta) 
+                if is_infnan(sig_new_tst) or sig_new_tst > np.log(nflips):
+                    break
 
             sig_old_tst, sig_old_trn, theta = sig_new_tst, sig_new_trn, new_theta
 
+            if np.abs(sig_new_trn - sig_old_trn) <= tol*np.abs(sig_old_trn):
+                break
+
+            if holdout and np.abs(sig_new_tst - sig_old_tst) <= tol*np.abs(sig_old_tst):
+                break
+
+            # if sig_new_tst <= sig_old_tst:
+                    
+            #     # delta_theta = new_theta - theta
+            #     # def dfunc(x):
+            #     #     v = theta + x * delta_theta
+            #     #     return float( (tst.g_mean() - tst.g_mean_theta(v))@delta_theta )
+
+            #     # if np.sign(dfunc(0)) == np.sign(dfunc(1)):
+            #     #     break
+
+            #     # x_max = scipy.optimize.bisect(dfunc, 0, 1, rtol=1e-3)
+            #     # theta = theta + x_max * delta_theta
+            #     # sig_old_tst = tst.get_objective(theta)
+
+            #     break
+
+
+
         # return self.get_objective(theta), theta
-        return sig_old_tst, theta
+        return sig_old_tst if holdout else sig_old_trn, theta
 
 
 

@@ -54,15 +54,14 @@ def calc_spin(S_i, J_i, i):
         times[ 'Ntron'] = time.time() - stime
 
 
-    if False:
+    if True:
         stime = time.time()
-        sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps_holdout()
+        sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps()
         times[ 'Nhld'] = time.time() - stime
 
     if True:
         stime = time.time()
-        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps_holdout(
-            newton_step_args=dict(delta=1))
+        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps(holdout=True)
         times[ 'Nhld2'] = time.time() - stime
         
     if False: # Grad
