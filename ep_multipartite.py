@@ -153,7 +153,7 @@ class EPEstimators(object):
         return float(theta @ self.g_mean()) - self.log_norm_theta(theta)
 
 
-    def newton_step(self, theta_init):
+    def newton_step(self, theta_init, trust_radius=None):
         """
         Perform a Newton-Raphson update to refine the parameter theta.
 
@@ -161,6 +161,8 @@ class EPEstimators(object):
         -----------
         theta_init : torch.Tensor
             Current estimate of the parameter vector theta (with zero at index i).
+        trust_radius : float or None
+            trust_radius to pass into linear solver
 
         Returns:
         --------
@@ -249,10 +251,9 @@ class EPEstimators(object):
         # if is_infnan(sig_old_tst) or sig_old_tst <= 0:
         #     return 0.0, torch.zeros(self.N-1) 
 
-        sig_old_trn = sig_old_tst, sig_new_trn, sig_new_tst = 0.0
+        sig_old_trn = sig_old_tst = sig_new_trn = sig_new_tst = 0.0
         
-        device = self.S.device
-        theta = torch.zeros(self.N - 1, device=device)
+        theta = torch.zeros(self.N - 1, device=self.device)
 
         max_norm = 1/4
 
