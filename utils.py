@@ -35,7 +35,7 @@ def eye_like(A):
     return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
 
 
-def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=5000):
+def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
     """
     Steihaug-Toint Conjugate Gradient method for approximately solving
     min_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
@@ -60,10 +60,14 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=5000):
         if discriminant < 0:
             discriminant = torch.tensor(0.0, dtype=x.dtype, device=x.device)
         sqrt_discriminant = torch.sqrt(discriminant)
-        tau = (-b_lin + sqrt_discriminant) / (2 * a)
+        tau1 = (-b_lin + sqrt_discriminant) / (2 * a)
+        tau2 = (-b_lin - sqrt_discriminant) / (2 * a)
+        tau_candidates = [tau for tau in [tau1, tau2] if tau >= 0]
+        tau = min(tau_candidates) if tau_candidates else torch.tensor(0.0, dtype=x.dtype, device=x.device)
         return tau
 
     n = b.shape[0]
+    max_iter = max_iter or 2 * n
     x = torch.zeros_like(b)
     r = b.clone()
     d = r.clone()
