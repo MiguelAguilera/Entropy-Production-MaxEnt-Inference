@@ -38,7 +38,7 @@ def calc_spin(S_i, J_i, i):
     # stime = time.time()
     # sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps_holdout(newton_step_args=dict(do_linesearch=True))
     # times[ 'Nls'] = time.time() - stime
-    if True:
+    if False:
         stime = time.time()
         sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps()
         times[ 'Ntrst'] = time.time() - stime
@@ -52,7 +52,7 @@ def calc_spin(S_i, J_i, i):
         stime = time.time()
         sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
         times[ 'Ntron'] = time.time() - stime
-        
+
     if True:
         stime = time.time()
         sigmas['NtronH'], thetas['NtronH'] = obj.get_EP_TRON(holdout=True)
