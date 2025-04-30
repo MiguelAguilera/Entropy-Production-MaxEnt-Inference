@@ -227,6 +227,10 @@ if __name__ == "__main__":
         mxep  = 0
 
         for k, v in EPvals.items():
+            if k not in LEGEND_LABELS:
+                print(f"*** Found data, but {k} not in LEGEND_LABELS. Skipping")
+                continue
+                
             betas, eps = map(np.array, zip(*v))
             s_ixs = np.argsort(betas)
             plt.plot(betas[s_ixs], eps[s_ixs], label=LEGEND_LABELS[k], lw=2) # color=colors[i-1], lw=2)
