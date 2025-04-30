@@ -229,7 +229,6 @@ class EPEstimators(object):
         return self.newton_1step_
 
 
-
     def get_EP_Newton_steps(self, holdout=False, tol=1e-4, max_iter=1000, newton_step_args={}):
         i      = self.i 
         nflips = self.nflips 
@@ -255,7 +254,7 @@ class EPEstimators(object):
         
         theta = torch.zeros(self.N - 1, device=self.device)
 
-        max_norm = 1/4
+        max_norm = 1
 
         for _ in range(max_iter):
             
@@ -342,6 +341,7 @@ class EPEstimators(object):
                 break
 
             p = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
+            #p = svd_constrained_solve(A=H_theta, b=grad, trust_radius=trust_radius)
             pred_red = grad @ p + 0.5 * p @ (H_theta @ p)
 
             theta_new = theta + p

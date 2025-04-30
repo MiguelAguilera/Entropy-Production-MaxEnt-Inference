@@ -127,7 +127,8 @@ def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
             x = torch.linalg.solve(A2, b)
 
         elif method == 'steihaug':
-            x = steihaug_toint_cg(A2, b, trust_radius=trust_radius)
+            #x = steihaug_toint_cg(A2, b, trust_radius=trust_radius)
+            x = csolve(A2,b, trust_radius=trust_radius)
 
         elif method=='solve_ex':
             x = torch.linalg.solve_ex(A2, b)[0]
@@ -174,6 +175,37 @@ def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
 
     return x
 
+
+def svd_constrained_solve(A, b, trust_radius, tol=1e-1, max_iter=250):
+    # Unconstrained least squares solution
+
+    x_ls = torch.linalg.lstsq(A, b, rcond=None)[0]
+    if x_ls.norm() <= trust_radius:
+        return x_ls  # Already satisfies constraint
+
+    U, s, Vt = torch.linalg.svd(A)
+    Atb = A.T @ b
+    b_norm = b.norm()
+    V = Vt.T
+
+
+    # Solve via trust region (binary search over lambda)
+    def phi(lmbda):
+        return ((s**2 * (U.T @ b)**2) / (s**2 + lmbda)**2).sum()
+
+    # Binary search over lambda > 0
+    lmbda_low, lmbda_high = 1e-4, 1e4
+    for _ in range(max_iter):
+        lmbda = (lmbda_low + lmbda_high) / 2
+        x = V @ (s / (s**2 + lmbda) * (U.T @ b))
+        norm_x = x.norm()
+        if -tol < (norm_x/trust_radius)-1 < tol:
+            break
+        if norm_x > trust_radius:
+            lmbda_low = lmbda
+        else:
+            lmbda_high = lmbda
+    return x
 
 
 
