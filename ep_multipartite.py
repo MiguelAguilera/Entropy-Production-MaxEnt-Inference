@@ -264,7 +264,7 @@ class EPEstimators(object):
             # **** Find Newton step direction
             if solve_constrained:
                 delta_theta = trn.newton_step(theta_init=theta, trust_radius=trust_radius)
-             else:
+            else:
                 delta_theta = trn.newton_step(theta_init=theta)
                 delta_theta *= trust_radius/max(trust_radius, torch.norm(delta_theta))
             new_theta    = theta + delta_theta
@@ -318,7 +318,7 @@ class EPEstimators(object):
     def get_EP_TRON(self, tol=1e-3, max_iter=100,  # AK: maybe max_iter should be more like 1000 ?
                     trust_radius_init=0.5, trust_radius_max=1000.0,
                     eta0=0.0, eta1=0.25, eta2=0.75, tol_val=0,
-                    holdout=True, adjust_radius=True):
+                    holdout=True, adjust_radius=True ):
 
         nflips = int(self.nflips / 2)
         i = self.i
