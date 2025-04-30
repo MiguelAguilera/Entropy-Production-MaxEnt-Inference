@@ -18,8 +18,10 @@ LABELS = {'Emp'   : 'Empirical',
           'Nls'   : 'Newton LS', 
           'Nthr'  : 'Newton Thresh', 
           'Nhld2' : 'Newton Holdout2', 
+          'Nhld3' : 'Newton Holdout3', 
           'Ntron' : 'TRON',
           'NtronH' : 'TRON Holdout',
+          'NtronH2' : 'TRON Holdout2',
           'Grad'  : 'Grad Ascent',
           'GradHld'  : 'Grad Holdout',
           'BFGS'  : 'BFGS'}
@@ -36,8 +38,10 @@ LEGEND_LABELS = {
     #'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
 
     'Nhld2':r'${\Sigma}_{\bm g}^{newtonH}$',
+    'Nhld3':r'${\Sigma}_{\bm g}^{newtonH3}$',
     #'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
     'NtronH':r'${\Sigma}_{\bm g}^{tronH}$',
+    'NtronH2':r'${\Sigma}_{\bm g}^{tronH2}$',
 }
 
 

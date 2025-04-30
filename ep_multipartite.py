@@ -229,7 +229,8 @@ class EPEstimators(object):
         return self.newton_1step_
 
 
-    def get_EP_Newton_steps(self, holdout=False, tol=1e-4, max_iter=1000, newton_step_args={}):
+    def get_EP_Newton_steps(self, holdout=False, tol=1e-4, max_iter=1000, 
+        trust_radius=1, solve_constrained=False, newton_step_args={}):
         i      = self.i 
         nflips = self.nflips 
 
@@ -254,16 +255,21 @@ class EPEstimators(object):
         
         theta = torch.zeros(self.N - 1, device=self.device)
 
-        max_norm = 1
+        iteration = 0
+        while True:
+            if iteration >= max_iter:
+                print(f'max_iter {max_iter} reached in get_EP_TRON -- quitting!')
+                break
 
-        for _ in range(max_iter):
-            
             # **** Find Newton step direction
-            delta_theta = trn.newton_step(theta_init=theta)
-            delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
+            if solve_constrained:
+                delta_theta = trn.newton_step(theta_init=theta, trust_radius=trust_radius)
+             else:
+                delta_theta = trn.newton_step(theta_init=theta)
+                delta_theta *= trust_radius/max(trust_radius, torch.norm(delta_theta))
             new_theta    = theta + delta_theta
                 
-            sig_new_trn  = self.get_objective(new_theta)
+            sig_new_trn  = trn.get_objective(new_theta)
 
             if is_infnan(sig_new_trn) or sig_new_trn <= sig_old_trn or sig_new_trn > np.log(nflips):
                 break
@@ -273,7 +279,7 @@ class EPEstimators(object):
                 if is_infnan(sig_new_tst) or sig_new_tst <= sig_old_tst or sig_new_tst > np.log(nflips):
                     break
 
-            last_round = False
+            last_round = False # break after updating values
             if np.abs(sig_new_trn - sig_old_trn) <= tol: # *np.abs(sig_old_trn):
                 last_round = True
 
@@ -284,6 +290,8 @@ class EPEstimators(object):
 
             if last_round:
                 break
+
+            iteration += 1
 
             # if sig_new_tst <= sig_old_tst:
                     
@@ -303,12 +311,11 @@ class EPEstimators(object):
 
 
 
-        return self.get_objective(theta), theta
-#        return sig_old_tst if holdout else sig_old_trn, theta
+        return sig_old_tst if holdout else sig_old_trn, theta
 
 
 
-    def get_EP_TRON(self, tol=1e-3, max_iter=100, 
+    def get_EP_TRON(self, tol=1e-3, max_iter=100,  # AK: maybe max_iter should be more like 1000 ?
                     trust_radius_init=0.5, trust_radius_max=1000.0,
                     eta0=0.0, eta1=0.25, eta2=0.75, tol_val=0,
                     holdout=True, adjust_radius=True):
@@ -336,8 +343,10 @@ class EPEstimators(object):
 
         f_old_val = tst.get_objective(theta) if holdout else None
 
-        for iteration in range(max_iter):
-            if grad_norm < tol:
+        iteration = 0
+        while True:
+            if iteration == max_iter:
+                print(f'max_iter {max_iter} reached in get_EP_TRON -- quitting!')
                 break
 
             p = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
@@ -346,6 +355,12 @@ class EPEstimators(object):
 
             theta_new = theta + p
             f_new_trn = trn.get_objective(theta_new)
+
+            
+            # AK : the following helps avoid crazy values
+            # if f_new_trn >= np.log(trn.nflips):
+            #     break
+
             act_red = f_new_trn - f_old_trn
             rho = act_red / pred_red
 
@@ -369,7 +384,11 @@ class EPEstimators(object):
                     trust_radius *= 0.25
                 elif rho > eta2 and p.norm() == trust_radius:
                     trust_radius = min(2.0 * trust_radius, trust_radius_max)
+
+            iteration += 1
         
+        # AK: I might recomment return test objective if possible, as in 
+        # return f_old_val if return_tst_val else self.get_objective(theta), theta
         return self.get_objective(theta), theta
 
 

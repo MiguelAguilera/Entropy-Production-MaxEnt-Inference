@@ -53,16 +53,28 @@ def calc_spin(S_i, J_i, i):
         sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
         times[ 'Ntron'] = time.time() - stime
 
-    if True:
+    if False:
         stime = time.time()
         sigmas['NtronH'], thetas['NtronH'] = obj.get_EP_TRON(holdout=True)
         times[ 'NtronH'] = time.time() - stime
 
+    if False:
+        stime = time.time()
+        sigmas['NtronH2'], thetas['NtronH2'] = obj.get_EP_TRON(holdout=True,
+            adjust_radius=False,return_tst_val=True,
+            trust_radius_init=1/2,max_iter=1000)
+        times[ 'NtronH2'] = time.time() - stime
 
     if True:
         stime = time.time()
-        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps(holdout=True)
+        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps(
+            holdout=True, trust_radius=1/4)
         times[ 'Nhld2'] = time.time() - stime
+    if True:
+        stime = time.time()
+        sigmas['Nhld3'], thetas['Nhld3']  = obj.get_EP_Newton_steps(holdout=True,
+            solve_constrained=True, trust_radius=1/4)
+        times[ 'Nhld3'] = time.time() - stime
         
     if False: # Grad
         x0=torch.zeros(len(J_i)-1)
