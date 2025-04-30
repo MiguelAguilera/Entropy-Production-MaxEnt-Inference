@@ -28,6 +28,8 @@ num_runs = 10
 
 for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lstsq','inv']:
     tot_time = 0
+    if args.printx:
+        print()
     for i in range(num_runs):
         torch.manual_seed(i)
         A, b = get_A_b()
@@ -37,5 +39,5 @@ for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lsts
         tot_time += time.time() - stime
         utils.empty_cache()
         if args.printx:
-            print(x[:4].cpu().numpy())
+            print(f'{method:15s} {x[:4].cpu().numpy()}')
     print(f'{method:15s} {tot_time:3f}')
