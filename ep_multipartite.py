@@ -259,6 +259,7 @@ class EPEstimators(object):
 
         for _ in range(max_iter):
             
+            # **** Find Newton step direction
             delta_theta = trn.newton_step(theta_init=theta)
             delta_theta *= max_norm/max(max_norm, torch.norm(delta_theta))
             new_theta    = theta + delta_theta
@@ -270,7 +271,7 @@ class EPEstimators(object):
 
             if holdout:
                 sig_new_tst = tst.get_objective(new_theta) 
-                if is_infnan(sig_new_tst) or sig_new_tst > np.log(nflips):
+                if is_infnan(sig_new_tst) or sig_new_tst <= sig_old_tst or sig_new_tst > np.log(nflips):
                     break
 
             last_round = False
