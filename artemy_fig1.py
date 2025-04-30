@@ -30,8 +30,11 @@ LEGEND_LABELS = {
     'N1':r'$\widehat{\Sigma}_{\bm g}$', 
     # r'${\Sigma}_{\bm g}$',
     # r'${\Sigma}_{\bm g}$',
-    'Ntrst':r'${\Sigma}_{\bm g}^{newtonT}$',
+ #   'Ntrst':r'${\Sigma}_{\bm g}^{newtonT}$',
+   'Grad':r'${\Sigma}_{\bm g}^{grad}$',
+   'GradHld':r'${\Sigma}_{\bm g}^{gradH}$',
     #'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
+
     'Nhld2':r'${\Sigma}_{\bm g}^{newtonH}$',
     #'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
     'NtronH':r'${\Sigma}_{\bm g}^{tronH}$',

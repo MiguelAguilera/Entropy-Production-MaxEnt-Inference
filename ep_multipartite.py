@@ -255,7 +255,7 @@ class EPEstimators(object):
         
         theta = torch.zeros(self.N - 1, device=self.device)
 
-        max_norm = 1
+        max_norm = 1/4
 
         for _ in range(max_iter):
             
@@ -273,12 +273,16 @@ class EPEstimators(object):
                 if is_infnan(sig_new_tst) or sig_new_tst > np.log(nflips):
                     break
 
+            last_round = False
+            if np.abs(sig_new_trn - sig_old_trn) <= tol: # *np.abs(sig_old_trn):
+                last_round = True
+
+            if holdout and np.abs(sig_new_tst - sig_old_tst) <= tol: # *np.abs(sig_old_tst):
+                last_round = True
+
             sig_old_tst, sig_old_trn, theta = sig_new_tst, sig_new_trn, new_theta
 
-            if np.abs(sig_new_trn - sig_old_trn) <= tol*np.abs(sig_old_trn):
-                break
-
-            if holdout and np.abs(sig_new_tst - sig_old_tst) <= tol*np.abs(sig_old_tst):
+            if last_round:
                 break
 
             # if sig_new_tst <= sig_old_tst:
