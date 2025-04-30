@@ -35,7 +35,7 @@ def eye_like(A):
     return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
 
 
-def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=250):
+def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=5000):
     """
     Steihaug-Toint Conjugate Gradient method for approximately solving
     min_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
