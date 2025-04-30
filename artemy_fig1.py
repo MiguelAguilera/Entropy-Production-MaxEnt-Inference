@@ -17,9 +17,9 @@ LABELS = {'Emp'   : 'Empirical',
           'Ntrst' : 'Newton Trust', 
           'Nls'   : 'Newton LS', 
           'Nthr'  : 'Newton Thresh', 
-          'Nhld'  : 'Newton Holdout', 
           'Nhld2' : 'Newton Holdout2', 
           'Ntron' : 'TRON',
+          'NtronH' : 'TRON Holdout',
           'Grad'  : 'Grad Ascent',
           'GradHld'  : 'Grad Holdout',
           'BFGS'  : 'BFGS'}
@@ -30,10 +30,11 @@ LEGEND_LABELS = {
     'N1':r'$\widehat{\Sigma}_{\bm g}$', 
     # r'${\Sigma}_{\bm g}$',
     # r'${\Sigma}_{\bm g}$',
-    'Ntrst':r'${\Sigma}_{\bm g}^{trst}$',
-    'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
-    'Nhld2':r'${\Sigma}_{\bm g}^{hld2}$',
-    'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
+    'Ntrst':r'${\Sigma}_{\bm g}^{newtonT}$',
+    #'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
+    'Nhld2':r'${\Sigma}_{\bm g}^{newtonH}$',
+    #'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
+    'NtronH':r'${\Sigma}_{\bm g}^{tronH}$',
 }
 
 
@@ -230,7 +231,7 @@ if __name__ == "__main__":
             if k not in LEGEND_LABELS:
                 print(f"*** Found data, but {k} not in LEGEND_LABELS. Skipping")
                 continue
-                
+
             betas, eps = map(np.array, zip(*v))
             s_ixs = np.argsort(betas)
             plt.plot(betas[s_ixs], eps[s_ixs], label=LEGEND_LABELS[k], lw=2) # color=colors[i-1], lw=2)

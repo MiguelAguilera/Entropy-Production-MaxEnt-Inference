@@ -255,7 +255,7 @@ class EPEstimators(object):
         
         theta = torch.zeros(self.N - 1, device=self.device)
 
-        max_norm = 1/4
+        max_norm = 1
 
         for _ in range(max_iter):
             

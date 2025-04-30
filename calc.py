@@ -38,9 +38,9 @@ def calc_spin(S_i, J_i, i):
     # stime = time.time()
     # sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps_holdout(newton_step_args=dict(do_linesearch=True))
     # times[ 'Nls'] = time.time() - stime
-    if False:
+    if True:
         stime = time.time()
-        sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps(newton_step_args=dict(delta=1))
+        sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps()
         times[ 'Ntrst'] = time.time() - stime
     
     if False:
@@ -52,12 +52,12 @@ def calc_spin(S_i, J_i, i):
         stime = time.time()
         sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
         times[ 'Ntron'] = time.time() - stime
-
-
+        
     if True:
         stime = time.time()
-        sigmas['Nhld'], thetas['Nhld'] = obj.get_EP_Newton_steps()
-        times[ 'Nhld'] = time.time() - stime
+        sigmas['NtronH'], thetas['NtronH'] = obj.get_EP_TRON(holdout=True)
+        times[ 'NtronH'] = time.time() - stime
+
 
     if True:
         stime = time.time()
@@ -161,7 +161,7 @@ def calc(file_name):
             del S_i, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
-            show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Grad','GradHld', 'Nls']
+            show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Ntron','NtronH','Grad','GradHld', 'Nls']
             ll = [f'{k}={ep_sums[k]:3.5f} ' for k in show_methods if k in ep_sums]
             pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
