@@ -303,15 +303,15 @@ class EPEstimators(object):
 
 
 
-        # return self.get_objective(theta), theta
-        return sig_old_tst if holdout else sig_old_trn, theta
+        return self.get_objective(theta), theta
+#        return sig_old_tst if holdout else sig_old_trn, theta
 
 
 
     def get_EP_TRON(self, tol=1e-3, max_iter=100, 
                     trust_radius_init=0.5, trust_radius_max=1000.0,
                     eta0=0.0, eta1=0.25, eta2=0.75, tol_val=0,
-                    holdout=True, tron=True):
+                    holdout=True, adjust_radius=True):
 
         nflips = int(self.nflips / 2)
         i = self.i
@@ -350,7 +350,7 @@ class EPEstimators(object):
             rho = act_red / pred_red
 
             # Accept step
-            if rho > eta0 or (not tron):
+            if rho > eta0 or (not adjust_radius):
                 if holdout:
                     f_new_val = tst.get_objective(theta_new)
                     if f_new_val + tol_val * trust_radius < f_old_val:
@@ -364,13 +364,13 @@ class EPEstimators(object):
                 grad_norm = grad.abs().max()
 
             # Update trust radius
-            if tron:
+            if adjust_radius:
                 if rho < eta1:
                     trust_radius *= 0.25
                 elif rho > eta2 and p.norm() == trust_radius:
                     trust_radius = min(2.0 * trust_radius, trust_radius_max)
         
-        return tst.get_objective(theta), theta
+        return self.get_objective(theta), theta
 
 
     def get_EP_Adam(self, theta_init, holdout=False, max_iter=1000, 
