@@ -28,14 +28,16 @@ num_runs = 10
 
 for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lstsq','inv']:
     tot_time = 0
+    if args.printx:
+        print()
     for i in range(num_runs):
         torch.manual_seed(i)
         A, b = get_A_b()
-        kw_args = {} if method != 'steihaug' else dict(trust_radius=10)
+        kw_args = {} if method != 'steihaug' else dict(trust_radius=10000)
         stime = time.time()
         x = utils.solve_linear_psd(A, b, method=method, **kw_args)
         tot_time += time.time() - stime
         utils.empty_cache()
         if args.printx:
-            print(x[:4].cpu().numpy())
+            print(f'{method:15s} {x[:4].cpu().numpy()}')
     print(f'{method:15s} {tot_time:3f}')

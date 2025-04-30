@@ -55,6 +55,7 @@ ARGS="--beta_min 0 --rep 200000 --DJ 1 --J0 0 --beta_max 6 --size 50 --num_beta 
 
 #ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 1000 --num_beta 10  --BASE_DIR ~/MaxEntData1000_10k"
 ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 500 --num_beta 10  --BASE_DIR ~/MaxEntData500dil"
+ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 1000 --num_beta 10  --BASE_DIR ~/MaxEntData1000dil"
 #rm -rf ~/MaxEntData500dilS
 # rm -rf ~/MaxEntData40v2
 #ARGS="--patterns 6 --beta_min 0 --beta_max 3 --size 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000v11"

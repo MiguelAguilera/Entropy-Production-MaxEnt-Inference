@@ -48,7 +48,7 @@ def calc_spin(S_i, J_i, i):
         sigmas['Nthr'], thetas['Nthr'] = obj.get_EP_Newton_steps(newton_step_args=dict(th=0.01))
         times[ 'Nthr'] = time.time() - stime
 
-    if True:
+    if False:
         stime = time.time()
         sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
         times[ 'Ntron'] = time.time() - stime
