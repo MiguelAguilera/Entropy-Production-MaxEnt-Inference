@@ -60,10 +60,7 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
         if discriminant < 0:
             discriminant = torch.tensor(0.0, dtype=x.dtype, device=x.device)
         sqrt_discriminant = torch.sqrt(discriminant)
-        tau1 = (-b_lin + sqrt_discriminant) / (2 * a)
-        tau2 = (-b_lin - sqrt_discriminant) / (2 * a)
-        tau_candidates = [tau for tau in [tau1, tau2] if tau >= 0]
-        tau = min(tau_candidates) if tau_candidates else torch.tensor(0.0, dtype=x.dtype, device=x.device)
+        tau = (-b_lin + sqrt_discriminant) / (2 * a)
         return tau
 
     n = b.shape[0]

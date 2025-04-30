@@ -365,7 +365,7 @@ class EPEstimators(object):
                 elif rho > eta2 and p.norm() == trust_radius:
                     trust_radius = min(2.0 * trust_radius, trust_radius_max)
         
-        return tst.get_objective(theta), theta
+        return self.get_objective(theta), theta
 
 
     def get_EP_Adam(self, theta_init, holdout=False, max_iter=1000, 
