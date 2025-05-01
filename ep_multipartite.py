@@ -269,7 +269,9 @@ class EPEstimators(object):
                         rho = act_red / (pred_red + 1e-20)
 
                         assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
-                        if rho > eta0 or trust_radius < trust_radius_min: # accept new theta
+                        if rho > eta0:      # accept new theta
+                            break
+                        if trust_radius < trust_radius_min:
                             trust_radius = trust_radius_min
                             break
 
