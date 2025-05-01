@@ -202,7 +202,15 @@ class EPEstimators(object):
     def get_EP_MTUR(self):
         # Estimate EP using the multidimensional TUR method
 
-        # # This was old code for doing a 'heldout' estimate of the TUR
+        # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
+        # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
+        # and K^-1 is covariance matrix of g under (p + ~p)/2.
+        #
+        # In our case, g is antisymmetric (<g>_p=-<g>_~p), so
+        #        <g>_(p - ~p)  = 2<g>_p 
+        #        [K^-1]_ij     = <g_i g_j>
+
+        # # The code commented out below was for doing a 'heldout' estimate of the TUR
         # # For simplicity, we removed it 
         # if holdout:
         #     trn, tst  = self.split_train_test()
