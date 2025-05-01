@@ -266,7 +266,7 @@ class EPEstimators(object):
                         pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
 
                         act_red = f_new_trn - f_cur_trn
-                        rho = act_red / pred_red
+                        rho = act_red / (pred_red + 1e-20)
 
                         assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
                         if rho > eta0: # accept new theta
