@@ -244,6 +244,7 @@ class EPEstimators(object):
         theta = torch.zeros(self.N - 1, device=self.device)
         I     = torch.eye(self.N-1, device=self.device)
 
+        accept = True
         for _ in range(max_iter):
             # Find Newton step direction
             g_theta, H_theta = trn.g_mean_and_covariance_theta(theta=theta)
@@ -269,13 +270,14 @@ class EPEstimators(object):
 
             last_round = False # whether to break *after* updating values
 
-            if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
-                break
-            elif np.abs(f_new_trn - f_cur_trn) <= tol: 
-                last_round = True
-            elif f_new_trn > np.log(trn.nflips):
-                f_new_trn = np.log(trn.nflips)
-                last_round = True
+            if accept:
+                if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
+                    break
+                elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                    last_round = True
+                elif f_new_trn > np.log(trn.nflips):
+                    f_new_trn = np.log(trn.nflips)
+                    last_round = True
 
             if holdout:
                 f_new_tst = tst.get_objective(new_theta) 
@@ -294,14 +296,16 @@ class EPEstimators(object):
                 act_red = f_new_trn - f_cur_trn
                 rho = act_red / pred_red
 
-                accept = rho > eta0
+                accept = rho > eta0 # accept new theta
 
                 if rho < eta1:
                     trust_radius *= 0.25
                 elif rho > eta2 and delta_theta.norm() >= trust_radius:
                     trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
-
+            if accept:
+                f_cur_trn, theta = f_new_trn, new_theta
+                
             f_cur_trn, theta = f_new_trn, new_theta
             if holdout:
                 f_cur_tst = f_new_tst
