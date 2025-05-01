@@ -244,7 +244,6 @@ class EPEstimators(object):
         theta = torch.zeros(self.N - 1, device=self.device)
         I     = torch.eye(self.N-1, device=self.device)
 
-        accept = True
         for _ in range(max_iter):
             # Find Newton step direction
             g_theta, H_theta = trn.g_mean_and_covariance_theta(theta=theta)
@@ -257,27 +256,51 @@ class EPEstimators(object):
 
             H_theta += self.linsolve_eps * I
             if trust_radius is not None and solve_constrained:
-                delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
+
+                for _ in range(100): # loop until trust_radius works well
+                    delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
+                    new_theta  = theta + delta_theta
+                    f_new_trn  = trn.get_objective(new_theta)
+
+                    if adjust_radius:
+                        pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
+
+                        act_red = f_new_trn - f_cur_trn
+                        rho = act_red / pred_red
+
+                        assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
+                        if rho > eta0: # accept new theta
+                            break
+
+                        if rho < eta1:
+                            trust_radius *= 0.25
+                        elif rho > eta2 and delta_theta.norm() >= trust_radius:
+                            trust_radius = min(2.0 * trust_radius, trust_radius_max)
+
+                    else: # we just accept first delta_theta if we are not adjusting radius
+                        break
+
+                else: # for loop finished
+                    if verbose: 
+                        print("max_iter reached in adjust_radius loop!")
+
             else:
                 delta_theta = solve_linear_psd(A=H_theta, b=grad)
                 if trust_radius is not None:
                     delta_theta *= trust_radius/max(trust_radius, delta_theta.norm())
+                new_theta  = theta + delta_theta
+                f_new_trn  = trn.get_objective(new_theta)
 
-            # delta_theta = trn.newton_step(theta_init=theta)
-
-            new_theta  = theta + delta_theta
-            f_new_trn  = trn.get_objective(new_theta)
 
             last_round = False # whether to break *after* updating values
 
-            if accept:
-                if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
-                    break
-                elif np.abs(f_new_trn - f_cur_trn) <= tol: 
-                    last_round = True
-                elif f_new_trn > np.log(trn.nflips):
-                    f_new_trn = np.log(trn.nflips)
-                    last_round = True
+            if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
+                break
+            elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                last_round = True
+            elif f_new_trn > np.log(trn.nflips):
+                f_new_trn = np.log(trn.nflips)
+                last_round = True
 
             if holdout:
                 f_new_tst = tst.get_objective(new_theta) 
@@ -289,27 +312,9 @@ class EPEstimators(object):
                     f_new_tst = np.log(tst.nflips)
                     last_round = True
 
-
-            if trust_radius is not None and adjust_radius:
-                pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
-
-                act_red = f_new_trn - f_cur_trn
-                rho = act_red / pred_red
-
-                accept = rho > eta0 # accept new theta
-
-                if rho < eta1:
-                    trust_radius *= 0.25
-                elif rho > eta2 and delta_theta.norm() >= trust_radius:
-                    trust_radius = min(2.0 * trust_radius, trust_radius_max)
-
-            if accept:
-                f_cur_trn, theta = f_new_trn, new_theta
-                
             f_cur_trn, theta = f_new_trn, new_theta
             if holdout:
                 f_cur_tst = f_new_tst
-
 
             if last_round:
                 break

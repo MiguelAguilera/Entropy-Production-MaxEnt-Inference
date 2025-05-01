@@ -22,24 +22,25 @@ def calc_spin(S_i, J_i, i):
     to_run = [
         #('N1'     ,      obj.get_EP_Newton , dict()),
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
-#        ('N1h'      ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=True,verbose=True) ),
+        ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
         ('TUR'      ,      obj.get_EP_MTUR        , dict(holdout=True)),
-        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, solve_constrained=False, verbose=True) ),
+        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True) ),
+        ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True, adjust_radius=True, verbose=True) ),
 
-        ('NR h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, verbose=True) ),
-        ('NR na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, adjust_radius=True,verbose=True) ),
+#         ('NR h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, verbose=True) ),
+#         ('NR na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, adjust_radius=True,verbose=True) ),
         
-        ('N h'      ,      obj.get_EP_Newton, dict(holdout=True,verbose=True) ),
-        ('N'        ,      obj.get_EP_Newton, dict(holdout=False,verbose=True) ),
-        ('NT h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,verbose=True) ),
-        ('NT na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,adjust_radius=True,verbose=True) ),
+#         ('N h'      ,      obj.get_EP_Newton, dict(holdout=True,verbose=True) ),
+#         ('N'        ,      obj.get_EP_Newton, dict(holdout=False,verbose=True) ),
+#         ('NT h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,verbose=True) ),
+#         ('NT na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,adjust_radius=True,verbose=True) ),
         
-#        ('T h'    ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4) ),
-#        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
-        #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
+# #        ('T h'    ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4) ),
+# #        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
+#         #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
         
-         ('G h'    ,      obj.get_EP_GradAscent  , dict(holdout=True) ),
-         ('G'    ,      obj.get_EP_GradAscent  , dict() ),
+#          ('G h'    ,      obj.get_EP_GradAscent  , dict(holdout=True) ),
+#          ('G'    ,      obj.get_EP_GradAscent  , dict() ),
     ]
 
 
@@ -133,7 +134,6 @@ def calc(file_name):
             del S_i, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
-            #show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Ntron','NtronH','Grad','GradHld', 'Nls']
             ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
             pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 

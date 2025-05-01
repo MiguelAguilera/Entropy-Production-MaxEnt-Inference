@@ -78,6 +78,8 @@ if __name__ == "__main__":
     betas = []
 
     # results = []
+    N=None
+    rep=None
 
     for file_name in sorted(os.listdir(BASE_DIR))[::-1]:
         start_time = time.time()
@@ -106,6 +108,8 @@ if __name__ == "__main__":
             with open(out_filename, 'wb') as file:
                 pickle.dump(res, file)
                 print(f'Saved to {out_filename}')
+
+        N = res['J'].shape[0]
 
         memory_usage = process.memory_info().rss / 1024 / 1024
 
@@ -238,6 +242,7 @@ if __name__ == "__main__":
         plt.axis([b1, b2, 0, mxep * 1.05])
         plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
         plt.xlabel(r'$\beta$')
+        plt.title(f'N={N}')
 
         # Legend
         plt.legend(
