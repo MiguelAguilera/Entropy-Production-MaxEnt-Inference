@@ -211,7 +211,7 @@ class EPEstimators(object):
 
     def get_EP_Newton(self, max_iter=1000, tol=1e-4, holdout=False, verbose=False,
         trust_radius=None, solve_constrained=True, adjust_radius=False,
-        eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_max=1000.0):
+        eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_max=1000.0, trust_radius_min=1e-3):
         """
         Estimate EP by optimizing objective using Newton's method 
 
@@ -269,7 +269,7 @@ class EPEstimators(object):
                         rho = act_red / (pred_red + 1e-20)
 
                         assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
-                        if rho > eta0: # accept new theta
+                        if rho > eta0 or trust_radius < trust_radius_min: # accept new theta
                             break
 
                         if rho < eta1:
