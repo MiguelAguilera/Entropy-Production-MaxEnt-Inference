@@ -19,105 +19,65 @@ def calc_spin(S_i, J_i, i):
     obj = epm.EPEstimators(S_i, i)
 
 
-    stime = time.time()
-    sigmas['N1'], thetas['N1'] = obj.get_EP_Newton()
-    times[ 'N1']  = time.time() - stime
+    to_run = [
+        #('N1'     ,      obj.get_EP_Newton , dict()),
+        #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
+#        ('N1h'      ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=True,verbose=True) ),
+        ('TUR'      ,      obj.get_EP_MTUR        , dict(holdout=True)),
+        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, solve_constrained=False, verbose=True) ),
 
-    stime = time.time()
-    sigmas['TUR'] = obj.get_EP_MTUR()
-    times[ 'TUR'] = time.time() - stime
+        ('NR h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, verbose=True) ),
+        ('NR na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, adjust_radius=True,verbose=True) ),
+        
+        ('N h'      ,      obj.get_EP_Newton, dict(holdout=True,verbose=True) ),
+        ('N'        ,      obj.get_EP_Newton, dict(holdout=False,verbose=True) ),
+        ('NT h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,verbose=True) ),
+        ('NT na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=True,adjust_radius=True,verbose=True) ),
+        
+#        ('T h'    ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4) ),
+#        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
+        #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
+        
+         ('G h'    ,      obj.get_EP_GradAscent  , dict(holdout=True) ),
+         ('G'    ,      obj.get_EP_GradAscent  , dict() ),
+    ]
 
-    stime = time.time()
+
     # Compute empirical EP for spin i
     sigmas['Emp'] = float(utils.remove_i(J_i,i) @ obj.g_mean())
-    times[ 'Emp'] = time.time() - stime
 
-    #stime = time.time()
-    #sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps(newton_step_args=dict(do_linesearch=True))
-    #times[ 'Nls'] = time.time() - stime
-    # stime = time.time()
-    # sigmas['Nls'], thetas['Nls'] = obj.get_EP_Newton_steps_holdout(newton_step_args=dict(do_linesearch=True))
-    # times[ 'Nls'] = time.time() - stime
-    if False:
+    for k, f, kwargs in to_run:
         stime = time.time()
-        sigmas['Ntrst'], thetas['Ntrst'] = obj.get_EP_Newton_steps()
-        times[ 'Ntrst'] = time.time() - stime
-    
-    if False:
-        stime = time.time()
-        sigmas['Nthr'], thetas['Nthr'] = obj.get_EP_Newton_steps(newton_step_args=dict(th=0.01))
-        times[ 'Nthr'] = time.time() - stime
+        res = f(**kwargs)
+        times[k] = time.time() - stime
+        sigmas[k] = res.sigma
+        if res.theta is not None:
+            thetas[k] = res.theta.cpu().numpy()
+        if res.tst_sigma is not None:
+            sigmas[k+' tst'] = res.tst_sigma
 
-    if False:
-        stime = time.time()
-        sigmas['Ntron'], thetas['Ntron'] = obj.get_EP_TRON()
-        times[ 'Ntron'] = time.time() - stime
-
-    if False:
-        stime = time.time()
-        sigmas['NtronH'], thetas['NtronH'] = obj.get_EP_TRON(holdout=True)
-        times[ 'NtronH'] = time.time() - stime
-
-    if False:
-        stime = time.time()
-        sigmas['NtronH2'], thetas['NtronH2'] = obj.get_EP_TRON(holdout=True,
-            adjust_radius=False,return_tst_val=True,
-            trust_radius_init=1/2,max_iter=1000)
-        times[ 'NtronH2'] = time.time() - stime
-
-    if True:
-        stime = time.time()
-        sigmas['Nhld2'], thetas['Nhld2']  = obj.get_EP_Newton_steps(
-            holdout=True, trust_radius=1/4)
-        times[ 'Nhld2'] = time.time() - stime
-    if True:
-        stime = time.time()
-        sigmas['Nhld3'], thetas['Nhld3']  = obj.get_EP_Newton_steps(holdout=True,
-            solve_constrained=True, trust_radius=1/4)
-        times[ 'Nhld3'] = time.time() - stime
         
-    if False: # Grad
-        x0=torch.zeros(len(J_i)-1)
-        stime = time.time()
-        sigmas['GradHld'], thetas['GradHld'] = obj.get_EP_Adam(theta_init=x0, holdout=True) 
-        times[ 'GradHld']  = time.time() - stime
+    if False:  # histogram of g outcomes
+        import matplotlib.pyplot as plt 
+        import seaborn as sns
+        ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
+        stats = (ctheta2@S_i.T).cpu().numpy()
+        stats -= stats.mean()
+        sns.kdeplot( stats, label='Original')# , bins=20, color='red', alpha=0.3, label='Original') 
+        
+        stats2 = np.random.normal(loc=0, scale=stats.std(), size=len(stats))
+        stats2 -= stats2.mean()
+        sns.kdeplot( stats2, label='Gaussian')
+        #plt.yscale('log')
 
-    if False: # Grad
-        x0=torch.zeros(len(J_i)-1)
-        stime = time.time()
-        sigmas['Grad'], thetas['Grad'] = obj.get_EP_Adam(theta_init=x0) 
-        times[ 'Grad']  = time.time() - stime
+        plt.legend() 
+        
 
-        #sigmas['BFGS'], ctheta = get_EP_BFGS(S_i, g=g, theta_init=torch.zeros_like(theta_N1), i=i) 
-        #thetas['BFGS']  = ctheta.cpu().numpy()
-        #times['BFGS'] = time.time() - start_time_gd_i
-
-        if False:  # histogram of g outcomes
-            import matplotlib.pyplot as plt 
-            import seaborn as sns
-            ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
-            stats = (ctheta2@S_i.T).cpu().numpy()
-            stats -= stats.mean()
-            sns.kdeplot( stats, label='Original')# , bins=20, color='red', alpha=0.3, label='Original') 
-            
-            stats2 = np.random.normal(loc=0, scale=stats.std(), size=len(stats))
-            stats2 -= stats2.mean()
-            sns.kdeplot( stats2, label='Gaussian')
-            #plt.yscale('log')
-
-            plt.legend() 
-            
-
-            plt.show()
+        plt.show()
             #asdf
 
     del obj
     utils.empty_cache()
-
-    for k in sigmas:
-        sigmas[k] = float(sigmas[k])
-        if k in thetas:
-            thetas[k] = thetas[k].cpu().numpy()
 
     return sigmas, times, thetas
 
@@ -173,8 +133,8 @@ def calc(file_name):
             del S_i, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
-            show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Ntron','NtronH','Grad','GradHld', 'Nls']
-            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in show_methods if k in ep_sums]
+            #show_methods = ['Emp', 'N1', 'Ntrst','Nthr','Nhld','Nhld2','Ntron','NtronH','Grad','GradHld', 'Nls']
+            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
             pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
         for k,v in ep_sums.items():

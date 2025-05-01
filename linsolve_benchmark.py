@@ -33,9 +33,11 @@ for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lsts
     for i in range(num_runs):
         torch.manual_seed(i)
         A, b = get_A_b()
-        kw_args = {} if method != 'steihaug' else dict(trust_radius=10000)
         stime = time.time()
-        x = utils.solve_linear_psd(A, b, method=method, **kw_args)
+        if method != 'steihaug':
+            x = utils.solve_linear_psd(A, b, method=method)
+        else:
+            x = utils.steihaug_toint_cg(A, b, trust_radius=100)
         tot_time += time.time() - stime
         utils.empty_cache()
         if args.printx:
