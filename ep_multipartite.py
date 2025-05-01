@@ -202,7 +202,7 @@ class EPEstimators(object):
         else:
             A         = self.g_secondmoments()
             A        += self.linsolve_eps*eye_like(A)
-            theta     = solve_linear_psd(A + A, 2*self.g_mean())
+            theta     = solve_linear_psd(A, 2*self.g_mean())
             tst_sigma = None
 
         sigma = float(theta @ self.g_mean())

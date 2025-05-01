@@ -24,8 +24,8 @@ def calc_spin(S_i, J_i, i):
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
         ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
         ('TUR'      ,      obj.get_EP_MTUR        , dict(holdout=True)),
-        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=100, holdout=True) ),
-        ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=100, holdout=True, adjust_radius=True, verbose=True) ),
+        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True) ),
+        ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True, adjust_radius=True, verbose=True) ),
 
 #         ('NR h'     ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, verbose=True) ),
 #         ('NR na h'  ,      obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, solve_constrained=False, adjust_radius=True,verbose=True) ),
