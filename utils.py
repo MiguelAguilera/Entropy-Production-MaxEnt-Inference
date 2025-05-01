@@ -23,7 +23,11 @@ def empty_cache():  # Empty torch cache
     elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
         torch.mps.empty_cache()
 
-
+def torch_synchronize():  # Empty torch cache
+    if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
+        torch.cuda.synchronize()
+    elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
+        torch.mps.synchronize()
 
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
     """

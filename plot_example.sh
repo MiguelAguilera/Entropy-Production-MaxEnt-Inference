@@ -76,7 +76,7 @@ ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 500 --num_beta 10  --BASE_D
 
 
 python generate_data_spin_model.py --seed 42   --num_neighbors 5  $ARGS 
-python artemy_fig1.py                    $ARGS  $ARGSEP # --overwrite #--nograd --overwrite  #--nograd   --overwrite 
+python artemy_fig1.py                    $ARGS  $ARGSEP --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 
