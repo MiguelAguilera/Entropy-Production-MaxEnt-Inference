@@ -1,39 +1,40 @@
-# ======================================================
-# Contains method to estimate EP in multipartite systems
-# ======================================================
+# ============================================================
+# Contains methods to estimate EP in multipartite spin systems
+# ============================================================
 
-# TODO: Explain that this is for estimating EP in multipartite
-# system, also explain structure of S passed into our object,
-# and structure of observables g that we assume
+# The key datastructure here is S. This is a 2d torch tensor of -1 and 1s
+# whose shape is (number of samples, number of spins). Each row indicates
+# the state of the system right before spin i changed state. 
+
+# The observables are g_{ij} = (x_i' - x_i) x_j where x_i' and x_i 
+# indicates the state of spin i after and before the jump, 
+# x_j is the state of every other spin
+
 
 import os, time
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
-
 import numpy as np
 import scipy
-import torch
 
 from collections import namedtuple
 
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
+import torch
 
 from utils import * 
 
-# EP estimator return this kind of Solution object
+# EP estimators return Solution namedtuples such as the following
 #   sigma (float) : estimate of EP
 #   theta (torch tensor of length N-1) : optimal parameters
 #   tst_sigma (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['sigma', 'theta', 'tst_sigma'], defaults=[None])
 
+
 class EPEstimators(object):
-    def __init__(self, S, i, 
-        holdout_fraction=0.5, holdout_shuffle=False,
-        num_chunks=None, linsolve_eps=1e-4):
-        # TODO: Explain input format of S
-        #
+    def __init__(self, S, i, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
-        #   S (torch tensor) : 2d tensor (nflips x nspins) containing samples of 
-        #                      initial statesin which spin i changed state
-        #   i (int)          : index of spin which changed state
+        #   S (torch tensor)         : 2d tensor (nflips x nspins) containing samples of 
+        #                              states of the system, before spin i changed state
+        #   i (int)                  : index of spin which changed state
         #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
         #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
@@ -62,9 +63,7 @@ class EPEstimators(object):
         
     def split_train_test(self):
         # Split current data set into training part and heldout testing part
-        if not hasattr(self, 'trn_tst_split_'):
-            # training and testign splits are cached
-
+        if not hasattr(self, 'trn_tst_split_'): # training and testign splits are cached
             if self.holdout_shuffle:
                 perm = np.random.permutation(self.nflips)
                 S = self.S[perm]
@@ -181,13 +180,13 @@ class EPEstimators(object):
         return float( theta @ self.g_mean() - log_Z )
 
 
-    # =======================
+    # ==========================================
     # Entropy production (EP) estimation methods 
-    # =======================
+    # ==========================================
 
     def get_valid_solution(self, sigma, theta, tst_sigma=None):
-        # This returns a solution object, after doing some basic sanity checking of the values
-        # This sanity checking is especially valuable in the undersampled regime
+        # This returns a Solution object, after doing some basic sanity checking of the values
+        # This checking is useful in the undersampled regime with many dimensions and few samles
         if sigma < 0:
             # EP estimate should never be negative, as we can always achieve sigma=0 with all 0s theta
             sigma, theta = 0.0 
@@ -201,10 +200,10 @@ class EPEstimators(object):
 
 
     def get_EP_MTUR(self):
-        # Estimate EP using the MTUR method
+        # Estimate EP using the multidimensional TUR method
 
-        # # This is old code, which does a kind of 'heldout' estimate of the TUR
-        # # in case holdout=True parameter was given. For simplicity, we remove it 
+        # # This was old code for doing a 'heldout' estimate of the TUR
+        # # For simplicity, we removed it 
         # if holdout:
         #     trn, tst  = self.split_train_test()
         #     sol       = trn.get_EP_MTUR(holdout=False)
@@ -243,7 +242,6 @@ class EPEstimators(object):
           adjust_radius (bool)         : change trust-region radius in an adaptive way
           eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
                                        : hyperparameters for adjusting trust radius
-
         """
 
         i      = self.i 
