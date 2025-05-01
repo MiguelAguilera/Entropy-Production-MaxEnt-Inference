@@ -230,7 +230,7 @@ class EPEstimators(object):
 
         Returns:
           Solution object with sigma, theta, and tst_sigma (if holdout)
-          
+
         """
 
         i      = self.i 
@@ -325,7 +325,7 @@ class EPEstimators(object):
 
 
 
-    def get_EP_GradAscent(self, theta_init=None, holdout=False, max_iter=1000, tol=1e-4, verbose=False,
+    def get_EP_GradientAscent(self, theta_init=None, holdout=False, max_iter=1000, tol=1e-4, verbose=False,
                     use_Adam=True, beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, skip_warm_up=False):
         """
         Estimate EP using gradient ascent algorithm
