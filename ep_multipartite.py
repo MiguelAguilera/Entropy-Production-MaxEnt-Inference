@@ -18,6 +18,10 @@ from collections import namedtuple
 
 from utils import * 
 
+# EP estimator return this kind of Solution object
+#   sigma (float) : estimate of EP
+#   theta (torch tensor of length N-1) : optimal parameters
+#   tst_sigma (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['sigma', 'theta', 'tst_sigma'], defaults=[None])
 
 class EPEstimators(object):
@@ -26,16 +30,15 @@ class EPEstimators(object):
         num_chunks=None, linsolve_eps=1e-4):
         # TODO: Explain input format of S
         #
-        # Parameters
-        # ----------
-        # holdout_fraction : float
-        #   fraction of samples to put into holdout test dataset (if holdout is used)
-        # holdout_shuffle : bool
-        #   whether to shuffle train/holdout (test) assignment (if holdout is used) 
-        # num_chunks : int
-        #   chunk covariance computations to reduce memory requirements
-        # linsolve_eps : float 
-        #   regularize covariance matrices for numerical stability of linear solver
+        # Arguments:
+        #   S (torch tensor) : 2d tensor (nflips x nspins) containing samples of 
+        #                      initial statesin which spin i changed state
+        #   i (int)          : index of spin which changed state
+        #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
+        #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
+        #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
+        #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
+        #                              numerical stability of linear solvers
 
         self.S = S
         self.nflips, self.N = S.shape
@@ -50,15 +53,17 @@ class EPEstimators(object):
 
         self.num_chunks = num_chunks
 
+        assert linsolve_eps >= 0
         self.linsolve_eps = linsolve_eps
             
-        # For easy copying later
+        # Used for copying of object
         self._init_args = ['i', 'holdout_fraction', 'holdout_shuffle', 'num_chunks', 'linsolve_eps']
 
         
     def split_train_test(self):
+        # Split current data set into training part and heldout testing part
         if not hasattr(self, 'trn_tst_split_'):
-            # Split current data set into training part and heldout testing part
+            # training and testign splits are cached
 
             if self.holdout_shuffle:
                 perm = np.random.permutation(self.nflips)
@@ -77,8 +82,8 @@ class EPEstimators(object):
 
 
     def g_mean(self):
-        # Compute  means of g observables
-        if not hasattr(self, 'g_mean_'): # Cache value
+        # Compute means of g observables
+        if not hasattr(self, 'g_mean_'): # Cache values for speed
             i = self.i
             g = (-2 * self.S[:, i]) @ self.S / self.nflips 
             self.g_mean_ = remove_i(g, i)
@@ -86,7 +91,7 @@ class EPEstimators(object):
 
     def g_secondmoments(self):
         # Compute matrix of second moments of g observables
-        if not hasattr(self, 'g_secondmoments_'): # Cache for speed
+        if not hasattr(self, 'g_secondmoments_'): # Cache values for speed
             if self.num_chunks is None:
                 K = (4 * self.S.T) @ self.S
             else:
@@ -164,56 +169,66 @@ class EPEstimators(object):
         return mean_noi, remove_i_rowcol(K,i) - torch.outer(mean_noi,mean_noi)
 
 
-    def log_norm_theta(self, theta):
-        # Estimate log normalization constant Z for subproblem i under theta.
-        # TODO : maybe remove if its not needed
-        i = self.i
-        theta_padded = add_i(theta,i)
-        th_g = (-2 * self.S[:, i]) * (self.S @ theta_padded)
-        th_g_min = torch.min(th_g)    # substract max of -th_g
-        return float(torch.log(torch.mean(torch.exp(-th_g+th_g_min))) - th_g_min)
-
     def get_objective(self, theta):
         # Return objective value for parameters theta
-        return float(theta @ self.g_mean()) - self.log_norm_theta(theta)
+
+        # First, compute log normalization constant
+        theta_padded = add_i(theta, self.i)
+        th_g = (-2 * self.S[:, self.i]) * (self.S @ theta_padded)
+        th_g_min = torch.min(th_g)    # substract max of -th_g
+        log_Z    = torch.log(torch.mean(torch.exp(-th_g+th_g_min))) - th_g_min
+
+        return float( theta @ self.g_mean() - log_Z )
 
 
     # =======================
-    # EP estimation methods 
+    # Entropy production (EP) estimation methods 
     # =======================
 
     def get_valid_solution(self, sigma, theta, tst_sigma=None):
+        # This returns a solution object, after doing some basic sanity checking of the values
+        # This sanity checking is especially valuable in the undersampled regime
         if sigma < 0:
+            # EP estimate should never be negative, as we can always achieve sigma=0 with all 0s theta
             sigma, theta = 0.0 
             if theta is not None:
                 theta = 0*theta
         elif sigma >= np.log(self.nflips):
+            # EP estimate should not be larger than log(self.nflips), because it is not possible
+            # to estimate KL divergence larger than log(m) from m samples
             sigma = np.log(self.nflips)
         return Solution(sigma=sigma, theta=theta, tst_sigma=tst_sigma)
 
 
-    def get_EP_MTUR(self, holdout=False):
-        # Compute entropy production estimate using the MTUR method
-        if holdout:
-            trn, tst  = self.split_train_test()
-            sol       = trn.get_EP_MTUR(holdout=False)
-            theta     = sol.theta
-            tst_sigma = tst.get_objective(theta)
-        else:
-            A         = self.g_secondmoments()
-            A        += self.linsolve_eps*eye_like(A)
-            theta     = solve_linear_psd(A, 2*self.g_mean())
-            tst_sigma = None
+    def get_EP_MTUR(self):
+        # Estimate EP using the MTUR method
 
-        sigma = float(theta @ self.g_mean())
-        return self.get_valid_solution(sigma=sigma, theta=theta, tst_sigma=tst_sigma)
+        # # This is old code, which does a kind of 'heldout' estimate of the TUR
+        # # in case holdout=True parameter was given. For simplicity, we remove it 
+        # if holdout:
+        #     trn, tst  = self.split_train_test()
+        #     sol       = trn.get_EP_MTUR(holdout=False)
+        #     theta     = sol.theta
+        #     tst_sigma = tst.get_objective(theta)
+        # else:
+        #     A         = self.g_secondmoments()
+        #     A        += self.linsolve_eps*eye_like(A)
+        #     theta     = solve_linear_psd(A, 2*self.g_mean())
+        #     tst_sigma = None
+
+        A         = self.g_secondmoments()
+        A        += self.linsolve_eps*eye_like(A)
+        theta     = solve_linear_psd(A, 2*self.g_mean())
+        sigma     = float(theta @ self.g_mean())
+        return self.get_valid_solution(sigma=sigma, theta=theta)
 
 
     def get_EP_Newton(self, max_iter=1000, tol=1e-4, holdout=False, verbose=False,
         trust_radius=None, solve_constrained=True, adjust_radius=False,
-        eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_max=1000.0, trust_radius_min=1e-3):
+        eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
         """
-        Estimate EP by optimizing objective using Newton's method 
+        Estimate EP by optimizing objective using Newton's method. We support advanced
+        features like Newton's method with trust region constraints
 
         Arguments:
           max_iter (int) : maximum number of iterations
@@ -222,14 +237,12 @@ class EPEstimators(object):
           verbose (bool) : print debugging information
 
         Trust-region-related arguments:
-          trust_radius (float or None) : radius to use with TRON (trust-region Newton's method) if not None
-          solve_constrained (bool)     : if True, TRON solves the constrained trust region problem
-                                         if False, it simply rescales Newton step to desired maximum norm 
-          adjust_radius (bool)         : whether to adaptively adjust trust radius
-          eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_max=1000.0 : options for adjusting trust radius
-
-        Returns:
-          Solution object with sigma, theta, and tst_sigma (if holdout)
+          trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
+          solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
+                                         if False, we simply rescale usual Newton step to desired maximum norm 
+          adjust_radius (bool)         : change trust-region radius in an adaptive way
+          eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
+                                       : hyperparameters for adjusting trust radius
 
         """
 
@@ -241,28 +254,34 @@ class EPEstimators(object):
             trn = self
             f_cur_trn = f_new_trn = 0.0
         
-        theta = torch.zeros(self.N - 1, device=self.device)
+        theta = torch.zeros(self.N-1, device=self.device)
         I     = torch.eye(self.N-1, device=self.device)
 
         for _ in range(max_iter):
-            # Find Newton step direction
+            # Find Newton step direction. We first get gradient and Hessian
             g_theta, H_theta = trn.g_mean_and_covariance_theta(theta=theta)
-            if is_infnan(H_theta.sum()): # Error occured, usually means theta is too big
-                if verbose:
-                    print('invalid Hessian in get_EP_Newton_steps')
+            if is_infnan(H_theta.sum()): 
+                # Error occured, usually it means theta is too big
+                if verbose: print('invalid Hessian in get_EP_Newton_steps')
                 break
 
             grad = trn.g_mean() - g_theta
+            H_theta += self.linsolve_eps * I  # regularize Hessian by adding a small I
 
-            H_theta += self.linsolve_eps * I
             if trust_radius is not None and solve_constrained:
+                # Solve the constrained trust region problem using the
+                # Steihaug-Toint Truncated Conjugate-Gradient Method
 
-                for _ in range(100): # loop until trust_radius works well
+                for _ in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
                     delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
                     new_theta  = theta + delta_theta
                     f_new_trn  = trn.get_objective(new_theta)
 
-                    if adjust_radius:
+                    if not adjust_radius:    
+                        # We don't care about adjust trust_radius, so we just accept the current direction
+                        break
+
+                    else:
                         pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
 
                         act_red = f_new_trn - f_cur_trn
@@ -280,32 +299,36 @@ class EPEstimators(object):
                         elif rho > eta2 and delta_theta.norm() >= trust_radius:
                             trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
-                    else: # we just accept first delta_theta if we are not adjusting radius
-                        break
 
-                else: # for loop finished
+                else: # for loop finished without breaking
                     if verbose: 
                         print("max_iter reached in adjust_radius loop!")
 
             else:
+                # Find regular Newton direction
                 delta_theta = solve_linear_psd(A=H_theta, b=grad)
                 if trust_radius is not None:
+                    # We do a quick-and-dirty approximation to trust-region constraint
+                    # by rescaling norm of Newton step if it is too large
                     delta_theta *= trust_radius/max(trust_radius, delta_theta.norm())
                 new_theta  = theta + delta_theta
                 f_new_trn  = trn.get_objective(new_theta)
 
 
-            last_round = False # whether to break *after* updating values
+            last_round = False # set to True if we want break after updating theta and sigma values
 
-            if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
-                break
+            if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:  
+                break                  # Training value should be finite and increasing
             elif np.abs(f_new_trn - f_cur_trn) <= tol: 
-                last_round = True
-            elif f_new_trn > np.log(trn.nflips):
+                last_round = True      # Break when training objective stops improving by more than tol
+            elif f_new_trn > np.log(trn.nflips):  
+                # One cannot estimate KL divergence larger than log(nflips) from sample of size nflips.
+                # This is a signature of undersampling; when it happens, we clip our estimate of the 
+                # objective and exit
                 f_new_trn = np.log(trn.nflips)
                 last_round = True
 
-            if holdout:
+            if holdout:                # Do the same checks but now on the heldout test data
                 f_new_tst = tst.get_objective(new_theta) 
                 if is_infnan(f_new_tst) or f_new_tst <= f_cur_tst:
                     break
@@ -315,6 +338,7 @@ class EPEstimators(object):
                     f_new_tst = np.log(tst.nflips)
                     last_round = True
 
+            # Update our estimate of the paramters and objective value
             f_cur_trn, theta = f_new_trn, new_theta
             if holdout:
                 f_cur_tst = f_new_tst
@@ -337,24 +361,23 @@ class EPEstimators(object):
 
 
 
-    def get_EP_GradientAscent(self, theta_init=None, holdout=False, max_iter=1000, tol=1e-4, verbose=False,
-                    use_Adam=True, beta1=0.9, beta2=0.999, lr=0.01, eps=1e-8, skip_warm_up=False):
+    def get_EP_GradientAscent(self, theta_init=None, holdout=False, lr=0.01, max_iter=1000, tol=1e-4, verbose=False,
+                              use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
         """
         Estimate EP using gradient ascent algorithm
 
         Arguments:
-          theta_init: initial theta vector (all 0s if None)
+          theta_init     : torch tensor (of length (nspins-1)), specifiying initial parameters (set to 0s if None)
           holdout (bool) : whether to use holdout data for early stopping
+          lr             : learning rate
           max_iter (int) : maximum number of iterations
           tol (float)    : early stopping once objective does not improve by more than tol
           verbose (bool) : print debugging information
 
         Adam-related arguments:
-          use_Adam  : whether to use use_Adam algorithm w/ momentum
-          beta1, beta2: Adam moment decay parameters
-          lr        : learning rate
-          eps       : epsilon for numerical stability
-          skip_warm_up : Adam option
+          use_Adam       : whether to use use_Adam algorithm w/ momentum or just regular grad. ascent
+          beta1, beta2   : Adam moment decay parameters
+          skip_warm_up   : Adam option
         
         Returns:
           Solution object with sigma, theta, and tst_sigma (if holdout)
@@ -369,7 +392,8 @@ class EPEstimators(object):
             f_cur_trn = np.nan
         
         i           = self.i 
-        trn_g_withi = add_i(trn.g_mean(),i)
+        trn_g_withi = add_i(trn.g_mean(),i)  # add_i and remove_i are used to pad/remove 0 at 
+                                             # position i, it is just for convenience wrt to different conventions
         S           = trn.S.T.contiguous()   # Transposing seems to lead to faster calculations
 
         if theta_init is not None:
@@ -396,7 +420,9 @@ class EPEstimators(object):
 
             f_new_trn = float(new_theta @ trn_g_withi - torch.log(Z))
 
-            last_round = False # whether to break *after* updating values
+            # Different conditions that will stop optimization. See get_EP_Newton above
+            # for a description of different branches
+            last_round = False # flag that indicates whether to break after updating values
             if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
                 break
             elif f_new_trn > np.log(trn.nflips):
@@ -435,7 +461,7 @@ class EPEstimators(object):
                     v_hat = v / (1 - beta2 ** (t+1))
 
                 # Compute parameter update
-                delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
+                delta_theta = lr * m_hat / (v_hat.sqrt() + 1e-8)
 
                 new_theta += delta_theta
 
@@ -449,7 +475,7 @@ class EPEstimators(object):
         else:   # for loop did not break
             if verbose:
                 # print warning about max iterations reached, but only if its a large number
-                print(f'max_iter {max_iter} reached in get_EP_GradAscent!')
+                print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
             pass
 
 
