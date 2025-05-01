@@ -1,26 +1,19 @@
+# Includes various handy functions and utility
 import torch
 import numpy as np
+import warnings
 
 def set_default_device():
-    """
-    Determines the best available device for PyTorch operations and sets it as default.
-    Returns:
-        torch.device: The device that was set as default ('mps', 'cuda', or 'cpu')
-    """
+    # Determines the best available device for PyTorch operations and sets it as default.
+    # Returns the torch device that was set as default ('mps', 'cuda', or 'cpu')
     if torch.backends.mps.is_available():
         device = torch.device("mps")
-        # Set MPS as default device
-        torch.set_default_device(device)
-        import warnings
-        warnings.filterwarnings("ignore", message="The operator 'aten::_linalg_solve_ex.result' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
     elif torch.cuda.is_available():
         device = torch.device("cuda")
-        # Set CUDA as default device
-        torch.set_default_device(device)
     else:
         device = torch.device("cpu")
-        # CPU is already the default, but we can set it explicitly
-        torch.set_default_device(device)
+    torch.set_default_device(device)
+    warnings.filterwarnings("ignore", message="The operator 'aten::_linalg_solve_ex.result' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
     return device
 
 
@@ -31,40 +24,12 @@ def empty_cache():  # Empty torch cache
         torch.mps.empty_cache()
 
 
-def is_float_type(obj):
-    # Check if it's a Python built-in float
-    if isinstance(obj, float):
-        return "Python built-in float"
-    
-    # Check if it's a NumPy float
-    try:
-        import numpy as np
-        if isinstance(obj, np.floating):
-            return "NumPy float"
-    except ImportError:
-        pass
-    
-    # Check if it's a PyTorch float
-    try:
-        import torch
-        if isinstance(obj, torch.Tensor) and obj.dtype.is_floating_point:
-            return "PyTorch float tensor"
-    except ImportError:
-        pass
-    
-    # If none of the above
-    return False
-
-
-def eye_like(A):
-    return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
-
 
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
     """
     Steihaug-Toint Conjugate Gradient method for approximately solving
     min_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
-    where A is symmetric (and possibly only positive semi-definite).
+    where A is symmetric (not necessarily positive definite).
     
     Args:
         A (torch.Tensor): Symmetric matrix (n x n).
@@ -101,23 +66,20 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
         Hd = A @ d
         dHd = d @ Hd
 
-        if dHd <= 0:
-            # Negative curvature detected → move to boundary
+        if dHd <= 0: # Negative curvature detected → move to boundary
             tau = find_tau(x, d, trust_radius)
             return x + tau * d
 
         alpha = (r @ r) / dHd
         x_next = x + alpha * d
 
-        if x_next.norm() >= trust_radius:
-            # Exceeding trust region → project onto boundary
+        if x_next.norm() >= trust_radius: # Exceeding trust region → project onto boundary
             tau = find_tau(x, d, trust_radius)
             return x + tau * d
 
         r_next = r - alpha * Hd
 
-        if r_next.norm() < tol:
-            # Converged
+        if r_next.norm() < tol: # Converged
             return x_next
 
         beta = (r_next @ r_next) / (r @ r)
@@ -185,27 +147,34 @@ def solve_linear_psd(A, b, method=None):
 
 
 
-# ===================================
 # Helpful tensor processing functions
-# ===================================
+
+def eye_like(A):    # Returns torch identity matrix with same dimensions, data type, and device as A
+    assert(A.ndim == 2 and A.shape[0] == A.shape[1])
+    return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
+
+def is_infnan(x): # return True if x is either infinite or NaN
+    x = float(x)
+    return np.isinf(x) or np.isnan(x)
+
+# Adding / removing entries
+def remove_i(x, i):
+    # Remove the i-th element from a 1d tensor x.
+    r = torch.cat((x[:i], x[i+1:]))
+    return r
+
+def add_i(x,i):
+    # Insert 0 in position i to a 1d tensor x
+    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
 
 def remove_i_rowcol(X, i):
-    # Remove the i-th row and column from matrix Ks.
+    # Remove the i-th row and column from matrix X.
     X1 = torch.cat([X [:i, :], X [i+1:, :]], dim=0)
     X2 = torch.cat([X1[:, :i], X1[:, i+1:]], dim=1)
     return X2
 
-def remove_i(A, i):
-    # Remove the i-th element from a 1D tensor A.
-    r = torch.cat((A[:i], A[i+1:]))
-    return r
-
-def add_i(x,i):
-    # Insert 0 in position i
-    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
-
 def add_i_rowcol(X,i):
-    # Insert 0 row and column
+    # Insert 0 row and column to matrix A
     d=X.device
     n=X.shape[0]
     X1 = torch.cat((X[:i,:], torch.zeros((1,n), device=d), X[i:,:]),dim=0)   
@@ -213,10 +182,5 @@ def add_i_rowcol(X,i):
     return X2   
 
 
-# Miscellaneous
-
-def is_infnan(x):
-    x = float(x)
-    return np.isinf(x) or np.isnan(x)
 
 
