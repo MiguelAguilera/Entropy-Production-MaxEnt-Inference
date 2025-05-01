@@ -31,6 +31,31 @@ def empty_cache():  # Empty torch cache
         torch.mps.empty_cache()
 
 
+def is_float_type(obj):
+    # Check if it's a Python built-in float
+    if isinstance(obj, float):
+        return "Python built-in float"
+    
+    # Check if it's a NumPy float
+    try:
+        import numpy as np
+        if isinstance(obj, np.floating):
+            return "NumPy float"
+    except ImportError:
+        pass
+    
+    # Check if it's a PyTorch float
+    try:
+        import torch
+        if isinstance(obj, torch.Tensor) and obj.dtype.is_floating_point:
+            return "PyTorch float tensor"
+    except ImportError:
+        pass
+    
+    # If none of the above
+    return False
+
+
 def eye_like(A):
     return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
 
@@ -103,58 +128,42 @@ def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
 
     return x
 
-def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
+def solve_linear_psd(A, b, method=None):
     # Solve linear system Ax = b. We assume that A is symmetric and positive semi-definite
-    #assert not is_infnan(b.sum())
-    #assert not is_infnan(A.sum())
 
-    if trust_radius is not None:
-        if method is not None and method != 'steihaug':
-            assert False, 'trust_radius only supported by steihaug method'
-        method = 'steihaug'
     if method is None:
         method = 'solve_ex'
         
-
-    do_lstsq = False
-    A2 = A if eps == 0 else A + eye_like(A)*eps
+    do_lstsq = False  # Fallback
 
     try:
         if method=='solve':
-            x = torch.linalg.solve(A2, b)
-
-        elif method == 'steihaug':
-            x = steihaug_toint_cg(A2, b, trust_radius=trust_radius)
-            #x = svd_constrained_solve(A2, b, trust_radius=trust_radius)
+            x = torch.linalg.solve(A, b)
 
         elif method=='solve_ex':
-            x = torch.linalg.solve_ex(A2, b)[0]
+            x = torch.linalg.solve_ex(A, b)[0]
 
         elif method == 'cholesky':
-            L = torch.linalg.cholesky(A2)
+            L = torch.linalg.cholesky(A)
             x = torch.cholesky_solve(b.unsqueeze(-1), L, upper=False)
             
             return  x.squeeze()
 
         elif method == 'cholesky_ex':
-            L = torch.linalg.cholesky_ex(A2)[0]
+            L = torch.linalg.cholesky_ex(A)[0]
             x = torch.cholesky_solve(b.unsqueeze(-1), L, upper=False)
             
             return  x.squeeze()
 
         elif method == 'QR':
-            Q, R = torch.linalg.qr(A2)
+            Q, R = torch.linalg.qr(A)
             x = torch.linalg.solve_triangular( R, (Q.T @ b).unsqueeze(1), upper=True).squeeze()
 
         elif method=='inv':
-            x = torch.linalg.inv(A2)@b
+            x = torch.linalg.inv(A)@b
 
         elif method=='lstsq':
             do_lstsq = True
-
-        #elif method=='CG':
-        #    import linalg 
-        #    x, _ = linalg.CG(A2, b, max_iter=10)
 
         else:
             assert False, f"Unknown method {method} in solve_linear_psd"
@@ -168,41 +177,10 @@ def solve_linear_psd(A, b, method=None, eps=0, trust_radius=None):
         do_lstsq = True
 
     if do_lstsq:
-        x = torch.linalg.lstsq(A2, b).solution
+        x = torch.linalg.lstsq(A, b).solution
 
     return x
 
-
-def svd_constrained_solve(A, b, trust_radius, tol=1e-1, max_iter=1000):
-    # Unconstrained least squares solution
-
-    x_ls = torch.linalg.lstsq(A, b, rcond=None)[0]
-    if x_ls.norm() <= trust_radius:
-        return x_ls  # Already satisfies constraint
-
-    U, s, Vt = torch.linalg.svd(A)
-    Atb = A.T @ b
-    b_norm = b.norm()
-    V = Vt.T
-
-
-    # Solve via trust region (binary search over lambda)
-    def phi(lmbda):
-        return ((s**2 * (U.T @ b)**2) / (s**2 + lmbda)**2).sum()
-
-    # Binary search over lambda > 0
-    lmbda_low, lmbda_high = 1e-4, 1e4
-    for _ in range(max_iter):
-        lmbda = (lmbda_low + lmbda_high) / 2
-        x = V @ (s / (s**2 + lmbda) * (U.T @ b))
-        norm_x = x.norm()
-        if torch.abs(norm_x-trust_radius) < tol:
-            break
-        if norm_x > trust_radius:
-            lmbda_low = lmbda
-        else:
-            lmbda_high = lmbda
-    return x
 
 
 

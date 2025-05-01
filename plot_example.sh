@@ -62,11 +62,13 @@ ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 500 --num_beta 10  --BASE_D
 #python generate_data_spin_model.py  --seed 42    $ARGS
 
 ARGS="--beta_min 0 --rep 1000 --DJ 1 --J0 0 --beta_max 4 --size 100 --num_beta 10  --BASE_DIR ~/MaxEntData100-v1k"
-ARGS="--beta_min 0 --rep 100000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntData50-v100k"
-#ARGS="--beta_min 0 --rep 10000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntData50-v10k"
+#ARGS="--beta_min 0 --rep 100000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntData50-v100k"
+ARGS="--beta_min 0 --rep 10000 --DJ 1 --J0 0 --beta_max 4 --size 50 --num_beta 10  --BASE_DIR ~/MaxEntData50-v10k"
 
 #ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --size 1000 --num_beta 10  --BASE_DIR ~/MaxEntData1000dil"
 
+#ARGS="--beta_min 0 --rep 10000 --DJ 1 --J0 0 --beta_max 4 --size 100 --num_beta 10  --BASE_DIR ~/MaxEntData100-v10k"
+#ARGS="--beta_min 0 --rep 100000 --DJ 1 --J0 0 --beta_max 4 --size 100 --num_beta 10  --BASE_DIR ~/MaxEntData100-v100k"
 
 #--patterns 10 
 # ARGS="--patterns 10 --beta_max 3.5 --beta_min 1 --num_steps 10000 --rep 100000 --size 1000 --num_beta 5  --BASE_DIR ~/MaxEntData4" 

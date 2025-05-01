@@ -11,38 +11,22 @@ R2_LABELS = {'N1':r'$\hat{\theta}$',
 }
 
 
-LABELS = {'Emp'   : 'Empirical', 
-          'N1'    : 'Newton 1step', 
-          'TUR'   : 'MTUR', 
-          'Ntrst' : 'Newton Trust', 
-          'Nls'   : 'Newton LS', 
-          'Nthr'  : 'Newton Thresh', 
-          'Nhld2' : 'Newton Holdout2', 
-          'Nhld3' : 'Newton Holdout3', 
-          'Ntron' : 'TRON',
-          'NtronH' : 'TRON Holdout',
-          'NtronH2' : 'TRON Holdout2',
-          'Grad'  : 'Grad Ascent',
-          'GradHld'  : 'Grad Holdout',
-          'BFGS'  : 'BFGS'}
+# LABELS = {'Emp'        : 'Empirical', 
+#           'N1'         : 'Newton 1step', 
+#           'TUR'        : 'MTUR', 
+#           'N h'     : 'Newton Holdout', 
+#           'N h f'   : 'Newton HoldoutF', 
+#           'N c h'     : 'Newton TRC Hold', 
+#           'N c h f'   : 'Newton TRC HoldF', 
+#           'T h'     : 'TRON Holdout',
+#           'T h f'   : 'TRON HoldoutF',
+#           'T na h'  : 'TRON Holdout NA',
+#           'T na h f': 'TRON HoldoutF NA',
+#           'G'       : 'Grad Ascent',
+#           'G h'    : 'Grad Holdout',
+#           'G h f'    : 'Grad Holdout F',
+#           'BFGS'       : 'BFGS'}
 
-LEGEND_LABELS = {
-    'Emp':r'$\Sigma$', 
-    'TUR':r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
-    'N1':r'$\widehat{\Sigma}_{\bm g}$', 
-    # r'${\Sigma}_{\bm g}$',
-    # r'${\Sigma}_{\bm g}$',
- #   'Ntrst':r'${\Sigma}_{\bm g}^{newtonT}$',
-   'Grad':r'${\Sigma}_{\bm g}^{grad}$',
-   'GradHld':r'${\Sigma}_{\bm g}^{gradH}$',
-    #'Nhld':r'${\Sigma}_{\bm g}^{hld}$',
-
-    'Nhld2':r'${\Sigma}_{\bm g}^{newtonH}$',
-    'Nhld3':r'${\Sigma}_{\bm g}^{newtonH3}$',
-    #'Nthr':r'${\Sigma}_{\bm g}^{nsr}$',
-    'NtronH':r'${\Sigma}_{\bm g}^{tronH}$',
-    'NtronH2':r'${\Sigma}_{\bm g}^{tronH2}$',
-}
 
 
 if __name__ == "__main__":
@@ -126,9 +110,8 @@ if __name__ == "__main__":
         memory_usage = process.memory_info().rss / 1024 / 1024
 
         print(f"\n[Results] {time.time()-start_time:3f}s  mem={memory_usage:.1f}mb")
-        for k,lbl in LABELS.items():
-            if k in res['ep']:
-                print(f"  EP ({lbl:15s})    : {res['ep'][k]:.6f}   {res['times'].get(k,np.nan):3f}s")
+        for k in res['ep']:
+            print(f"  EP ({k:15s})    : {res['ep'][k]:.6f}   {res['times'].get(k,np.nan):3f}s")
         print("-" * 70)
 
         # res = calc.calc(BASE_DIR+file_name, 
@@ -234,11 +217,16 @@ if __name__ == "__main__":
         b1,b2 = 0,0
         mxep  = 0
 
-        for k, v in EPvals.items():
+        LEGEND_LABELS = {
+            'Emp':r'$\Sigma$', 
+            'TUR':r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
+            'N1':r'$\widehat{\Sigma}_{\bm g}$', 
+        }
+        for k in EPvals:
             if k not in LEGEND_LABELS:
-                print(f"*** Found data, but {k} not in LEGEND_LABELS. Skipping")
-                continue
+                LEGEND_LABELS[k] = r'${\Sigma}_{\bm g}^\text{'+k+'}$'
 
+        for k, v in EPvals.items():
             betas, eps = map(np.array, zip(*v))
             s_ixs = np.argsort(betas)
             plt.plot(betas[s_ixs], eps[s_ixs], label=LEGEND_LABELS[k], lw=2) # color=colors[i-1], lw=2)
