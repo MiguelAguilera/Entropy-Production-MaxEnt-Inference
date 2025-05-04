@@ -1,41 +1,70 @@
+import time, os
 import numpy as np
+from tqdm import tqdm
+
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS backend
 import torch
+
 import spin_model
-from methods_EP_multipartite import *
+import ep_multipartite
+import utils
+utils.set_default_torch_device()
 
-J, H, S, F = spin_model.run_simulation(N=10, beta=.1, seed=42, sequential=True)
-assert(np.all(H==0))  # We do not support local fields in our analysis
-
-
-J_t = torch.from_numpy(J)
-
-# Initialize accumulators
-S_Emp = S_TUR = S_N1 = S_N2 = 0
-
-N, rep = S.shape
-T = N * rep  # Total spin-flip attempts
-
-for i in range(N):
-    idxs = np.where(F[i, :] == 1)[0]
-    S_i_t = torch.from_numpy(S[:, idxs].astype('float32'))
+N    = 10   # system size
+k    = 6    # avg number of neighbors in sparse coupling matrix
+beta = .5   # inverse temperature
 
 
-    # Estimate entropy production using various methods
-    sig_N1, theta1, Da = get_EP_Newton(S_i_t, i)
-    sig_MTUR           = get_EP_MTUR(S_i_t, Da, i)
-    sigma_emp          = exp_EP_spin_model(Da, J_t, i)
-    sig_N2, theta2     = get_EP_Newton2(S_i_t, theta1, Da, i)
+np.random.seed(42)
+stime = time.time()
+J    = spin_model.get_couplings_random(N=N, k=k)
+S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
+num_samples_per_spin, N = S.shape
+total_flips = N * num_samples_per_spin  # Total spin-flip attempts
+print(f"Samples {total_flips} transitions in {time.time()-stime:.3f}s")
 
-    # Aggregate results
-    S_Emp += sigma_emp
-    S_TUR += sig_MTUR
-    S_N1  += sig_N1
-    S_N2  += sig_N2
+# Running sums to keep track of EP estimates
+sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
-print("\n[Results]")
-print(f"  EP (Empirical)    :    {S_Emp:.6f}")
-print(f"  EP (MTUR):             {S_TUR:.6f}")
-print(f"  EP (1-step Newton):    {S_N1:.6f}")
-print(f"  EP (2-step Newton):    {S_N2:.6f}")
-print("-" * 70)
+stime = time.time()
+with torch.no_grad():
+
+    # Because system is multipartite, we can separately estimate EP for each spin
+    for i in tqdm(range(N)):
+        spin_i_flipped = F[:,i]
+        p_i            = spin_i_flipped.sum()/total_flips               # frequency of spin i flips
+
+        # Select states in which spin i flipped and convert to torch tensor
+        S_i = torch.from_numpy(S[spin_i_flipped, :].astype('float32')).to(torch.get_default_device()).contiguous()
+
+        # Create object with EP estimators
+        obj = ep_multipartite.EPEstimators(S_i, i)
+
+        # Empirical estimate 
+        g_expectations = utils.add_i( obj.g_mean(), i ).cpu().numpy()
+        spin_emp = beta * J[i,:] @ g_expectations
+
+        spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
+        spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
+        
+        # Full optimization with trust-region Newton method and holdout 
+        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
+
+        # Full optimization with gradient ascent method 
+        spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
+
+        sigma_emp  += p_i * spin_emp
+        sigma_g    += p_i * spin_full
+        sigma_N1   += p_i * spin_N1
+        sigma_MTUR += p_i * spin_MTUR
+        sigma_g2   += p_i * spin_grad
+
+        utils.empty_torch_cache()
+
+print(f"\nEntropy production estimates (took {time.time()-stime:3f}s):")
+print(f"  Σ     (Empirical)                         :    {sigma_emp:.6f}")
+print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g:.6f}")
+print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g:.6f}")
+print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1:.6f}")
+print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}")
 

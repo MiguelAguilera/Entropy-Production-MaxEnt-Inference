@@ -9,9 +9,11 @@ import torch
 import utils
 import ep_multipartite as epm
             
+device = utils.set_default_torch_device()
+torch.set_grad_enabled(False)
 
 
-def calc_spin(S_i, J_i, i):
+def calc_spin(S_i, beta, J_i, i):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
@@ -46,18 +48,18 @@ def calc_spin(S_i, J_i, i):
 
 
     # Compute empirical EP for spin i
-    sigmas['Emp'] = float(utils.remove_i(J_i,i) @ obj.g_mean())
+    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean())
 
     for k, f, kwargs in to_run:
         stime = time.time()
         res = f(**kwargs)
         utils.torch_synchronize()
         times[k] = time.time() - stime
-        sigmas[k] = res.sigma
+        sigmas[k] = res.objective
         if res.theta is not None:
             thetas[k] = res.theta.cpu().numpy()
-        if res.tst_sigma is not None:
-            sigmas[k+' tst'] = res.tst_sigma
+        if res.tst_objective is not None:
+            sigmas[k+' tst'] = res.tst_objective
 
         
     if False:  # histogram of g outcomes
@@ -80,7 +82,7 @@ def calc_spin(S_i, J_i, i):
             #asdf
 
     del obj
-    utils.empty_cache()
+    utils.empty_torch_cache()
 
     return sigmas, times, thetas
 
@@ -93,9 +95,8 @@ def calc(file_name):
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
-    assert(np.all(data['H']==0))  # We do not support local fields in our analysis
     with torch.no_grad():
-        S      = torch.from_numpy(data["S"]).to(device)
+        S      = torch.from_numpy(data["S_bin"]).to(device)
         rep, N = S.shape
         F      = torch.from_numpy(data["F"]).to(device).bool()
 
@@ -121,7 +122,7 @@ def calc(file_name):
         for i in pbar:
             S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
 
-            res = calc_spin( S_i.contiguous(), J[i,:].contiguous(), i)
+            res = calc_spin( S_i.contiguous(), data['beta'], J[i,:].contiguous(), i)
 
             epdata[i] = res 
             sigmas, times, thetas = res
@@ -151,8 +152,6 @@ def calc(file_name):
 
 
 
-device = utils.set_default_device()
-torch.set_grad_enabled(False)
 
 # DO_NEWTON2 = True
 # GD_MODE = 0  # 0 for no GD

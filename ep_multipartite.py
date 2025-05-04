@@ -23,10 +23,10 @@ import torch
 from utils import * 
 
 # EP estimators return Solution namedtuples such as the following
-#   sigma (float) : estimate of EP
+#   objective (float) : estimate of EP
 #   theta (torch tensor of length N-1) : optimal parameters
-#   tst_sigma (float) : estimate of EP on heldout test data (if holdout is used)
-Solution = namedtuple('Solution', ['sigma', 'theta', 'tst_sigma'], defaults=[None])
+#   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
+Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
 
 class EPEstimators(object):
@@ -184,19 +184,19 @@ class EPEstimators(object):
     # Entropy production (EP) estimation methods 
     # ==========================================
 
-    def get_valid_solution(self, sigma, theta, tst_sigma=None):
+    def get_valid_solution(self, objective, theta, tst_objective=None):
         # This returns a Solution object, after doing some basic sanity checking of the values
         # This checking is useful in the undersampled regime with many dimensions and few samles
-        if sigma < 0:
-            # EP estimate should never be negative, as we can always achieve sigma=0 with all 0s theta
-            sigma, theta = 0.0 
+        if objective < 0:
+            # EP estimate should never be negative, as we can always achieve objective=0 with all 0s theta
+            objective, theta = 0.0 
             if theta is not None:
                 theta = 0*theta
-        elif sigma >= np.log(self.nflips):
+        elif objective >= np.log(self.nflips):
             # EP estimate should not be larger than log(self.nflips), because it is not possible
             # to estimate KL divergence larger than log(m) from m samples
-            sigma = np.log(self.nflips)
-        return Solution(sigma=sigma, theta=theta, tst_sigma=tst_sigma)
+            objective = np.log(self.nflips)
+        return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
 
 
     def get_EP_MTUR(self):
@@ -216,18 +216,18 @@ class EPEstimators(object):
         #     trn, tst  = self.split_train_test()
         #     sol       = trn.get_EP_MTUR(holdout=False)
         #     theta     = sol.theta
-        #     tst_sigma = tst.get_objective(theta)
+        #     tst_objective = tst.get_objective(theta)
         # else:
         #     A         = self.g_secondmoments()
         #     A        += self.linsolve_eps*eye_like(A)
         #     theta     = solve_linear_psd(A, 2*self.g_mean())
-        #     tst_sigma = None
+        #     tst_objective = None
 
         A         = self.g_secondmoments()
         A        += self.linsolve_eps*eye_like(A)
         theta     = solve_linear_psd(A, 2*self.g_mean())
         sigma     = float(theta @ self.g_mean())
-        return self.get_valid_solution(sigma=sigma, theta=theta)
+        return self.get_valid_solution(objective=sigma, theta=theta)
 
 
     def get_EP_Newton(self, max_iter=1000, tol=1e-4, holdout=False, verbose=False,
@@ -321,7 +321,7 @@ class EPEstimators(object):
                 f_new_trn  = trn.get_objective(new_theta)
 
 
-            last_round = False # set to True if we want break after updating theta and sigma values
+            last_round = False # set to True if we want break after updating theta and objective values
 
             if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:  
                 break                  # Training value should be finite and increasing
@@ -361,9 +361,9 @@ class EPEstimators(object):
 
 
         if holdout:
-            return self.get_valid_solution(sigma=self.get_objective(theta), theta=theta, tst_sigma=f_cur_tst)
+            return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
         else:
-            return self.get_valid_solution(sigma=f_cur_trn, theta=theta)
+            return self.get_valid_solution(objective=f_cur_trn, theta=theta)
 
 
 
@@ -386,7 +386,7 @@ class EPEstimators(object):
           skip_warm_up   : Adam option
         
         Returns:
-          Solution object with sigma, theta, and tst_sigma (if holdout)
+          Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
         """
 
 
@@ -488,7 +488,7 @@ class EPEstimators(object):
 
         theta = remove_i(theta,i)
         if holdout:
-            return self.get_valid_solution(sigma=self.get_objective(theta), theta=theta, tst_sigma=f_cur_tst)
+            return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
         else:
-            return self.get_valid_solution(sigma=f_cur_trn, theta=theta)
+            return self.get_valid_solution(objective=f_cur_trn, theta=theta)
 

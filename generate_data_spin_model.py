@@ -2,47 +2,28 @@ import os, time, argparse
 import numpy as np
 import spin_model
 
-
-#def save_data(file_name, J, H, S, F):
-#    with h5py.File(file_name, 'w') as f:
-#        # Save global model parameters
-#        f.create_dataset('J', data=J, compression='gzip', compression_opts=5)
-#        f.create_dataset('H', data=H, compression='gzip', compression_opts=5)
-
-#        # Save full S and F once
-#        f.create_dataset(
-#            'S',
-#            data=((S + 1) // 2).astype(bool),
-#            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-#        )
-#        f.create_dataset(
-#            'F',
-#            data=((F + 1) // 2).astype(bool),
-#            **hdf5plugin.Blosc(cname='zstd', clevel=4, shuffle=hdf5plugin.Blosc.BITSHUFFLE)
-#        )
-
-#    print(f"Data saved to {file_name}")
-
-def save_data(file_name, J, H, S_bin, F_bin, beta, args):
+def save_data(file_name, J, S, F, beta, args):
     """
     Save model data to a .npz file.
 
-    Parameters:
+    Arguments:
         file_name (str): Path to the output .npz file.
-        J, H : np.ndarray
-            Global model parameters.
-        S, F : np.ndarray
-            Binary spin states and flip indices.
+        J : np.ndarray
+            Coupling matrix parameters.
+        S : 2d np.array (int8) of {-1,1}
+            Indicates -1,1 sampled spin states
+        F_bin : 2d np.ndarray (bool)
+            Indicates which spins flipped.
     """
-    # Save all data
+    # Spin states S are converted to boolean format, this can sometimes reduce storage requirements
+    S_bin = ((S+1)//2).astype(np.bool)
     np.savez(
         file_name,
         J=J,
-        H=H,
-        S=S_bin,
-        F=F_bin,
+        S_bin=S_bin,
+        F=F,
         beta=beta, 
-        N=args.size,
+        N=args.N,
         DJ=args.DJ,
         J0=args.J0,
         rep=args.rep,
@@ -63,7 +44,7 @@ parser.add_argument("--rep", type=int, default=1_000_000,
                     help="Number of repetitions for the simulation (default: 1000000).")
 parser.add_argument("--trials", type=int, default=1,
                     help="Number of restarts (default: 1).")
-parser.add_argument("--size", type=int, default=100,
+parser.add_argument("--N", type=int, default=100,
                     help="System size (default: 100).")
 parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                     help="Base directory to store simulation results (default: '~/MaxEntData').")
@@ -127,24 +108,29 @@ if not os.path.exists(BASE_DIR_MODE):
 for beta_ix, beta in enumerate(betas):
     beta = np.round(beta, 8)  # Avoid floating-point inconsistencies in filenames
 
-    print(f"\n# ** Running simulation {beta_ix+1}/{len(betas)} for N={args.size}, β={beta} **", flush=True)
+    print(f"\n# ** Running simulation {beta_ix+1}/{len(betas)} for N={args.N}, β={beta} **", flush=True)
+
+    if args.seed >= 0:
+        np.random.seed(args.seed) # Seed for reproducibility
 
     # Construct file name based on mode (sequential or parallel)
     if args.patterns is None:
+        J = spin_model.get_couplings_random(N=args.N, k=args.num_neighbors, J0=args.J0, DJ=args.DJ)
         if args.num_neighbors is None:
             file_name = (
                 f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-                f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
+                f"{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
             )
         else:
             file_name = (
                 f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-                f"{args.size:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+                f"{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
             )
     else:
+        J = spin_model.get_couplings_patterns(N=args.N, L=args.patterns)
         file_name = (
             f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-            f"{args.size:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+            f"{args.N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
         )
 
 
@@ -158,24 +144,11 @@ for beta_ix, beta in enumerate(betas):
             os.remove(file_name)
 
     start_time = time.time()
-    J, H, S, F = spin_model.run_simulation(
-        N=args.size,
-        num_steps=args.num_steps,
-        rep=args.rep,
-        trials=args.trials,
-        beta=beta,
-        J0=args.J0,
-        DJ=args.DJ,
-        seed=args.seed,
-        sequential=args.sequential,
-        patterns=args.patterns,
-        num_neighbors=args.num_neighbors,
+    S, F = spin_model.run_simulation(
+        beta=beta, J=J, warmup_steps_per_spin=args.num_steps, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
     )
 
-    print('Sampled states: %d' % S.shape[0])
-    print('   - state changes : %d/%d' % ( (F==1).sum(), F.shape[0]*F.shape[1] ) )
-    
-    save_data(file_name, J, H, S, F, beta, args)
-    print(f"Simulation took {time.time()-start_time:.3f}s.")
+    print(f'Sampled {S.shape[0]} states, {F.shape[0]*F.shape[1]} transitions, {(F==1).sum()} flips in  {time.time()-start_time:.3f}s')
+    save_data(file_name, J, S, F, beta, args)
 
 

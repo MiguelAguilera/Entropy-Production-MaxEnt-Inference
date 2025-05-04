@@ -1,9 +1,53 @@
-# Includes various handy functions and utility
-import torch
+# Includes various handy functions
+import os
 import numpy as np
 import warnings
 
-def set_default_device():
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable fallback for MPS backend
+import torch
+
+
+
+# Helpful tensor processing functions
+
+def eye_like(A):    # Returns torch identity matrix with same dimensions, data type, and device as A
+    assert(A.ndim == 2 and A.shape[0] == A.shape[1])
+    return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
+
+def is_infnan(x): # return True if x is either infinite or NaN
+    x = float(x)
+    return np.isinf(x) or np.isnan(x)
+
+# Adding / removing entries
+def remove_i(x, i):
+    # Remove the i-th element from a 1d tensor x.
+    r = torch.cat((x[:i], x[i+1:]))
+    return r
+
+def add_i(x,i):
+    # Insert 0 in position i to a 1d tensor x
+    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
+
+def remove_i_rowcol(X, i):
+    # Remove the i-th row and column from matrix X.
+    X1 = torch.cat([X [:i, :], X [i+1:, :]], dim=0)
+    X2 = torch.cat([X1[:, :i], X1[:, i+1:]], dim=1)
+    return X2
+
+def add_i_rowcol(X,i):
+    # Insert 0 row and column to matrix A
+    d=X.device
+    n=X.shape[0]
+    X1 = torch.cat((X[:i,:], torch.zeros((1,n), device=d), X[i:,:]),dim=0)   
+    X2 = torch.cat((X1[:,:i], torch.zeros((n+1,1), device=d), X1[:,i:]),dim=1)
+    return X2   
+
+
+
+
+
+
+def set_default_torch_device():
     # Determines the best available device for PyTorch operations and sets it as default.
     # Returns the torch device that was set as default ('mps', 'cuda', or 'cpu')
     if torch.backends.mps.is_available():
@@ -17,7 +61,7 @@ def set_default_device():
     return device
 
 
-def empty_cache():  # Empty torch cache
+def empty_torch_cache():  # Empty torch cache
     if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
         torch.cuda.empty_cache()
     elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
@@ -150,41 +194,45 @@ def solve_linear_psd(A, b, method=None):
 
 
 
+def benchmark_linsolve(num_runs=10, printx=False):
+    # This function is used to benchmark the linear solvers
+    # It creates a random symmetric positive definite matrix and a random vector
+    # Then it solves the linear system Ax = b using different methods
+    # Finally, it prints the time taken for each method
+    # It can be run as
+    #   > python -c 'import utils; utils.benchmark_linsolve()'
+    #
+    # Arguments
+    #   num_runs: Number of runs to average the time taken for each method
+    #   printx: If True, print the solution for each method
 
-# Helpful tensor processing functions
+    import time
 
-def eye_like(A):    # Returns torch identity matrix with same dimensions, data type, and device as A
-    assert(A.ndim == 2 and A.shape[0] == A.shape[1])
-    return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
+    def get_A_b():
+        n = 1000
+        rand_mat = torch.randn(n, n)
+        A = rand_mat @ rand_mat.T  # This creates a symmetric PSD matrix
+        A += eye_like(A)*1e-4
+        b = torch.randn(n)
+        return A, b
 
-def is_infnan(x): # return True if x is either infinite or NaN
-    x = float(x)
-    return np.isinf(x) or np.isnan(x)
-
-# Adding / removing entries
-def remove_i(x, i):
-    # Remove the i-th element from a 1d tensor x.
-    r = torch.cat((x[:i], x[i+1:]))
-    return r
-
-def add_i(x,i):
-    # Insert 0 in position i to a 1d tensor x
-    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
-
-def remove_i_rowcol(X, i):
-    # Remove the i-th row and column from matrix X.
-    X1 = torch.cat([X [:i, :], X [i+1:, :]], dim=0)
-    X2 = torch.cat([X1[:, :i], X1[:, i+1:]], dim=1)
-    return X2
-
-def add_i_rowcol(X,i):
-    # Insert 0 row and column to matrix A
-    d=X.device
-    n=X.shape[0]
-    X1 = torch.cat((X[:i,:], torch.zeros((1,n), device=d), X[i:,:]),dim=0)   
-    X2 = torch.cat((X1[:,:i], torch.zeros((n+1,1), device=d), X1[:,i:]),dim=1)
-    return X2   
-
+    for method in ['solve','solve_ex','steihaug','cholesky','cholesky_ex','QR','lstsq','inv']:
+        tot_time = 0
+        if printx:
+            print()
+        for i in range(num_runs):
+            torch.manual_seed(i)
+            A, b = get_A_b()
+            stime = time.time()
+            if method != 'steihaug':
+                x = solve_linear_psd(A, b, method=method)
+            else:
+                x = steihaug_toint_cg(A, b, trust_radius=100)
+            tot_time += time.time() - stime
+            empty_torch_cache()
+            if printx:
+                print(f'{method:15s} {x[:4].cpu().numpy()}')
+        print(f'{method:15s} {tot_time:3f}')
 
 
 
