@@ -15,7 +15,8 @@ k    = 6    # avg number of neighbors in sparse coupling matrix
 beta = .5   # inverse temperature
 
 
-np.random.seed(42)
+np.random.seed(42) # Set seed for reproducibility
+
 stime = time.time()
 J    = spin_model.get_couplings_random(N=N, k=k)
 S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
