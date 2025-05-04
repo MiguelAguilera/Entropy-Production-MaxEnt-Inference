@@ -96,7 +96,7 @@ def calc(file_name):
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
     with torch.no_grad():
-        S      = torch.from_numpy(data["S_bin"]).to(device)
+        S      = torch.from_numpy(data["S_bin"]).to(device)*2-1
         rep, N = S.shape
         F      = torch.from_numpy(data["F"]).to(device).bool()
 
@@ -120,7 +120,7 @@ def calc(file_name):
         print("=" * 70)
 
         for i in pbar:
-            S_i = S[F[:,i],:].to(torch.float32) * 2 - 1
+            S_i = S[F[:,i],:].to(torch.float32)
 
             res = calc_spin( S_i.contiguous(), data['beta'], J[i,:].contiguous(), i)
 
