@@ -32,13 +32,10 @@ with torch.no_grad():
 
     # Because system is multipartite, we can separately estimate EP for each spin
     for i in tqdm(range(N)):
-        spin_i_flipped = F[:,i]
-        p_i            = spin_i_flipped.sum()/total_flips               # frequency of spin i flips
+        p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
-        # Select states in which spin i flipped and convert to torch tensor
-        S_i = torch.from_numpy(S[spin_i_flipped, :].astype('float32')).to(torch.get_default_device()).contiguous()
-
-        # Create object with EP estimators
+        # Select states in which spin i flipped and use it create object for EP estimation 
+        S_i = S[F[:,i],:]
         obj = ep_multipartite.EPEstimators(S_i, i)
 
         # Empirical estimate 

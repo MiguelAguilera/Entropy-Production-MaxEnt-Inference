@@ -33,13 +33,19 @@ class EPEstimators(object):
     def __init__(self, S, i, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   S (torch tensor)         : 2d tensor (nflips x nspins) containing samples of 
-        #                              states of the system, before spin i changed state
+        #                              states of the system in which spin i changed state
         #   i (int)                  : index of spin which changed state
         #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
         #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                              numerical stability of linear solvers
+
+        if not isinstance(S, torch.Tensor): # Conver to torch tensor if needed
+            if isinstance(S, np.ndarray):
+                S = torch.from_numpy(S.astype('float32')).to(torch.get_default_device()).contiguous()
+            else:
+                raise Exception("S must be a torch tensor or numpy array")
 
         self.S = S
         self.nflips, self.N = S.shape
