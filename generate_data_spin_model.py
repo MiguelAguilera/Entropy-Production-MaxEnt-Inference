@@ -102,6 +102,16 @@ if not os.path.exists(BASE_DIR_MODE):
     print(f'Creating base directory: {BASE_DIR_MODE}')
     os.makedirs(BASE_DIR_MODE)
 
+# Create coupling matrix
+# Construct file name based on mode (sequential or parallel)
+if args.seed >= 0:
+    np.random.seed(args.seed) # Seed for reproducibility
+
+if args.patterns is None:
+    J = spin_model.get_couplings_random(N=args.N, k=args.num_neighbors, J0=args.J0, DJ=args.DJ)
+else:
+    J = spin_model.get_couplings_patterns(N=args.N, L=args.patterns)
+
 # -------------------------------
 # Run Simulations
 # -------------------------------
@@ -110,12 +120,8 @@ for beta_ix, beta in enumerate(betas):
 
     print(f"\n# ** Running simulation {beta_ix+1}/{len(betas)} for N={args.N}, β={beta} **", flush=True)
 
-    if args.seed >= 0:
-        np.random.seed(args.seed) # Seed for reproducibility
-
     # Construct file name based on mode (sequential or parallel)
     if args.patterns is None:
-        J = spin_model.get_couplings_random(N=args.N, k=args.num_neighbors, J0=args.J0, DJ=args.DJ)
         if args.num_neighbors is None:
             file_name = (
                 f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
@@ -127,7 +133,6 @@ for beta_ix, beta in enumerate(betas):
                 f"{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
             )
     else:
-        J = spin_model.get_couplings_patterns(N=args.N, L=args.patterns)
         file_name = (
             f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
             f"{args.N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
