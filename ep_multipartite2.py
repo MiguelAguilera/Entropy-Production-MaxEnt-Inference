@@ -20,7 +20,7 @@ from collections import namedtuple
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
-from utils import *
+from utils import remove_i, empty_torch_cache, add_i, remove_i_rowcol, 
 
 # EP estimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
@@ -28,9 +28,12 @@ from utils import *
 #   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
+def numpy_to_torch(X):
+    return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
+
 
 class EPEstimators(object):
-    def __init__(self, S, i, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, x0, x1, i, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   S (torch tensor)         : 2d tensor (nflips x nspins) containing samples of 
         #                              states of the system in which spin i changed state
@@ -41,15 +44,22 @@ class EPEstimators(object):
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                              numerical stability of linear solvers
 
-        if not isinstance(S, torch.Tensor): # Conver to torch tensor if needed
-            if isinstance(S, np.ndarray):
-                S = torch.from_numpy(S.astype('float32')).to(torch.get_default_device()).contiguous()
+        if not isinstance(x0, torch.Tensor): # Conver to torch tensor if needed
+            if isinstance(x0, np.ndarray):
+                x0 = numpy_to_torch(x0)
             else:
-                raise Exception("S must be a torch tensor or numpy array")
+                raise Exception("x0 must be a torch tensor or numpy array")
 
-        self.S = S
-        self.nflips, self.N = S.shape
-        self.device = S.device
+        if not isinstance(x1, torch.Tensor): # Conver to torch tensor if needed
+            if isinstance(x1, np.ndarray):
+                x1 = numpy_to_torch(x1)
+            else:
+                raise Exception("x0 must be a torch tensor or numpy array")
+
+        self.x0 = x0
+        self.x1 = x1
+        self.nflips, self.N = x0.shape
+        self.device = x0.device
 
         assert 0 <= i <= self.N-1
         self.i = i
@@ -72,15 +82,17 @@ class EPEstimators(object):
         if not hasattr(self, 'trn_tst_split_'): # training and testign splits are cached
             if self.holdout_shuffle:
                 perm = np.random.permutation(self.nflips)
-                S = self.S[perm]
+                x0 = self.x0[perm]
+                x1 = self.x1[perm]
             else:
-                S = self.S
+                x1 = self.x0
+                x1 = self.x1
 
             trn_nflips = self.nflips - int(self.nflips*self.holdout_fraction)
 
             kw_args = {k : getattr(self,k) for k in self._init_args}
-            trn = EPEstimators(S[:trn_nflips,:], **kw_args)
-            tst = EPEstimators(S[trn_nflips:,:], **kw_args)
+            trn = EPEstimators(x0=x0[:trn_nflips,:], x1=x1[:trn_nflips,:], **kw_args)
+            tst = EPEstimators(x0=x0[trn_nflips:,:], x1=x1[trn_nflips:,:], **kw_args)
             self.trn_tst_split_ = trn, tst
 
         return self.trn_tst_split_
@@ -92,12 +104,12 @@ class EPEstimators(object):
         # Compute means of g observables
         if not hasattr(self, 'g_mean_'): # Cache values for speed
             i = self.i
-            g = (-2 * self.S[:, i]) @ self.S / self.nflips 
+            g = (self.x1[:, i] - self.x0[:, i]) @ self.x0 / self.nflips 
             self.g_mean_ = remove_i(g, i)
         return self.g_mean_
 
     def g_secondmoments(self):
-        # Compute matrix of second moments of g observables
+        # Compute matrix of second moments of g observables under forward distribution
         if not hasattr(self, 'g_secondmoments_'): # Cache values for speed
             if self.num_chunks is None:
                 K = (4 * self.S.T) @ self.S
@@ -113,126 +125,124 @@ class EPEstimators(object):
                     
                     K += (4 * S_chunk.T) @ S_chunk
 
+                    empty_torch_cache()
             K /= self.nflips
 
             self.g_secondmoments_ = remove_i_rowcol(K, self.i)
         return self.g_secondmoments_
 
     def g_covariance(self): 
-        # Compute covariance matrix of g observables
+        # Compute covariance matrix of g observables under forward distribution
         if not hasattr(self, 'g_covariance_'): # Cache for speed
             gmean = self.g_mean()
             self.g_covariance_ = self.g_secondmoments() - torch.outer(gmean, gmean)
         return self.g_covariance_
 
-    # ====================================================================================
-    # Methods to compute observable statistics under tilted reverse distribution
-    # ====================================================================================
 
     def _get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        # This internal method computes tilted statistics reverse distribution titled by theta. This may include
-        # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
+        # This internal method computes the expectation and/or covariance of g observables 
+        # under reverse distribution titled by theta
 
         assert return_mean or return_covariance or return_objective
 
-        vals       = {}
         i          = self.i
-
         theta_pad  = add_i(theta, i)
-
-        if not hasattr(self, '_2SiS'): # cache for faster computations
-            self._2SiS = (-2 * self.S[:, i][:,None] * self.S).contiguous()
-
-        th_g       = self._2SiS @ theta_pad
+        delta_x    = self.x1[:,i] - self.x0[:,i]
+        th_g       = delta_x * (self.x0 @ theta_pad)
         th_g_min   = torch.min(th_g)    # substract max of -th_g for numerical stability
         Y          = torch.exp(-th_g+th_g_min)
-        norm_const = torch.mean(Y)
-        S1_S       = -(-2 * self.S[:, i]) * Y
+        norm_const = torch.sum(Y) / self.nflips
 
-        if return_objective:
-            # trueZ = Z*torch.exp(-th_g_min)
-            log_Z             = torch.log(norm_const) - th_g_min
-            vals['objective'] = float( theta @ self.g_mean() - log_Z )
-
+        mean       = (-delta_x * Y) @ self.x0 / (self.nflips * norm_const)
+        mean_noi   = remove_i(mean, i)
+        vals = {}
         if return_mean or return_covariance:
-            mean       = S1_S @ self.S / (self.nflips * norm_const)
-            mean_noi   = remove_i(mean, i)
 
             if return_mean:
-                vals['tilted_mean'] = mean_noi
-            
-            if return_covariance:
-                if self.num_chunks is None:
-                    K = (4 * Y * self.S.T) @ self.S
-                else:
-                    # Chunked computation
-                    K = torch.zeros((self.N, self.N), device=self.device)
-                    chunk_size = (self.nflips + self.num_chunks - 1) // self.num_chunks  # Ceiling division
+                vals['mean'] = mean_noi
 
-                    for r in range(self.num_chunks):
-                        start = r * chunk_size
-                        end = min((r + 1) * chunk_size, self.nflips)
-                        S_chunk = self.S[start:end]
-                        
-                        th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_pad)
-                        K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
-
-                K /= (self.nflips * norm_const)
-
-                vals['tilted_covariance'] = remove_i_rowcol(K,i) - torch.outer(mean_noi,mean_noi)
-
-        return vals
-
-    def get_objective_new(self, theta):
-        # Return objective value for parameters theta
-        v = self._get_tilted_statistics(theta, return_objective=True)
-        return v['objective']
-
-
-    def g_mean_and_covariance_theta(self, theta):
-        # Compute expectation and covariance of g under reverse distribution titled by theta
-        i = self.i
-        theta_padded = add_i(theta, i)
-        th_g     = (-2 * self.S[:, i]) * (self.S @ theta_padded)
-        th_g_min = torch.min(th_g)    # substract max of -th_g for numerical stability
-        Y        = torch.exp(-th_g+th_g_min)
-        Z        = torch.sum(Y) / self.nflips
-        S1_S     = -(-2 * self.S[:, i]) * Y
-
-        mean = S1_S @ self.S / (self.nflips * Z)
-    
-        if self.num_chunks is None:
-            K = (4 * Y * self.S.T) @ self.S
-        else:
-            # Chunked computation
-            K = torch.zeros((self.N, self.N), device=self.device)
-            chunk_size = (self.nflips + self.num_chunks - 1) // self.num_chunks  # Ceiling division
-
-            for r in range(self.num_chunks):
-                start = r * chunk_size
-                end = min((r + 1) * chunk_size, self.nflips)
-                S_chunk = self.S[start:end]
-                
-                th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
-                K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
-
-        K /= (self.nflips * Z)
-
-        # trueZ = Z*torch.exp(-th_g_min)
-        mean_noi = remove_i(mean, i)
-        return mean_noi, remove_i_rowcol(K,i) - torch.outer(mean_noi,mean_noi)
-
-
-    def get_objective(self, theta):
-        # Return objective value for parameters theta
-
-        # First, compute log normalization constant
-        theta_padded = add_i(theta, self.i)
-        th_g = (-2 * self.S[:, self.i]) * (self.S @ theta_padded)
-        th_g_min = torch.min(th_g)    # substract max of -th_g
-        log_Z    = torch.log(torch.mean(torch.exp(-th_g+th_g_min))) - th_g_min
+        if return_objective:
+            # First, compute log normalization constant
+            log_Z    = torch.log(norm_const) - th_g_min
 
         return float( theta @ self.g_mean() - log_Z )
+
+            vals['objective'] 
+
+            # Compute covariance
+            if self.num_chunks is None:
+                K = (4 * Y * self.S.T) @ self.S
+            else:
+                theta_pad  = add_i(theta, i)
+                # Chunked computation
+                K = torch.zeros((self.N, self.N), device=self.device)
+                chunk_size = (self.nflips + self.num_chunks - 1) // self.num_chunks  # Ceiling division
+
+                for r in range(self.num_chunks):
+                    start = r * chunk_size
+                    end = min((r + 1) * chunk_size, self.nflips)
+                    S_chunk = self.S[start:end]
+                    
+                    th_g_chunk = (-2 * S_chunk[:, self.i]) * (S_chunk @ theta_pad)
+                    K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
+
+                    empty_torch_cache()
+
+            K /= (self.nflips * norm_const)
+
+            # trueZ = Z*torch.exp(-th_g_min)
+            return mean_noi, remove_i_rowcol(K, self.i) - torch.outer(mean_noi,mean_noi)
+
+
+
+    def g_mean_theta(self, theta):
+        # Compute expectation of g under reverse distribution titled by theta
+        return self._get_tilted_statistics(theta, return_mean=True)['mean']
+
+    def g_mean_and_covariance_theta(self, theta, compute_covariance=True):
+        # Compute expectation and covariance of g under reverse distribution titled by theta
+
+        i          = self.i
+        theta_pad  = add_i(theta, i)
+        delta_x    = self.x1[:,i] - self.x0[:,i]
+        th_g       = delta_x * (self.x0 @ theta_pad)
+        th_g_min   = torch.min(th_g)    # substract max of -th_g for numerical stability
+        Y          = torch.exp(-th_g+th_g_min)
+        norm_const = torch.sum(Y) / self.nflips
+
+        mean       = (-delta_x * Y) @ self.x0 / (self.nflips * norm_const)
+        mean_noi   = remove_i(mean, i)
+        
+        if not compute_covariance:
+            return mean_noi
+        else:
+            # Compute covariance
+            if self.num_chunks is None:
+                K = (4 * Y * self.S.T) @ self.S
+            else:
+                theta_pad  = add_i(theta, i)
+                # Chunked computation
+                K = torch.zeros((self.N, self.N), device=self.device)
+                chunk_size = (self.nflips + self.num_chunks - 1) // self.num_chunks  # Ceiling division
+
+                for r in range(self.num_chunks):
+                    start = r * chunk_size
+                    end = min((r + 1) * chunk_size, self.nflips)
+                    S_chunk = self.S[start:end]
+                    
+                    th_g_chunk = (-2 * S_chunk[:, self.i]) * (S_chunk @ theta_pad)
+                    K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
+
+                    empty_torch_cache()
+
+            K /= (self.nflips * norm_const)
+
+            # trueZ = Z*torch.exp(-th_g_min)
+            return mean_noi, remove_i_rowcol(K, self.i) - torch.outer(mean_noi,mean_noi)
+
+
+    def get_objective(self, theta):   # Return objective value for parameters theta
+        return self._get_tilted_statistics(theta, return_objective=True)['objective']
 
 
 
@@ -245,7 +255,7 @@ class EPEstimators(object):
         # This checking is useful in the undersampled regime with many dimensions and few samles
         if objective < 0:
             # EP estimate should never be negative, as we can always achieve objective=0 with all 0s theta
-            objective = 0.0 
+            objective, theta = 0.0 
             if theta is not None:
                 theta = 0*theta
         elif objective >= np.log(self.nflips):
@@ -321,12 +331,7 @@ class EPEstimators(object):
 
         for _ in range(max_iter):
             # Find Newton step direction. We first get gradient and Hessian
-            # stats = self._get_tilted_statistics(theta, return_mean=True, return_covariance=True)
-            # g_theta = stats['tilted_mean']
-            # H_theta = stats['tilted_covariance']
-
             g_theta, H_theta = trn.g_mean_and_covariance_theta(theta=theta)
-
             if is_infnan(H_theta.sum()): 
                 # Error occured, usually it means theta is too big
                 if verbose: print('invalid Hessian in get_EP_Newton_steps')
@@ -413,11 +418,13 @@ class EPEstimators(object):
             if last_round:
                 break
 
+
         else:   # for loop did not break
             if max_iter > 10 and verbose:
                 # print warning about max iterations reached, but only if its a large number
                 print(f'max_iter {max_iter} reached in get_EP_Newton!')
             pass
+
 
         if holdout:
             return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
@@ -457,22 +464,33 @@ class EPEstimators(object):
             f_cur_trn = np.nan
         
         i           = self.i 
+        trn_g_withi = add_i(trn.g_mean(),i)  # add_i and remove_i are used to pad/remove 0 at 
+                                             # position i, it is just for convenience wrt to different conventions
         S           = trn.S.T.contiguous()   # Transposing seems to lead to faster calculations
 
         if theta_init is not None:
-            new_theta = theta_init
+            new_theta = add_i(theta_init, i)
         else:
-            new_theta = torch.zeros(self.N-1, device=self.device)
+            new_theta = torch.zeros(self.N, device=self.device)
 
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
 
+        twice_S_onlyi = 2*S[i,:]
+        X = (-torch.einsum('j,ij->ij', twice_S_onlyi, S)).contiguous()
+
         for t in range(max_iter):
-            tilted_stats = trn._get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
-            f_new_trn    = tilted_stats['objective']
+            # Calculate gradient and objective for theta under training data
+            th_g = new_theta@X
+            
+            Y = torch.exp(-th_g)
+            Z = torch.mean(Y)
+            S1_S = twice_S_onlyi * Y 
 
-            grad         = trn.g_mean() - tilted_stats['tilted_mean']   # Gradient
+            g_theta = torch.einsum('r,jr->j', S1_S, S) / (trn.nflips * Z)
+            grad    = trn_g_withi - g_theta
 
+            f_new_trn = float(new_theta @ trn_g_withi - torch.log(Z))
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
@@ -486,7 +504,7 @@ class EPEstimators(object):
                 last_round = True
 
             if holdout:
-                f_new_tst = tst.get_objective(new_theta) 
+                f_new_tst = tst.get_objective(remove_i(new_theta,i)) 
                 if is_infnan(f_new_tst) or f_new_tst <= f_cur_tst:
                     break
                 elif f_new_tst > np.log(tst.nflips):
@@ -524,6 +542,7 @@ class EPEstimators(object):
                 delta_theta = lr * grad
 
             new_theta = theta + delta_theta
+            new_theta[i]=0.0
 
         else:   # for loop did not break
             if verbose:
@@ -531,6 +550,8 @@ class EPEstimators(object):
                 print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
             pass
 
+
+        theta = remove_i(theta,i)
         if holdout:
             return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
         else:
