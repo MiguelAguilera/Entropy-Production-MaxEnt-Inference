@@ -48,8 +48,10 @@ if __name__ == "__main__":
     parser.add_argument("--N", type=int, default=100)
     parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData")
     parser.add_argument("--beta", type=float, default=2.0)
-    parser.add_argument("--J0", type=float, default=1.0)
-    parser.add_argument("--DJ", type=float, default=0.5)
+    parser.add_argument("--J0", type=float, default=0.0)
+    parser.add_argument("--DJ", type=float, default=1.0)
+    parser.add_argument('--no_plot', action='store_true', default=False,
+                        help='Disable plotting if specified')
     parser.add_argument("--patterns", type=int, default=None)
     parser.add_argument("--num_neighbors", type=int, default=None)
     parser.add_argument("--overwrite", action="store_true", default=False)
@@ -113,28 +115,30 @@ if __name__ == "__main__":
     print(f"R² (dbetaJ vs. dtheta_Gaussian): {r2_N1:.4f}")
     print(f"R² (dbetaJ vs. dtheta_Newton): {r2_N2:.4f}")
 
-    # -------------------------------
-    # Visualization
-    # -------------------------------
-    fig, ax = plt.subplots(figsize=(4, 4))
-    cmap = plt.get_cmap('inferno_r')
 
-    sns.scatterplot(
-        x=dbetaJ[filtered_indices],
-        y=dtheta_N2[filtered_indices],
-        color=cmap(0.75), s=10, alpha=0.7, rasterized=True
-    )
+    if not args.no_plot:
+        # -------------------------------
+        # Visualization
+        # -------------------------------
+        fig, ax = plt.subplots(figsize=(4, 4))
+        cmap = plt.get_cmap('inferno_r')
 
-    dbetaJ_min, dbetaJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
-    plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
-    plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
+        sns.scatterplot(
+            x=dbetaJ[filtered_indices],
+            y=dtheta_N2[filtered_indices],
+            color=cmap(0.75), s=10, alpha=0.7, rasterized=True
+        )
 
-    ticks = np.arange(-4, 5, 2)
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)
+        dbetaJ_min, dbetaJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
+        plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
+        plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
 
-    plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
-    plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
+        ticks = np.arange(-4, 5, 2)
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
+
+        plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
+        plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
     IMG_DIR='img'
     if not os.path.exists(IMG_DIR):
         print(f'Creating base directory: {IMG_DIR}')

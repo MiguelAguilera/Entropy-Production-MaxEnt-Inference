@@ -24,10 +24,10 @@ if __name__ == "__main__":
                         help="Maximum beta value (default: 3)")
     parser.add_argument("--num_beta", type=int, default=101,
                         help="Number of beta values to simulate (default: 101)")
-    parser.add_argument("--J0", type=float, default=1.0,
-                        help="Mean interaction coupling (default: 1.0)")
-    parser.add_argument("--DJ", type=float, default=0.5,
-                        help="Variance of the quenched disorder (default: 0.5)")
+    parser.add_argument("--J0", type=float, default=0.0,
+                        help="Mean interaction coupling (default: 0.0)")
+    parser.add_argument("--DJ", type=float, default=1.0,
+                        help="Variance of the quenched disorder (default: 1.0)")
     parser.add_argument('--no_plot', action='store_true', default=False,
                         help='Disable plotting if specified')
     parser.add_argument("--patterns", type=int, default=None,
@@ -118,10 +118,10 @@ if __name__ == "__main__":
             loc='best'
         )
 
-        # Save and show figure
-        IMG_DIR='img'
-        if not os.path.exists(IMG_DIR):
-            print(f'Creating base directory: {IMG_DIR}')
-            os.makedirs(IMG_DIR)
-        plt.savefig(f'{IMG_DIR}/Fig_1a.pdf', bbox_inches='tight')
-        plt.show()
+    # Save and show figure
+    IMG_DIR='img'
+    if not os.path.exists(IMG_DIR):
+        print(f'Creating base directory: {IMG_DIR}')
+        os.makedirs(IMG_DIR)
+    plt.savefig(f'{IMG_DIR}/Fig_1a.pdf', bbox_inches='tight')
+    plt.show()
