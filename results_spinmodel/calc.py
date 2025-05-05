@@ -8,25 +8,27 @@ import torch
 
 sys.path.insert(0, '..')
 import utils
-import ep_multipartite as epm
-            
+import ep_estimators as epm
+import spin_model
+
 device = utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
 
-def calc_spin(S_i, beta, J_i, i):
+def calc_spin(g_samples, beta, J_i, i):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
 
-    obj = epm.EPEstimators(S_i, i)
+    g_mean = g_samples.mean(axis=0)
+    obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
 
     to_run = [
         #('N1'     ,      obj.get_EP_Newton , dict()),
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
         ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
-        ('TUR'      ,      obj.get_EP_MTUR        , dict()),
+ #       ('TUR'      ,      obj.get_EP_MTUR        , dict()),
 #        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True) ),
         #('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True, adjust_radius=True) ),
         ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True, adjust_radius=True) ),
@@ -43,13 +45,13 @@ def calc_spin(S_i, beta, J_i, i):
 # #        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
 #         #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
         
-          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
+  #        ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
 #          ('G'    ,      obj.get_EP_GradientAscent  , dict() ),
     ]
 
 
     # Compute empirical EP for spin i
-    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean())
+    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean)
 
     for k, f, kwargs in to_run:
         stime = time.time()
@@ -121,9 +123,9 @@ def calc(file_name):
         print("=" * 70)
 
         for i in pbar:
-            S_i = S[F[:,i],:].to(torch.float32)
-
-            res = calc_spin( S_i.contiguous(), data['beta'], J[i,:].contiguous(), i)
+            g_samples = spin_model.get_g_observables(S, F, i)
+            
+            res = calc_spin( g_samples, data['beta'], J[i,:].contiguous(), i)
 
             epdata[i] = res 
             sigmas, times, thetas = res
@@ -135,7 +137,7 @@ def calc(file_name):
                     epdata['thetas'][k] = []
                 epdata['thetas'][k].append(thetas[k] if k in thetas else None)
 
-            del S_i, sigmas, times, thetas, res
+            del g_samples, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
             ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
