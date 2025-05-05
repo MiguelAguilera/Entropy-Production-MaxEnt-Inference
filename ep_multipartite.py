@@ -139,7 +139,11 @@ class EPEstimators(object):
         i          = self.i
 
         theta_pad  = add_i(theta, i)
-        th_g       = (-2 * self.S[:, i]) * (self.S @ theta_pad)
+
+        if not hasattr(self, '_2SiS'): # cache for faster computations
+            self._2SiS = (-2 * self.S[:, i][:,None] * self.S).contiguous()
+
+        th_g       = self._2SiS @ theta_pad
         th_g_min   = torch.min(th_g)    # substract max of -th_g for numerical stability
         Y          = torch.exp(-th_g+th_g_min)
         norm_const = torch.mean(Y)
@@ -404,38 +408,21 @@ class EPEstimators(object):
             f_cur_trn = np.nan
         
         i           = self.i 
-        trn_g_withi = add_i(trn.g_mean(),i)  # add_i and remove_i are used to pad/remove 0 at 
-                                             # position i, it is just for convenience wrt to different conventions
         S           = trn.S.T.contiguous()   # Transposing seems to lead to faster calculations
 
         if theta_init is not None:
-            new_theta = add_i(theta_init, i)
+            new_theta = theta_init
         else:
-            new_theta = torch.zeros(self.N, device=self.device)
+            new_theta = torch.zeros(self.N-1, device=self.device)
 
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
 
-        twice_S_onlyi = 2*S[i,:]
-        X = (-torch.einsum('j,ij->ij', twice_S_onlyi, S)).contiguous()
-
         for t in range(max_iter):
-            # Calculate gradient and objective for theta under training data
-            th_g = new_theta@X
-            
-            Y = torch.exp(-th_g)
-            Z = torch.mean(Y)
-            S1_S = twice_S_onlyi * Y 
+            tilted_stats = trn._get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
+            f_new_trn    = tilted_stats['objective']
 
-            g_theta = torch.einsum('r,jr->j', S1_S, S) / (trn.nflips * Z)
-
-            grad    = trn_g_withi - g_theta
-
-            f_new_trn = float(new_theta @ trn_g_withi - torch.log(Z))
-
-            v23 = trn._get_tilted_statistics(remove_i(new_theta,i), return_objective=True, return_mean=True)
-            assert(np.allclose(v23['objective'], f_new_trn))
-            assert((v23['tilted_mean']- remove_i(g_theta,i)).norm()<1e-5)
+            grad         = trn.g_mean() - tilted_stats['tilted_mean']   # Gradient
 
 
             # Different conditions that will stop optimization. See get_EP_Newton above
@@ -450,7 +437,7 @@ class EPEstimators(object):
                 last_round = True
 
             if holdout:
-                f_new_tst = tst.get_objective(remove_i(new_theta,i)) 
+                f_new_tst = tst.get_objective(new_theta) 
                 if is_infnan(f_new_tst) or f_new_tst <= f_cur_tst:
                     break
                 elif f_new_tst > np.log(tst.nflips):
@@ -488,7 +475,6 @@ class EPEstimators(object):
                 delta_theta = lr * grad
 
             new_theta = theta + delta_theta
-            new_theta[i]=0.0
 
         else:   # for loop did not break
             if verbose:
@@ -496,9 +482,6 @@ class EPEstimators(object):
                 print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
             pass
 
-
-
-        theta = remove_i(theta,i)
         if holdout:
             return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
         else:
