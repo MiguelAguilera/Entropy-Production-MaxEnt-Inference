@@ -5,10 +5,13 @@ from tqdm import tqdm
 import re
 import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
-import time
-import os
-import gc
+import time, os, sys, gc
 from threading import Thread
+
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
+import torch
+
+sys.path.insert(0, '..')
 from ep_multipartite import EPEstimators
 import utils
 
@@ -59,7 +62,7 @@ def get_spin_data(i, file_name, cap=None):
 #    S_i, J_i, nflips = get_spin_data(i, file_name, cap= cap)
     
 def calc_spin(i_args):
-    i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips = i_args
+    i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, beta, nflips = i_args
 
 
     num_chunks = 5
@@ -89,7 +92,7 @@ def calc_spin(i_args):
     time_n1 = time.time() - t0
 
 
-    Emp = Pi * beta * float(utils.remove_i(J_i_t,i) @ obj.g_mean())
+    Emp = Pi * beta * float(utils.remove_i(J_i_t,i) @ ep_estimator.g_mean())
     del J_i_t
     torch.cuda.empty_cache()
     
@@ -191,9 +194,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     
     data = np.load(file_name)
     J = data["J"]
-    if 'H' in data:
-        H = data['H']
-        assert np.all(H == 0), "Non-zero local fields are not supported"
+    beta = data['beta']
     
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
@@ -205,8 +206,8 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
             S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
             return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), J
 #    N//=50
-    beta_str = re.search(r'_beta_([0-9.]+)', file_name).group(1)
-    beta = float(beta_str)
+#    beta_str = re.search(r'_beta_([0-9.]+)', file_name).group(1)
+#    beta = float(beta_str)
     print()
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
@@ -269,7 +270,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
             del S_i, J_i # Free RAM
             
             # Compute
-            calc_spin((i, N, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, nflips))
+            calc_spin((i, N, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, beta, nflips))
             progress.value += 1
 
             # Preload next spin if needed
@@ -401,6 +402,8 @@ if __name__ == "__main__":
     print(f"Input:  {file_in}")
     print(f"Output: {file_out}")
     print("=" * 70)
-    calc_spin((args.i, args.N, T, file_in, file_out))
+
+    raise Exception('not supported currently')
+    # calc_spin((args.i, args.N, T, file_in, file_out))
 
 
