@@ -134,7 +134,7 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
 
     # Define matrix of spin states and spin flips      
     S = np.empty((samples_per_spin, N), dtype=np.int8)
-    F = np.empty((samples_per_spin, N), dtype=bool)
+    F = np.empty((samples_per_spin, N), dtype=np.bool)
 
     samples_per_trial = samples_per_spin//num_restarts
     

@@ -18,7 +18,7 @@ def save_data(file_name, J, S, F, beta, args):
             Indicates which spins flipped.
     """
     # Spin states S are converted to boolean format, this can sometimes reduce storage requirements
-    S_bin = ((S+1)//2).astype(np.bool)
+    S_bin = ((S+1)//2).astype(bool)
     np.savez(
         file_name,
         J=J,
