@@ -15,8 +15,6 @@ if __name__ == "__main__":
     # -------------------------------
     parser = argparse.ArgumentParser(description="Estimate EP for the spin model with varying beta values.")
 
-    parser.add_argument("--num_steps", type=int, default=2**7,
-                        help="Number of simulation steps (default: 128)")
     parser.add_argument("--rep", type=int, default=1_000_000,
                         help="Number of repetitions for the simulation (default: 1,000,000)")
     parser.add_argument("--N", type=int, default=100,
@@ -61,11 +59,6 @@ if __name__ == "__main__":
         print(f'Creating base directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR)
         
-    #if args.patterns is None:
-    #    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_J0_{args.J0}_DJ_{args.DJ}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}.h5"
-    #else:
-    #    file_name_out = f"{SAVE_DATA_DIR}/data_Fig_1a_rep_{rep}_steps_{args.num_steps}_N_{N}_betaMin_{args.beta_min}_betaMax_{args.beta_max}_numBeta_{args.num_beta}_patterns_{args.patterns}.h5"
-    #    
     # -------------------------------
     # Run Experiments Across Beta Values
     # -------------------------------
@@ -86,9 +79,6 @@ if __name__ == "__main__":
         EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite)
         
 
-    #np.savez(file_name_out, EP=EP, betas=betas)
-    #print(f'Saved calculations to {file_name_out}')
-
     if not args.no_plot:
         # -------------------------------
         # Plot Results
@@ -102,8 +92,7 @@ if __name__ == "__main__":
             r'$\Sigma$', 
             r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
             r'$\widehat{\Sigma}_{\bm g}$', 
-            r'${\Sigma}_{\bm g}$'#,
-    #        r'${\Sigma^*}_{\bm g}$'
+            r'${\Sigma}_{\bm g}$'
         ]
 
         cmap = plt.get_cmap('inferno_r')
@@ -133,5 +122,5 @@ if __name__ == "__main__":
         )
 
         # Save and show figure
-        plt.savefig('../img/Fig_1a.pdf', bbox_inches='tight')
+        plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
         plt.show()
