@@ -10,7 +10,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
 sys.path.insert(0, '..')
-from ep_estimators import EPEstimators
+from ep_estimators import EPEstimators, get_EP_MTUR
 import utils
 
 
@@ -93,19 +93,17 @@ def calc_spin(i_args):
 
     g_mean      = g_samples.mean(axis=0)
     
-    g_mean_ford_plus_back = g_mean.clone()
-    g_cov_ford_minus_back = (g_samples.T @ g_samples) / g_samples.shape[0]
 
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
     # Calculate empirical estimate of true EP
     spin_emp  = beta * J_without_i @ g_mean
     
-    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples,g_mean_ford_plus_back=g_mean_ford_plus_back, g_cov_ford_minus_back=g_cov_ford_minus_back, num_chunks=5)
+    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
     # Compute MTUR
     t0 = time.time()
-    sig_MTUR, _, _ = ep_estimator.get_EP_MTUR()
+    sig_MTUR = get_EP_MTUR(g_samples,-g_samples)
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 

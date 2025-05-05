@@ -29,15 +29,55 @@ Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defau
 def numpy_to_torch(X):
     return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
 
+def get_EP_MTUR(g_samples, rev_g_samples, linsolve_eps=1e-4):
+    """
+    Estimate entropy production using the Multidimensional TUR:
+        σ ≈ gᵀ · Cov⁻¹ · g
+    with g = (⟨g⟩_p - ⟨g⟩_p̃) / 2 and Cov from (p + p̃)/2.
+
+    Args:
+        g_samples (torch.Tensor): Forward samples (nsamples x nobservables)
+        rev_g_samples (torch.Tensor): Reverse samples (nsamples x nobservables)
+        linsolve_eps (float): Regularization constant for stability.
+
+    Returns:
+        dict: {'objective': EP estimate, 'theta': optimal vector}
+    """
+    assert g_samples.shape == rev_g_samples.shape
+    if isinstance(g_samples, np.ndarray):
+        g_samples = numpy_to_torch(g_samples)
+    if isinstance(rev_g_samples, np.ndarray):
+        rev_g_samples = numpy_to_torch(rev_g_samples)
+    assert g_samples.device == rev_g_samples.device
+    device = g_samples.device
+    
+    # Estimate expectations and covariance under the mixtures (p + p̃), (p - p̃)
+    g_ford_plus_back  = torch.cat([g_samples, rev_g_samples], dim=0)
+    g_ford_minus_back  = torch.cat([g_samples, -rev_g_samples], dim=0)
+    
+    g_mean_ford_minus_back = g_ford_minus_back.mean(dim=0)
+    g_mean_ford_plus_back = g_ford_plus_back.mean(dim=0)
+    
+    g_cov_ford_plus_back = (g_ford_plus_back.T @ g_ford_plus_back) / g_ford_plus_back.shape[0] - torch.outer(g_mean_ford_plus_back, g_mean_ford_plus_back)
+
+    # Regularization
+    A = g_cov_ford_plus_back + linsolve_eps * torch.eye(g_cov_ford_plus_back.shape[0], device=device)
+
+    # EP estimate using Multidimensional TUR:
+    # σ = 2 * mᵀ · H⁻¹ · m
+    sigma = 2 * (g_mean_ford_minus_back @ torch.linalg.inv(A) @ g_mean_ford_minus_back).item()
+
+    return sigma
+
+
+
 class EPEstimators(object):
-    def __init__(self, g_mean, rev_g_samples, g_mean_ford_plus_back=None, g_cov_ford_minus_back=None, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, g_mean, rev_g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   g_samples                : 1d tensor (1 x nobservables) containing means of observables of interest
         #                              under forward process
         #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
         #                              under reverse process
-        #   g_mean_ford_plus_back               : 1d tensor (1 x nobservables) containing means of observables for (p(x)-p̃(x)))/2
-        #   g_cov_ford_minus_back         : 2d tensor (1 x nobservables) containing covariances of observables for (p(x)+p̃(x)))/2
         #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
         #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
@@ -58,8 +98,6 @@ class EPEstimators(object):
 
 
         self.g_mean           = g_mean
-        self.g_mean_ford_plus_back       = g_mean_ford_plus_back
-        self.g_cov_ford_minus_back = g_cov_ford_minus_back
         self.rev_g_samples    = rev_g_samples
         self.nsamples, self.nobservables = rev_g_samples.shape
         self.device           = rev_g_samples.device
@@ -206,37 +244,6 @@ class EPEstimators(object):
             # to estimate KL divergence larger than log(m) from m samples
             objective = np.log(self.nsamples)
         return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
-
-
-    def get_EP_MTUR(self):
-        # Estimate EP using the multidimensional TUR method
-
-        # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
-        # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
-        # and K^-1 is covariance matrix of g under (p + ~p)/2.
-        #
-        # In our case, g is antisymmetric (<g>_p=-<g>_~p), so
-        #        <g>_(p - ~p)  = 2<g>_p 
-        #        [K^-1]_ij     = <g_i g_j>
-
-        # # The code commented out below was for doing a 'heldout' estimate of the TUR
-        # # For simplicity, we removed it 
-        # if holdout:
-        #     trn, tst  = self.split_train_test()
-        #     sol       = trn.get_EP_MTUR(holdout=False)
-        #     theta     = sol.theta
-        #     tst_objective = tst.get_objective(theta)
-        # else:
-        #     A         = self.g_secondmoments()
-        #     A        += self.linsolve_eps*eye_like(A)
-        #     theta     = solve_linear_psd(A, 2*self.g_mean)
-        #     tst_objective = None
-
-        A = self.g_cov_ford_minus_back + self.linsolve_eps*eye_like(self.g_cov_ford_minus_back)
-        theta     = solve_linear_psd(A, 2*self.g_mean_ford_plus_back)
-        sigma     = float(theta @ self.g_mean)
-        return self.get_valid_solution(objective=sigma, theta=theta)
-
 
     def get_EP_Newton(self, max_iter=1000, tol=1e-4, holdout=False, verbose=False,
         trust_radius=None, solve_constrained=True, adjust_radius=False,
