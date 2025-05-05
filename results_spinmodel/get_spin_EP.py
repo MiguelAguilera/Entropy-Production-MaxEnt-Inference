@@ -155,7 +155,8 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
             return np.array([S_Emp, S_TUR, S_N1, S_N2])
         else:
             S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
-            return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), J
+            data = np.load(file_name)
+            return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), data['J']
     print()
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
