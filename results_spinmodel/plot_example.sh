@@ -77,7 +77,7 @@ ARGS="--beta_min 0 --J0 0 --DJ 1 --beta_max 4 --N 500 --num_beta 10  --BASE_DIR 
 ARGS="--beta_min 0 --rep 10000 --DJ 1 --J0 0 --beta_max 4 --N 100 --num_beta 10  --BASE_DIR ~/MaxEntData100-v10k"
 
 python generate_data_spin_model.py --seed 42   --num_neighbors 5  $ARGS 
-python artemy_fig1.py                    $ARGS  $ARGSEP --overwrite #--nograd --overwrite  #--nograd   --overwrite 
+python test_scaling.py                    $ARGS  $ARGSEP --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 
