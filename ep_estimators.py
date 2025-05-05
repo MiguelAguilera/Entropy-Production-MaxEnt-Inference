@@ -163,7 +163,7 @@ class EPEstimators(object):
 
             if return_covariance:
                 if self.num_chunks is None:
-                    K = torch.einsum('i,ij->ji', exp_tilt, self.rev_g_samples) @ self.rev_g_samples
+                    K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
 
                 else:
                     # Chunked computation
@@ -175,9 +175,9 @@ class EPEstimators(object):
                         end = min((r + 1) * chunk_size, self.nsamples)
                         g_chunk = self.rev_g_samples[start:end]
                         
-                        K += torch.einsum('i,ij->ji', exp_tilt[start:end], g_chunk) @ g_chunk
+                        K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
-                vals['tilted_covariance'] = K / self.nsamples / norm_const - mean @ mean.T
+                vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
 
         return vals
 

@@ -28,7 +28,7 @@ def calc_spin(g_samples, beta, J_i, i):
         #('N1'     ,      obj.get_EP_Newton , dict()),
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
         ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
-        ('TUR'      ,      obj.get_EP_MTUR        , dict()),
+ #       ('TUR'      ,      obj.get_EP_MTUR        , dict()),
 #        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True) ),
         #('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True, adjust_radius=True) ),
         ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True, adjust_radius=True) ),
@@ -45,7 +45,7 @@ def calc_spin(g_samples, beta, J_i, i):
 # #        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
 #         #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
         
-          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
+  #        ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
 #          ('G'    ,      obj.get_EP_GradientAscent  , dict() ),
     ]
 
@@ -137,7 +137,7 @@ def calc(file_name):
                     epdata['thetas'][k] = []
                 epdata['thetas'][k].append(thetas[k] if k in thetas else None)
 
-            del S_i, sigmas, times, thetas, res
+            del g_samples, sigmas, times, thetas, res
             
             memory_usage = process.memory_info().rss / 1024 / 1024
             ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
