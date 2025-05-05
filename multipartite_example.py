@@ -40,9 +40,8 @@ for i in tqdm(range(N)):
     g_mean                  = g_samples.mean(axis=0)
 
     # Calculate empirical estimate of true EP (contribution from i-th spin)
-
     spin_emp = spin_model.get_spin_empirical_EP(beta, J, i, g_mean)
-    
+
     obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
     # 1 step of Newton
