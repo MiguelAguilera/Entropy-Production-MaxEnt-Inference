@@ -17,46 +17,10 @@ plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
 plt.rc('legend', fontsize=20)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-# -------------------------------
-# Initialization and parameters
-# -------------------------------
-BASE_DIR = os.path.expanduser(args.BASE_DIR)
-DTYPE = 'float32'
-N = args.size
-rep = args.rep
-
-beta = np.round(args.beta, 8) # Inverse temperature (interaction strength)
-
-print(f'** DOING SYSTEM SIZE {N} with beta {beta:.6f} **', flush=True)
-
-SAVE_DATA_DIR = 'ep_data/spin'
-
-# -------------------------------
-# Load data
-# -------------------------------
-
-if args.patterns is None:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_N_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
-    file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.h5"
-else:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
-    file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
-print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        
-EP, theta_N1,theta_N2, J =  calc(N, beta, rep, file_name, file_name_out, return_parameters=True, overwrite=args.overwrite)
-print(theta_N1.shape)
-dJ = J-J.T
-
-# -------------------------------
-# Save results
-# -------------------------------
-#filename=f'data/spin/data_Fig_1b.npz'
-#np.savez(filename, theta_N1=theta_N1.copy(), theta_N2=theta_N2.copy(), dJ=dJ)
 
 # -------------------------------
 # Helper function to expand off-diagonal matrix
 # -------------------------------
->>>>>>> e07f36c8ea37b03f527d8689e63eeb30250fe63b
 def expand_offdiag(th):
     """
     Expand an Nx(N-1) off-diagonal matrix into a full NxN matrix with zeros on the diagonal.
