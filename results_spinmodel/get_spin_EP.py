@@ -92,18 +92,20 @@ def calc_spin(i_args):
     g_samples = -2 * S_i_t[:, i][:, None] * S_i_t[:,mask]
 
     g_mean      = g_samples.mean(axis=0)
+    
+    g_mean_f_b = g_mean.clone()
+    g_covariance_f_b = (g_samples.T @ g_samples) / g_samples.shape[0]
+
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
     # Calculate empirical estimate of true EP
     spin_emp  = beta * J_without_i @ g_mean
     
-    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
-#    ep_estimator = EPEstimators(S_i_t, i, num_chunks=5)
+    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples,g_mean_f_b=g_mean_f_b, g_covariance_f_b=g_covariance_f_b, num_chunks=5)
 
     # Compute MTUR
     t0 = time.time()
-#    sig_MTUR, _, _ = ep_estimator.get_EP_MTUR()
-    sig_MTUR = 0
+    sig_MTUR, _, _ = ep_estimator.get_EP_MTUR()
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 

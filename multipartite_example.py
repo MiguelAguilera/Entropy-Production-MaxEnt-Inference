@@ -36,15 +36,17 @@ with torch.no_grad():
         p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
         # Calculate samples of g observables for states in which spin i changes state
-        g_samples   = spin_model.get_g_observables(S, F, i)
-        g_mean      = g_samples.mean(axis=0)
+        g_samples        = spin_model.get_g_observables(S, F, i)
+        g_mean           = g_samples.mean(axis=0)
+        g_mean_f_b       = g_mean.copy()
+        g_covariance_f_b = (g_samples.T @ g_samples) / g_samples.shape[0]
 
         # Calculate empirical estimate of true EP
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp  = beta * J_without_i @ g_mean
 
 
-        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
+        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, g_mean_f_b=g_mean_f_b, g_covariance_f_b=g_covariance_f_b)
 
         # spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
         spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton

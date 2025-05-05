@@ -32,7 +32,7 @@ def numpy_to_torch(X):
     return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
 
 class EPEstimators(object):
-    def __init__(self, g_mean, rev_g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, g_mean, rev_g_samples, g_mean_f_b=None, g_covariance_f_b=None, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   g_samples                : 1d tensor (1 x nobservables) containing means of observables of interest
         #                              under forward process
@@ -58,6 +58,8 @@ class EPEstimators(object):
 
 
         self.g_mean           = g_mean
+        self.g_mean_f_b       = g_mean_f_b
+        self.g_covariance_f_b = g_covariance_f_b
         self.rev_g_samples    = rev_g_samples
         self.nsamples, self.nobservables = rev_g_samples.shape
         self.device           = rev_g_samples.device
@@ -177,7 +179,7 @@ class EPEstimators(object):
                         
                         K += torch.einsum('i,ij->ji', exp_tilt[start:end], g_chunk) @ g_chunk
 
-                vals['tilted_covariance'] = K / self.nsamples / norm_const - mean[:, None] @ mean[None, :]  
+                vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)  
 
         return vals
 
@@ -230,9 +232,8 @@ class EPEstimators(object):
         #     theta     = solve_linear_psd(A, 2*self.g_mean)
         #     tst_objective = None
 
-        A         = self.g_secondmoments()
-        A        += self.linsolve_eps*eye_like(A)
-        theta     = solve_linear_psd(A, 2*self.g_mean)
+        A = self.g_covariance_f_b + self.linsolve_eps*eye_like(self.g_covariance_f_b)
+        theta     = solve_linear_psd(A, 2*self.g_mean_f_b)
         sigma     = float(theta @ self.g_mean)
         return self.get_valid_solution(objective=sigma, theta=theta)
 
