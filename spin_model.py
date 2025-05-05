@@ -190,5 +190,5 @@ def get_g_observables(S, F, i):
     
     # We remove the i-th observable because its always -2
     g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
-    
+
     return g_samples

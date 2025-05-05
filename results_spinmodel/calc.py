@@ -8,18 +8,20 @@ import torch
 
 sys.path.insert(0, '..')
 import utils
-import ep_multipartite as epm
-            
+import ep_estimators as epm
+import spin_model
+
 device = utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
 
-def calc_spin(S_i, beta, J_i, i):
+def calc_spin(g_samples, beta, J_i, i):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
 
-    obj = epm.EPEstimators(S_i, i)
+    g_mean = g_samples.mean(axis=0)
+    obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
 
     to_run = [
@@ -49,7 +51,7 @@ def calc_spin(S_i, beta, J_i, i):
 
 
     # Compute empirical EP for spin i
-    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean())
+    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean)
 
     for k, f, kwargs in to_run:
         stime = time.time()
@@ -121,9 +123,9 @@ def calc(file_name):
         print("=" * 70)
 
         for i in pbar:
-            S_i = S[F[:,i],:].to(torch.float32)
-
-            res = calc_spin( S_i.contiguous(), data['beta'], J[i,:].contiguous(), i)
+            g_samples = spin_model.get_g_observables(S, F, i)
+            
+            res = calc_spin( g_samples, data['beta'], J[i,:].contiguous(), i)
 
             epdata[i] = res 
             sigmas, times, thetas = res
