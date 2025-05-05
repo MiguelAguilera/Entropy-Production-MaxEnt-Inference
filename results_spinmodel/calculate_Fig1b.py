@@ -68,6 +68,9 @@ if __name__ == "__main__":
     # -------------------------------
     BASE_DIR = os.path.expanduser(args.BASE_DIR)
     SAVE_DATA_DIR = 'ep_data/spin'
+    if not os.path.exists(SAVE_DATA_DIR):
+        print(f'Creating base directory: {SAVE_DATA_DIR}')
+        os.makedirs(SAVE_DATA_DIR)
     N = args.N
     rep = args.rep
     beta = np.round(args.beta, 8)
