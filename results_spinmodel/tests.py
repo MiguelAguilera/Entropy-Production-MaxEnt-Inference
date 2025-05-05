@@ -9,7 +9,7 @@ import torch
 
 sys.path.insert(0, '..')
 import spin_model
-import ep_multipartite
+import ep_estimators
 import utils
 
 utils.set_default_torch_device()
@@ -51,13 +51,14 @@ def run_inference(beta, J, S, F, num_chunks=None):
             p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
             # Select states in which spin i flipped and use it create object for EP estimation 
-            S_i = S[F[:,i],:]
-            obj = ep_multipartite.EPEstimators(S_i, i, num_chunks=num_chunks)
+            g_samples  = spin_model.get_g_observables(S, F, i)
+            g_mean     = g_samples.mean(axis=0)
+            obj = ep_estimators.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=num_chunks)
 
             # Empirical estimate 
-            g_expectations = utils.add_i( obj.g_mean(), i ).cpu().numpy()
-            spin_emp = beta * J[i,:] @ g_expectations
-
+            J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
+            spin_emp = beta * J_without_i @ g_mean
+            
             spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
             spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
             
@@ -97,5 +98,6 @@ def test_inference_chunks():
 
 
 def test_objective():
-    obj = ep_multipartite.EPEstimators(np.ones((100,10)), i=0)
-    assert(np.isclose( obj.get_objective(torch.zeros(9)),0))
+    nobservbables = 9
+    obj = ep_estimators.EPEstimators(g_mean=np.random.randn(nobservbables), rev_g_samples=np.random.randn(100,nobservbables))
+    assert(np.isclose( obj.get_objective(torch.zeros(nobservbables)),0))

@@ -106,6 +106,25 @@ class EPEstimators(object):
     #         self.g_secondmoments_ = batch_outer(K, self.num_chunks)
     #     return self.g_secondmoments_
 
+    # Compute outer product X @ X.T/nrow. Do it in batches if requested for lower memory requirements
+    # nrow, ncol = X.shape
+    # if num_chunks is None:
+    #     K = X@X.T
+    # else:
+    #     # Chunked computation, sometimes helpful for memory reasons
+    #     K = torch.zeros((ncol, ncol), device=X.device)
+    #     chunk_size = (nrow + num_chunks - 1) // num_chunks  # Ceiling division
+
+    #     for r in range(num_chunks):
+    #         start = r * chunk_size
+    #         end = min((r + 1) * chunk_size, ncol)
+    #         g_chunk = X[start:end]
+    #         K += g_chunk @ g_chunk.T
+    # return K/nrow
+
+
+
+
     # def g_covariance(self): 
     #     # Compute covariance matrix of g observables
     #     if not hasattr(self, 'g_covariance_'): # Cache for speed
@@ -129,7 +148,7 @@ class EPEstimators(object):
         # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
         # The same multiplicative corrections enters into the normalization constant and the tilted
         # means and covariance, so its cancels out
-        th_g_max    = 0 # torch.max(th_g)
+        th_g_max    = torch.max(th_g)
         exp_tilt    = torch.exp(th_g - th_g_max)
         norm_const  = torch.mean(exp_tilt)
 
@@ -144,7 +163,7 @@ class EPEstimators(object):
 
             if return_covariance:
                 if self.num_chunks is None:
-                    K = torch.einsum('i,ij->ij', exp_tilt, self.rev_g_samples).T @ self.rev_g_samples
+                    K = torch.einsum('i,ij->ji', exp_tilt, self.rev_g_samples) @ self.rev_g_samples
 
                 else:
                     # Chunked computation
@@ -156,7 +175,7 @@ class EPEstimators(object):
                         end = min((r + 1) * chunk_size, self.nsamples)
                         g_chunk = self.rev_g_samples[start:end]
                         
-                        K += exp_tilt * g_chunk @ g_chunk.T
+                        K += torch.einsum('i,ij->ji', exp_tilt[start:end], g_chunk) @ g_chunk
 
                 vals['tilted_covariance'] = K / self.nsamples / norm_const - mean @ mean.T
 
