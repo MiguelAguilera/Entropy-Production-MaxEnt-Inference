@@ -38,10 +38,8 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
     #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
     #                               numerical stability of linear solvers
 
-    if isinstance(g_samples, np.ndarray):
-        g_samples     = numpy_to_torch(g_samples)
-    if isinstance(rev_g_samples, np.ndarray):
-        rev_g_samples = numpy_to_torch(rev_g_samples)
+    g_samples     = numpy_to_torch(g_samples)
+    rev_g_samples = numpy_to_torch(rev_g_samples)
 
     g_mean       = g_samples.mean(axis=0) 
     rev_g_mean   = rev_g_samples.mean(axis=0)
@@ -80,16 +78,11 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
 
 
 
-
-
 # EPEstimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
 #   theta (torch tensor of length nobservables) : optimal conjugate parameters
 #   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
-
-def numpy_to_torch(X):
-    return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
 
 
 class EPEstimators(object):
@@ -107,10 +100,8 @@ class EPEstimators(object):
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                               numerical stability of linear solvers
 
-        if isinstance(g_mean, np.ndarray):
-            g_mean        = numpy_to_torch(g_mean)
-        if isinstance(rev_g_samples, np.ndarray):
-            rev_g_samples = numpy_to_torch(rev_g_samples)
+        g_mean        = numpy_to_torch(g_mean)
+        rev_g_samples = numpy_to_torch(rev_g_samples)
 
         self.g_mean           = g_mean
         self.rev_g_samples    = rev_g_samples
