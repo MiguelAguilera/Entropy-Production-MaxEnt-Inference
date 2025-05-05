@@ -110,7 +110,7 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
     Args:
         beta (float)                : Inverse temperature
         J (2d np.array)             : NxN matrix of coupling coefficients
-        warmup (float)              : Ratio of Monte Carlo steps in-between saved samples
+        warmup (float)              : Fraction of Monte Carlo steps in the warm-up at the beginning of each restart
         samples_per_spin (int)      : Number of samples per spin to return
                                       In between these samples, we use a thinning factor of N
                                       throwaway samples
@@ -129,24 +129,24 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
     S = np.empty((samples_per_spin, N), dtype=np.int8)
     F = np.empty((samples_per_spin, N), dtype=np.bool_)
 
-    samples_per_trial = samples_per_spin//num_restarts
+    samples_per_restart = samples_per_spin//num_restarts
     
     print_every = int(samples_per_spin/100)
     if progressbar:
         print("-"*100)
 
-    for trial in range(num_restarts):
-        # Start from a random state, then warm up for N * warmup_steps_per_spin steps
+    for restart_ix in range(num_restarts):
+        # Start from a random state, then warm up for N * warmup * samples_per_restart steps
         s = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         if sequential:
-            indices = np.random.randint(0, N, int(N * warmup * samples_per_trial))
+            indices = np.random.randint(0, N, int(N * warmup * samples_per_restart))
             for i in indices:
                 s[i] = GlauberStep(betaJ[i, :], s)
         else:
-            s = ParallelGlauberStep(betaJ, s, T=int(samples_per_trial * warmup))
+            s = ParallelGlauberStep(betaJ, s, T=int(samples_per_restart * warmup))
 
         # Now draw samples from steady state
-        for r in range(samples_per_trial):
+        for r in range(samples_per_restart):
             # First, thin out samples by N steps to decrease correlations
             if sequential:
                 indices = np.random.randint(0, N, int(N))
@@ -157,7 +157,7 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
                 s = ParallelGlauberStep(betaJ, s, T=1)
             
             # Save the sampled state
-            sample_ix = trial*samples_per_trial + r
+            sample_ix = restart_ix * samples_per_restart + r
             S[sample_ix, :] = s.astype(np.int8)
 
             # Sample possible flips for each spoin
@@ -195,6 +195,9 @@ def get_g_observables(S, F, i):
 
 
 def get_spin_empirical_EP(beta, J, i, g_mean):
+    # Calculate ``ground truth'' EP contribution from spin i. Here g_mean is the expectation of samples
+    # return by get_g_observables, i.e., 
+    #       g_mean = get_g_observables(S, F, i).mean(axis=0) 
     import utils
     # Calculate contributions to empirical EP from observables of spin i
     g_mean_t   = utils.numpy_to_torch(g_mean)
