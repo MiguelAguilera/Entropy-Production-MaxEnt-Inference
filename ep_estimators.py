@@ -33,6 +33,7 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
     #                              under reverse process 
     #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
     #                              under reverse process 
+    # Optional arguments
     #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
     #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
     #                               numerical stability of linear solvers
