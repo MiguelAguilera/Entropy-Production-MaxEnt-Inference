@@ -15,7 +15,7 @@ device = utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
 
-def calc_spin(g_samples, beta, J_i, i):
+def calc_spin(beta, J, i, g_samples):
     verbose=False
 
     sigmas, times, thetas = {}, {}, {}
@@ -50,7 +50,7 @@ def calc_spin(g_samples, beta, J_i, i):
 
 
     # Compute empirical EP for spin i
-    sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean)
+    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=g_mean)
 
     stime = time.time()
     sigmas['TUR'] = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
@@ -101,58 +101,56 @@ def calc(file_name):
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
-    with torch.no_grad():
-        S      = torch.from_numpy(data["S_bin"]).to(device)*2-1
-        rep, N = S.shape
-        F      = torch.from_numpy(data["F"]).to(device).bool()
+    S      = torch.from_numpy(data["S_bin"]).to(device)*2-1
+    rep, N = S.shape
+    F      = torch.from_numpy(data["F"]).to(device).bool()
 
-        if False:
-            vvv=data['J'].reshape([1,-1])[0,:]
-            plt.hist(vvv)
-            #sns.kdeplot(vvv)
-            plt.show()
-            #asf
+    if False:
+        vvv=data['J'].reshape([1,-1])[0,:]
+        plt.hist(vvv)
+        #sns.kdeplot(vvv)
+        plt.show()
+        #asf
 
-        J = torch.from_numpy(data['J']).to(device)
+    J = torch.from_numpy(data['J']).to(device)
 
-        frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
-        epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
-                  'thetas':{}, 'ep':{}, 'times':{}}
+    frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
+    epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
+                'thetas':{}, 'ep':{}, 'times':{}}
 
-        pbar = tqdm(range(N))
+    pbar = tqdm(range(N))
 
-        print("=" * 70)
-        print(f"  Starting EP estimation | System size: {N}")
-        print("=" * 70)
+    print("=" * 70)
+    print(f"  Starting EP estimation | System size: {N}")
+    print("=" * 70)
 
-        for i in pbar:
-            g_samples = spin_model.get_g_observables(S, F, i)
-            
-            res = calc_spin( g_samples, data['beta'], J[i,:].contiguous(), i)
+    for i in pbar:
+        g_samples = spin_model.get_g_observables(S, F, i)
+        
+        res = calc_spin( data['beta'], J, i, g_samples)
 
-            epdata[i] = res 
-            sigmas, times, thetas = res
+        epdata[i] = res 
+        sigmas, times, thetas = res
 
-            for k,v in sigmas.items():
-                ep_sums[k]   += frequencies[i]*v
-                time_sums[k] += times.get(k, np.nan)
-                if k not in epdata['thetas']:
-                    epdata['thetas'][k] = []
-                epdata['thetas'][k].append(thetas[k] if k in thetas else None)
+        for k,v in sigmas.items():
+            ep_sums[k]   += frequencies[i]*v
+            time_sums[k] += times.get(k, np.nan)
+            if k not in epdata['thetas']:
+                epdata['thetas'][k] = []
+            epdata['thetas'][k].append(thetas[k] if k in thetas else None)
 
-            del g_samples, sigmas, times, thetas, res
-            
-            memory_usage = process.memory_info().rss / 1024 / 1024
-            ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
-            pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
+        del g_samples, sigmas, times, thetas, res
+        
+        memory_usage = process.memory_info().rss / 1024 / 1024
+        ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
+        pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
-        for k,v in ep_sums.items():
-            epdata['ep'][k]=v
-        for k,v in time_sums.items():
-            epdata['times'][k]=v
+    for k,v in ep_sums.items():
+        epdata['ep'][k]=v
+    for k,v in time_sums.items():
+        epdata['times'][k]=v
 
-        del S, F, J
-    del data
+    del S, F, J, data
 
     return epdata
 

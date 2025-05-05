@@ -44,40 +44,38 @@ def run_inference(beta, J, S, F, num_chunks=None):
     # Running sums to keep track of EP estimates
     sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
-    with torch.no_grad():
+    # Because system is multipartite, we can separately estimate EP for each spin
+    for i in tqdm(range(N)):
+        p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
-        # Because system is multipartite, we can separately estimate EP for each spin
-        for i in tqdm(range(N)):
-            p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
+        # Select states in which spin i flipped and use it create object for EP estimation 
+        g_samples  = spin_model.get_g_observables(S, F, i)
+        g_mean     = g_samples.mean(axis=0)
+        obj = ep_estimators.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=num_chunks)
 
-            # Select states in which spin i flipped and use it create object for EP estimation 
-            g_samples  = spin_model.get_g_observables(S, F, i)
-            g_mean     = g_samples.mean(axis=0)
-            obj = ep_estimators.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=num_chunks)
+        # Empirical estimate 
+        J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
+        spin_emp = beta * J_without_i @ g_mean
+        
+        spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
+        
+        # Full optimization with trust-region Newton method and holdout 
+        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
 
-            # Empirical estimate 
-            J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
-            spin_emp = beta * J_without_i @ g_mean
-            
-            spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
-            
-            # Full optimization with trust-region Newton method and holdout 
-            spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
+        # Full optimization with gradient ascent method 
+        spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
-            # Full optimization with gradient ascent method 
-            spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
+        # Multidimensional TUR
+        spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, g_samples, num_chunks=num_chunks)
+        
 
-            # Multidimensional TUR
-            spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, g_samples, num_chunks=num_chunks)
-            
+        sigma_emp  += p_i * spin_emp
+        sigma_g    += p_i * spin_full
+        sigma_N1   += p_i * spin_N1
+        sigma_MTUR += p_i * spin_MTUR
+        sigma_g2   += p_i * spin_grad
 
-            sigma_emp  += p_i * spin_emp
-            sigma_g    += p_i * spin_full
-            sigma_N1   += p_i * spin_N1
-            sigma_MTUR += p_i * spin_MTUR
-            sigma_g2   += p_i * spin_grad
-
-            utils.empty_torch_cache()
+        utils.empty_torch_cache()
 
         return sigma_emp, sigma_g, sigma_g2, sigma_N1, sigma_MTUR
     

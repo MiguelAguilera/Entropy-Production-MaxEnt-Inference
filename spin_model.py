@@ -200,4 +200,4 @@ def get_spin_empirical_EP(beta, J, i, g_mean):
     g_mean_t   = utils.numpy_to_torch(g_mean)
     J_i_t      = utils.numpy_to_torch(J[i,:])
     J_i_t_no_i = utils.remove_i(J_i_t, i)   # remove i'th entry, due to our convention
-    return float(beta * J_i_t_no_i @ g_mean_t)
+    return float(beta) * float(J_i_t_no_i @ g_mean_t)
