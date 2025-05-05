@@ -99,6 +99,37 @@ def download_session(session, ind):
     # Discretize spikes into time bins
     bin_size = 0.01  # 10 ms
     T = int(np.floor((maxT - minT) / bin_size))
+    
+    
+    # For tracking bin collisions per unit
+    collision_percentages = []
+
+    for u, unit_id in enumerate(unit_ids):
+        # Discretize spikes
+        spike_times_unit = np.array(spike_times[unit_id])
+        spike_times_discretized = np.floor((spike_times_unit - minT) / bin_size).astype(int)
+
+        # Keep only spikes within bounds
+        spike_times_discretized = spike_times_discretized[
+            (spike_times_discretized >= 0) & (spike_times_discretized < T)
+        ]
+
+        # Count how many times each bin is hit
+        bincounts = np.bincount(spike_times_discretized, minlength=T)
+
+        # Count how many collisions occurred
+        n_collided_spikes = np.sum(bincounts[bincounts > 1] - 1)  # Number of *extra* spikes in bins with >1
+        n_total_spikes = len(spike_times_discretized)
+
+        # Collision percentage for this unit
+        collision_percentage = (n_collided_spikes / n_total_spikes) * 100 if n_total_spikes > 0 else 0.0
+        collision_percentages.append(collision_percentage)
+
+    # Report average bin collision percentage
+    mean_collision = np.mean(collision_percentages)
+    print(f"Average percentage of spikes lost to bin collisions per unit: {mean_collision:.4f}%")
+
+
     S = np.zeros((N, T), dtype=bool)
 
     for u, unit_id in enumerate(unit_ids):
