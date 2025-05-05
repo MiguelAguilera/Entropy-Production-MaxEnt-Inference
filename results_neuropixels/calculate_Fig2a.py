@@ -130,7 +130,7 @@ def calc(sizes, session_type, session_id, r):
         triu_indices = torch.triu_indices(N, N, offset=1)
         g_mean = g_mean[triu_indices[0], triu_indices[1]]
         ep_estimator = EPEstimators(g_mean=g_mean, tilted_statistics_function=tilted_statistics_bilinear_upper, X=S_t, Xp=S1_t )
-        EP_maxent, theta,_ = ep_estimator.get_EP_GradientAscent(lr = 0.1/N, holdout=True, tol=1e-8, use_Adam=True)
+        EP_maxent,theta,_ = ep_estimator.get_EP_GradientAscent(lr = 0.01/N, holdout=True, tol=1e-8, use_Adam=True)
 #        EP_maxent = get_torch(S_t.T, S1_t.T, mode=2, tol_per_param=1E-6, lambda_=lambda_)
 #        print(E, E2, EP_maxent)
 #        exit()
@@ -140,7 +140,7 @@ def calc(sizes, session_type, session_id, r):
 
         EP[n] = EP_maxent
         R[n] = spike_sum
-        print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes: {spike_sum:.5f}")
+        print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes R: {spike_sum:.5f} | EP/R: {EP_maxent/spike_sum:.5f}")
 
     save_path = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
