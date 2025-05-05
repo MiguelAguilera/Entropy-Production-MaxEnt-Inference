@@ -32,12 +32,14 @@ def numpy_to_torch(X):
     return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
 
 class EPEstimators(object):
-    def __init__(self, g_mean, rev_g_samples, g_mean_f_b=None, g_covariance_f_b=None, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, g_mean, rev_g_samples, g_mean_ford_plus_back=None, g_cov_ford_minus_back=None, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   g_samples                : 1d tensor (1 x nobservables) containing means of observables of interest
         #                              under forward process
         #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
         #                              under reverse process
+        #   g_mean_ford_plus_back               : 1d tensor (1 x nobservables) containing means of observables for (p(x)-p̃(x)))/2
+        #   g_cov_ford_minus_back         : 2d tensor (1 x nobservables) containing covariances of observables for (p(x)+p̃(x)))/2
         #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
         #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
@@ -58,8 +60,8 @@ class EPEstimators(object):
 
 
         self.g_mean           = g_mean
-        self.g_mean_f_b       = g_mean_f_b
-        self.g_covariance_f_b = g_covariance_f_b
+        self.g_mean_ford_plus_back       = g_mean_ford_plus_back
+        self.g_cov_ford_minus_back = g_cov_ford_minus_back
         self.rev_g_samples    = rev_g_samples
         self.nsamples, self.nobservables = rev_g_samples.shape
         self.device           = rev_g_samples.device
@@ -232,8 +234,8 @@ class EPEstimators(object):
         #     theta     = solve_linear_psd(A, 2*self.g_mean)
         #     tst_objective = None
 
-        A = self.g_covariance_f_b + self.linsolve_eps*eye_like(self.g_covariance_f_b)
-        theta     = solve_linear_psd(A, 2*self.g_mean_f_b)
+        A = self.g_cov_ford_minus_back + self.linsolve_eps*eye_like(self.g_cov_ford_minus_back)
+        theta     = solve_linear_psd(A, 2*self.g_mean_ford_plus_back)
         sigma     = float(theta @ self.g_mean)
         return self.get_valid_solution(objective=sigma, theta=theta)
 
