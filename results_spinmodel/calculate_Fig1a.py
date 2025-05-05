@@ -119,5 +119,9 @@ if __name__ == "__main__":
         )
 
         # Save and show figure
-        plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
+        IMG_DIR='img'
+        if not os.path.exists(IMG_DIR):
+            print(f'Creating base directory: {IMG_DIR}')
+            os.makedirs(IMG_DIR)
+        plt.savefig(f'{IMG_DIR}/Fig_1a.pdf', bbox_inches='tight')
         plt.show()

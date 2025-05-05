@@ -135,6 +135,10 @@ if __name__ == "__main__":
 
     plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
     plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
-    plt.savefig('img/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
+    IMG_DIR='img'
+    if not os.path.exists(IMG_DIR):
+        print(f'Creating base directory: {IMG_DIR}')
+        os.makedirs(IMG_DIR)
+    plt.savefig(f'{IMG_DIR}/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
     plt.show()
 
