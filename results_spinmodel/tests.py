@@ -93,3 +93,9 @@ def test_inference_chunks():
     assert(np.isclose(sigma_g2A  , sigma_g2B  ))
     assert(np.isclose(sigma_N1A  , sigma_N1B  ))
     assert(np.isclose(sigma_MTURA, sigma_MTURB))
+
+
+
+def test_objective():
+    obj = ep_multipartite.EPEstimators(np.ones((100,10)), i=0)
+    assert(np.isclose( obj.get_objective(torch.zeros(9)),0))
