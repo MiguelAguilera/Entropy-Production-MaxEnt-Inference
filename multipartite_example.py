@@ -36,10 +36,10 @@ with torch.no_grad():
         p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
         # Calculate samples of g observables for states in which spin i changes state
-        g_samples        = spin_model.get_g_observables(S, F, i)
-        g_mean           = g_samples.mean(axis=0)
-        g_mean_ford_plus_back       = g_mean.copy()
-        g_cov_ford_minus_back = (g_samples.T @ g_samples) / g_samples.shape[0]
+        g_samples               = spin_model.get_g_observables(S, F, i)
+        g_mean                  = g_samples.mean(axis=0)
+        g_mean_ford_plus_back   = g_mean.copy()
+        g_cov_ford_minus_back   = (g_samples.T @ g_samples) / g_samples.shape[0]
 
         # Calculate empirical estimate of true EP
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
