@@ -355,13 +355,11 @@ class EPEstimators(object):
             if last_round:
                 break
 
-
         else:   # for loop did not break
             if max_iter > 10 and verbose:
                 # print warning about max iterations reached, but only if its a large number
                 print(f'max_iter {max_iter} reached in get_EP_Newton!')
             pass
-
 
         if holdout:
             return self.get_valid_solution(objective=self.get_objective(theta), theta=theta, tst_objective=f_cur_tst)
