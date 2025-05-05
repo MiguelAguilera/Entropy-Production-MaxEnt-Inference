@@ -28,7 +28,6 @@ def calc_spin(g_samples, beta, J_i, i):
         #('N1'     ,      obj.get_EP_Newton , dict()),
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
         ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
- #       ('TUR'      ,      obj.get_EP_MTUR        , dict()),
 #        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True) ),
         #('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True, adjust_radius=True) ),
         ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True, adjust_radius=True) ),
@@ -52,6 +51,10 @@ def calc_spin(g_samples, beta, J_i, i):
 
     # Compute empirical EP for spin i
     sigmas['Emp'] = beta * float(utils.remove_i(J_i,i) @ obj.g_mean)
+
+    stime = time.time()
+    sigmas['TUR'] = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
+    times['TUR'] = time.time() - stime
 
     for k, f, kwargs in to_run:
         stime = time.time()
