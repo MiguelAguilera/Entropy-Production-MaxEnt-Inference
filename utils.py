@@ -34,34 +34,11 @@ def is_infnan(x): # return True if x is either infinite or NaN
     x = float(x)
     return np.isinf(x) or np.isnan(x)
 
-# Adding / removing entries
-def remove_i(x, i):
-    # Remove the i-th element from a 1d tensor x.
+def remove_i(x, i):  # Helpful function to remove the i-th element from a 1d tensor x.
     r = torch.cat((x[:i], x[i+1:]))
     return r
 
-def add_i(x,i):
-    # Insert 0 in position i to a 1d tensor x
-    return torch.cat((x[:i], torch.tensor([0.0], device=x.device), x[i:]))   
-
-def remove_i_rowcol(X, i):
-    # Remove the i-th row and column from matrix X.
-    X1 = torch.cat([X [:i, :], X [i+1:, :]], dim=0)
-    X2 = torch.cat([X1[:, :i], X1[:, i+1:]], dim=1)
-    return X2
-
-def add_i_rowcol(X,i):
-    # Insert 0 row and column to matrix A
-    d=X.device
-    n=X.shape[0]
-    X1 = torch.cat((X[:i,:], torch.zeros((1,n), device=d), X[i:,:]),dim=0)   
-    X2 = torch.cat((X1[:,:i], torch.zeros((n+1,1), device=d), X1[:,i:]),dim=1)
-    return X2   
-
-
-
-
-
+# Torch stuff
 
 def set_default_torch_device():
     # Determines the best available device for PyTorch operations and sets it as default.
