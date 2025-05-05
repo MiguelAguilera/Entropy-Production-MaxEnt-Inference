@@ -40,8 +40,8 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
     Loads precomputed entropy production results from an HDF5 file.
     Returns entropy values and optionally theta parameter arrays.
     """
-    S_Emp = S_TUR = S_N1 = S_N2 = time_tur = time_n1 = time_n2 = 0
-    theta_N1_list, theta_N2_list = [], []
+    S_Emp = S_TUR = S_Gaussian = S_MaxEnt = time_tur = time_Gaussian = time_MaxEnt = 0
+    theta_Gaussian_list, theta_MaxEnt_list = [], []
 
     with h5py.File(file_name_out, 'r') as f_out:
         for i in range(N):
@@ -50,22 +50,22 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
             group = f_out[f"spins/{i}"]
             S_Emp += group["Emp"][()]
             S_TUR += group["MTUR"][()]
-            S_N1 += group["N1"][()]
-            S_N2 += group["N2"][()]
+            S_Gaussian += group["N1"][()]
+            S_MaxEnt += group["N2"][()]
             time_tur += group["time_tur"][()]
-            time_n1 += group["time_n1"][()]
-            time_n2 += group["time_n2"][()]
+            time_Gaussian += group["time_Gaussian"][()]
+            time_MaxEnt += group["time_MaxEnt"][()]
             if return_parameters:
-                theta_N1_list.append(group["theta_N1"][:])
-                theta_N2_list.append(group["theta_N2"][:])
+                theta_Gaussian_list.append(group["theta_Gaussian"][:])
+                theta_MaxEnt_list.append(group["theta_MaxEnt"][:])
 
     if return_parameters:
         return (
-            S_Emp, S_TUR, S_N1, S_N2,
-            time_tur, time_n1, time_n2,
-            np.array(theta_N1_list), np.array(theta_N2_list)
+            S_Emp, S_TUR, S_Gaussian, S_MaxEnt,
+            time_tur, time_Gaussian, time_MaxEnt,
+            np.array(theta_Gaussian_list), np.array(theta_MaxEnt_list)
         )
-    return S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2
+    return S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt
 
 def calc_spin(i_args):
     """
@@ -89,19 +89,19 @@ def calc_spin(i_args):
 
     # Compute 1-step Newton
     t0 = time.time()
-    sig_N1, theta_N1, _ = ep_estimator.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True)
-    N1 = Pi * sig_N1
-    theta_N1_np = theta_N1.detach().cpu().numpy()
-    time_n1 = time.time() - t0
+    sig_Gaussian, theta_Gaussian, _ = ep_estimator.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True)
+    N1 = Pi * sig_Gaussian
+    theta_Gaussian_np = theta_Gaussian.detach().cpu().numpy()
+    time_Gaussian = time.time() - t0
 
     # Compute empirical EP
     Emp = Pi * beta * float(utils.remove_i(J_i_t, i) @ ep_estimator.g_mean())
 
     # Compute 2-step Newton
-    sig_N2, theta_N2, _ = ep_estimator.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False)
-    N2 = Pi * sig_N2
-    theta_N2_np = theta_N2.detach().cpu().numpy()
-    time_n2 = time.time() - t0
+    sig_MaxEnt, theta_MaxEnt, _ = ep_estimator.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False)
+    N2 = Pi * sig_MaxEnt
+    theta_MaxEnt_np = theta_MaxEnt.detach().cpu().numpy()
+    time_MaxEnt = time.time() - t0
 
     # Free memory
     del S_i_t, J_i_t
@@ -117,11 +117,11 @@ def calc_spin(i_args):
         group.create_dataset("MTUR", data=MTUR)
         group.create_dataset("time_tur", data=time_tur)
         group.create_dataset("N1", data=N1)
-        group.create_dataset("theta_N1", data=theta_N1_np)
-        group.create_dataset("time_n1", data=time_n1)
+        group.create_dataset("theta_Gaussian", data=theta_Gaussian_np)
+        group.create_dataset("time_Gaussian", data=time_Gaussian)
         group.create_dataset("N2", data=N2)
-        group.create_dataset("theta_N2", data=theta_N2_np)
-        group.create_dataset("time_n2", data=time_n2)
+        group.create_dataset("theta_MaxEnt", data=theta_MaxEnt_np)
+        group.create_dataset("time_MaxEnt", data=time_MaxEnt)
         group.create_dataset("Emp", data=Emp)
 
     
@@ -151,12 +151,12 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
         results = load_results_from_file(file_name_out, N, return_parameters)
         if not return_parameters:
-            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2 = results
-            return np.array([S_Emp, S_TUR, S_N1, S_N2])
+            S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt = results
+            return np.array([S_Emp, S_TUR, S_Gaussian, S_MaxEnt])
         else:
-            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
+            S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt, theta_Gaussian, theta_MaxEnt = results
             data = np.load(file_name)
-            return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), data['J']
+            return np.array([S_Emp, S_TUR, S_Gaussian, S_MaxEnt]), np.array(theta_Gaussian), np.array(theta_MaxEnt), data['J']
     print()
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
@@ -228,20 +228,20 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     # --------------------------------------------
     results = load_results_from_file(file_name_out, N, return_parameters)
     if return_parameters:
-        S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
+        S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt, theta_Gaussian, theta_MaxEnt = results
     else:
-        S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2 = results
+        S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt = results
 
     print("\n[Results]")
-    print(f"  Empirical       : {S_Emp:.6f}")
-    print(f"  MTUR            : {S_TUR:.6f}   | Time: {time_tur:.2f} s")
-    print(f"  1-step Newton   : {S_N1:.6f}   | Time: {time_n1:.2f} s")
-    print(f"  2-step Newton   : {S_N2:.6f}   | Time: {time_n2:.2f} s")
+    print(f"  Empirical     : {S_Emp:.6f}")
+    print(f"  MTUR          : {S_TUR:.6f}   | Time: {time_tur:.2f} s")
+    print(f"  Gaussian      : {S_Gaussian:.6f}   | Time: {time_Gaussian:.2f} s")
+    print(f"  MaxEnt        : {S_MaxEnt:.6f}   | Time: {time_MaxEnt:.2f} s")
     print("-" * 70)
 
     if return_parameters:
         data = np.load(file_name)
-        return np.array([S_Emp, S_TUR, S_N1, S_N2]), theta_N1, theta_N2, data["J"]
+        return np.array([S_Emp, S_TUR, S_Gaussian, S_MaxEnt]), theta_Gaussian, theta_MaxEnt, data["J"]
     else:
-        return np.array([S_Emp, S_TUR, S_N1, S_N2])
+        return np.array([S_Emp, S_TUR, S_Gaussian, S_MaxEnt])
         
