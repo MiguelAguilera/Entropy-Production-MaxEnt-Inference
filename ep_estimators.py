@@ -540,7 +540,7 @@ class EPEstimators(object):
                         print(f"[Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
                         break
                     elif test_drop > 0 and train_gain > tol :
-                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
+                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
                         break
                     elif f_new_tst > np.log(tst.nsamples):
                         print(f"[Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
