@@ -90,47 +90,6 @@ Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defau
 def numpy_to_torch(X):
     return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
 
-def get_EP_MTUR_(g_samples, rev_g_samples, linsolve_eps=1e-4):
-    """
-    Estimate entropy production using the Multidimensional TUR:
-        σ ≈ gᵀ · Cov⁻¹ · g
-    with g = (⟨g⟩_p - ⟨g⟩_p̃) / 2 and Cov from (p + p̃)/2.
-
-    Args:
-        g_samples (torch.Tensor): Forward samples (nsamples x nobservables)
-        rev_g_samples (torch.Tensor): Reverse samples (nsamples x nobservables)
-        linsolve_eps (float): Regularization constant for stability.
-
-    Returns:
-        dict: {'objective': EP estimate, 'theta': optimal vector}
-    """
-    assert g_samples.shape == rev_g_samples.shape
-    if isinstance(g_samples, np.ndarray):
-        g_samples = numpy_to_torch(g_samples)
-    if isinstance(rev_g_samples, np.ndarray):
-        rev_g_samples = numpy_to_torch(rev_g_samples)
-    assert g_samples.device == rev_g_samples.device
-    device = g_samples.device
-    
-    # Estimate expectations and covariance under the mixtures (p + p̃), (p - p̃)
-    g_ford_plus_back  = torch.cat([g_samples, rev_g_samples], dim=0)
-    g_ford_minus_back  = torch.cat([g_samples, -rev_g_samples], dim=0)
-    
-    g_mean_ford_minus_back = g_ford_minus_back.mean(dim=0)
-    g_mean_ford_plus_back = g_ford_plus_back.mean(dim=0)
-    
-    g_cov_ford_plus_back = (g_ford_plus_back.T @ g_ford_plus_back) / g_ford_plus_back.shape[0] - torch.outer(g_mean_ford_plus_back, g_mean_ford_plus_back)
-
-    # Regularization
-    A = g_cov_ford_plus_back + linsolve_eps * torch.eye(g_cov_ford_plus_back.shape[0], device=device)
-
-    # EP estimate using Multidimensional TUR:
-    # σ = 2 * mᵀ · H⁻¹ · m
-    sigma = 2 * (g_mean_ford_minus_back @ torch.linalg.inv(A) @ g_mean_ford_minus_back).item()
-
-    return sigma
-
-
 
 class EPEstimators(object):
     # EP estimators based on optimizing our variational principle
