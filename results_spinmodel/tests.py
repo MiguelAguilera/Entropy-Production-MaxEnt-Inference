@@ -59,7 +59,6 @@ def run_inference(beta, J, S, F, num_chunks=None):
             J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
             spin_emp = beta * J_without_i @ g_mean
             
-            spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
             spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
             
             # Full optimization with trust-region Newton method and holdout 
@@ -67,6 +66,10 @@ def run_inference(beta, J, S, F, num_chunks=None):
 
             # Full optimization with gradient ascent method 
             spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
+
+            # Multidimensional TUR
+            spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, g_samples, num_chunks=num_chunks)
+            
 
             sigma_emp  += p_i * spin_emp
             sigma_g    += p_i * spin_full

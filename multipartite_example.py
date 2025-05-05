@@ -42,6 +42,7 @@ with torch.no_grad():
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp  = beta * J_without_i @ g_mean
 
+        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
         obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
@@ -54,6 +55,9 @@ with torch.no_grad():
         # Full optimization with gradient ascent method 
         spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
+        # Multidimensional TUR
+        spin_MTUR = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)             
+        
         sigma_emp  += p_i * spin_emp
         sigma_g    += p_i * spin_full
         sigma_N1   += p_i * spin_N1
