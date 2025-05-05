@@ -1,15 +1,18 @@
-import os, sys, time, gc, re
 import numpy as np
-import torch
-import h5py
-import hdf5plugin  # Required to read compressed HDF5 files (even if unused)
-from threading import Thread
 from tqdm import tqdm
+import re
+import h5py
+import hdf5plugin # This needs to be imported even thought its not explicitly used
+import time, os, sys, gc
+from threading import Thread
 
-import utils
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
+import torch
 
 sys.path.insert(0, '..')
 from ep_multipartite import EPEstimators
+import utils
+
 
 # -------------------------------
 # Entropy Production Calculation Functions
@@ -147,13 +150,12 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
         results = load_results_from_file(file_name_out, N, return_parameters)
-        return results if return_parameters else np.array(results[:4])
-
-    # Infer beta from filename if needed
-    if beta is None:
-        beta_str = re.search(r'_beta_([0-9.]+)', file_name).group(1)
-        beta = float(beta_str)
-
+        if not return_parameters:
+            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2 = results
+            return np.array([S_Emp, S_TUR, S_N1, S_N2])
+        else:
+            S_Emp, S_TUR, S_N1, S_N2, time_tur, time_n1, time_n2, theta_N1, theta_N2 = results
+            return np.array([S_Emp, S_TUR, S_N1, S_N2]), np.array(theta_N1), np.array(theta_N2), J
     print()
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N} | β = {beta:.4f}")
@@ -221,7 +223,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
 
 
     # --------------------------------------------
-    # 🧾 Return or print results
+    # Return or print results
     # --------------------------------------------
     results = load_results_from_file(file_name_out, N, return_parameters)
     if return_parameters:
@@ -241,4 +243,4 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         return np.array([S_Emp, S_TUR, S_N1, S_N2]), theta_N1, theta_N2, data["J"]
     else:
         return np.array([S_Emp, S_TUR, S_N1, S_N2])
-
+        

@@ -1,11 +1,8 @@
 import os, sys
 import argparse
 import numpy as np
-import torch
 from matplotlib import pyplot as plt
 
-
-sys.path.insert(0, '..')
 from get_spin_EP import *
 
 if __name__ == "__main__":
