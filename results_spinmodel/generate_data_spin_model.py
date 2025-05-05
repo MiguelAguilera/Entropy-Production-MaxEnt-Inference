@@ -29,7 +29,6 @@ def save_data(file_name, J, S, F, beta, args):
         DJ=args.DJ,
         J0=args.J0,
         rep=args.rep,
-        num_steps=args.num_steps,
         trials=args.trials,
         seed=args.seed,
     )
@@ -40,8 +39,6 @@ def save_data(file_name, J, S, F, beta, args):
 # Argument Parsing
 # -------------------------------
 parser = argparse.ArgumentParser(description="Run spin model simulations with varying beta values.")
-parser.add_argument("--num_steps", type=int, default=2**7,
-                    help="Number of simulation steps (default: 128).")
 parser.add_argument("--rep", type=int, default=1_000_000,
                     help="Number of repetitions for the simulation (default: 1000000).")
 parser.add_argument("--trials", type=int, default=1,
@@ -128,18 +125,18 @@ for beta_ix, beta in enumerate(betas):
     if args.patterns is None:
         if args.num_neighbors is None:
             file_name = (
-                f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-                f"{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
+                f"{BASE_DIR_MODE}/run_reps_{args.rep}_N_{args.N:06d}_"
+                f"beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
             )
         else:
             file_name = (
-                f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-                f"{args.N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+                f"{BASE_DIR_MODE}/run_reps_{args.rep}_N_{args.N:06d}_"
+                f"beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
             )
     else:
         file_name = (
-            f"{BASE_DIR_MODE}/run_reps_{args.rep}_steps_{args.num_steps}_"
-            f"{args.N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+            f"{BASE_DIR_MODE}/run_reps_{args.rep}_N_{args.N:06d}_"
+            f"beta_{beta}_patterns_{args.patterns}.npz"
         )
 
 
@@ -154,7 +151,7 @@ for beta_ix, beta in enumerate(betas):
 
     start_time = time.time()
     S, F = spin_model.run_simulation(
-        beta=beta, H=H, J=J, warmup_steps_per_spin=args.num_steps, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
+        beta=beta, H=H, J=J, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
     )
 
     print(f'Sampled {S.shape[0]} states, {F.shape[0]*F.shape[1]} transitions, {(F==1).sum()} flips in  {time.time()-start_time:.3f}s')
