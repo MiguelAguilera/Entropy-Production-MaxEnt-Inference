@@ -10,7 +10,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
 sys.path.insert(0, '..')
-from ep_multipartite import EPEstimators
+from ep_estimators import EPEstimators
 import utils
 
 
@@ -67,6 +67,13 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
         )
     return S_Emp, S_TUR, S_Gaussian, S_MaxEnt, time_tur, time_Gaussian, time_MaxEnt
 
+def get_g_observables(S_i, i):
+    g_samples = -2 * np.einsum('i,ij->ij', S_i[:, i], S_i)
+    # We remove the i-th observable because its always 1
+    g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
+    return g_samples
+    
+    
 def calc_spin(i_args):
     """
     Performs entropy production estimation for a single spin using multiple methods.
@@ -79,11 +86,24 @@ def calc_spin(i_args):
         return None
 
     Pi = nflips / T
-    ep_estimator = EPEstimators(S_i_t, i, num_chunks=5)
+    
+    mask = torch.ones(S_i_t.shape[1], dtype=bool)
+    mask[i] = False
+    g_samples = -2 * S_i_t[:, i][:, None] * S_i_t[:,mask]
+
+    g_mean      = g_samples.mean(axis=0)
+    J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
+
+    # Calculate empirical estimate of true EP
+    spin_emp  = beta * J_without_i @ g_mean
+    
+    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
+#    ep_estimator = EPEstimators(S_i_t, i, num_chunks=5)
 
     # Compute MTUR
     t0 = time.time()
-    sig_MTUR, _, _ = ep_estimator.get_EP_MTUR()
+#    sig_MTUR, _, _ = ep_estimator.get_EP_MTUR()
+    sig_MTUR = 0
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 
@@ -95,9 +115,9 @@ def calc_spin(i_args):
     time_Gaussian = time.time() - t0
 
     # Compute empirical EP
-    Emp = Pi * beta * float(utils.remove_i(J_i_t, i) @ ep_estimator.g_mean())
+    Emp = Pi * spin_emp
 
-    # Compute 2-step Newton
+    # Compute Newton estimation
     sig_MaxEnt, theta_MaxEnt, _ = ep_estimator.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False)
     N2 = Pi * sig_MaxEnt
     theta_MaxEnt_np = theta_MaxEnt.detach().cpu().numpy()

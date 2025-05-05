@@ -158,7 +158,7 @@ class EPEstimators(object):
                         
                         K += exp_tilt * g_chunk @ g_chunk.T
 
-                vals['tilted_covariance'] = K / self.nsamples / norm_const - mean @ mean.T
+                vals['tilted_covariance'] = K / self.nsamples / norm_const - mean[:, None] @ mean[None, :]  
 
         return vals
 
