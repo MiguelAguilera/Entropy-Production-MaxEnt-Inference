@@ -111,8 +111,6 @@ if args.patterns is None:
 else:
     J = spin_model.get_couplings_patterns(N=args.N, L=args.patterns)
 
-H = np.zeros(args.N).astype(DTYPE)
-
 # -------------------------------
 # Run Simulations
 # -------------------------------
@@ -151,7 +149,7 @@ for beta_ix, beta in enumerate(betas):
 
     start_time = time.time()
     S, F = spin_model.run_simulation(
-        beta=beta, H=H, J=J, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
+        beta=beta, J=J, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
     )
 
     print(f'Sampled {S.shape[0]} states, {F.shape[0]*F.shape[1]} transitions, {(F==1).sum()} flips in  {time.time()-start_time:.3f}s')
