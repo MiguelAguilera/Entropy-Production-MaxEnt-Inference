@@ -20,7 +20,7 @@ from collections import namedtuple
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
-from utils import * 
+from utils import *
 
 # EP estimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
@@ -111,7 +111,7 @@ class EPEstimators(object):
                     
                     K += (4 * S_chunk.T) @ S_chunk
 
-                    empty_cache()
+                    empty_torch_cache()
             K /= self.nflips
 
             self.g_secondmoments_ = remove_i_rowcol(K, self.i)
@@ -165,7 +165,7 @@ class EPEstimators(object):
                 th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
                 K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
 
-                empty_cache()
+                empty_torch_cache()
 
         K /= (self.nflips * Z)
 
