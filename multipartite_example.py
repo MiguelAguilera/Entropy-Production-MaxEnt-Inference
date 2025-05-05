@@ -7,7 +7,6 @@ import torch
 
 import spin_model
 import ep_estimators as epm
-#import ep_multipartite as epm
 import utils
 utils.set_default_torch_device()
 
@@ -29,6 +28,13 @@ print(f"Samples {total_flips} transitions in {time.time()-stime:.3f}s")
 sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
 stime = time.time()
+
+def get_g_observables(S_i, i):
+    g_samples = -2 * np.einsum('i,ij->ij', S_i[:, i], S_i)
+    # We remove the i-th observable because its always 1
+    g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
+    return g_samples
+
 with torch.no_grad():
 
     # Because system is multipartite, we can separately estimate EP for each spin
@@ -38,17 +44,13 @@ with torch.no_grad():
         # Select states in which spin i flipped and use it create object for EP estimation 
         S_i = S[F[:,i],:]
 
-        if True:
-            g_samples = -2 * S_i[:, i][:, None] * S_i
-            g_mean    = g_samples.mean(axis=0)
+        g_samples   = get_g_observables(S_i, i)
+        g_mean      = g_samples.mean(axis=0)
+        J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
 
-            print(g_mean.shape, J[i,:].shape)
-            spin_emp = beta * J[i,:] @ g_mean
-
-            obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
-        else:
-            obj = epm.EPEstimators(S=S_i, i=i)
-            spin_emp = beta * J[i,:] @ utils.add_i(obj.g_mean(),i).cpu().numpy()
+        # Calculate empirical estimate of true EP
+        spin_emp  = beta * J_without_i @ g_mean
+        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
         # spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
         spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton

@@ -57,19 +57,19 @@ class EPEstimators(object):
                 raise Exception("rev_g_samples must be a torch tensor or numpy array")
 
 
-        self.g_mean        = g_mean
-        self.rev_g_samples = rev_g_samples
+        self.g_mean           = g_mean
+        self.rev_g_samples    = rev_g_samples
         self.nsamples, self.nobservables = rev_g_samples.shape
-        self.device        = rev_g_samples.device
+        self.device           = rev_g_samples.device
 
-        assert 0 <= holdout_fraction <= 1
+        assert holdout_fraction is None or (0 <= holdout_fraction <= 1)
         self.holdout_fraction = holdout_fraction
         self.holdout_shuffle  = holdout_shuffle
 
-        self.num_chunks = num_chunks
+        self.num_chunks       = num_chunks
 
-        assert linsolve_eps >= 0
-        self.linsolve_eps = linsolve_eps
+        assert linsolve_eps  >= 0
+        self.linsolve_eps     = linsolve_eps
             
         # Used for copying of object
         self._init_args = ['g_mean', 'holdout_fraction', 'holdout_shuffle', 'num_chunks', 'linsolve_eps']
@@ -129,9 +129,9 @@ class EPEstimators(object):
         # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
         # The same multiplicative corrections enters into the normalization constant and the tilted
         # means and covariance, so its cancels out
-        th_g_max    = torch.max(th_g)
-        exp_tilt   = torch.exp(th_g - th_g_max)
-        norm_const = torch.mean(exp_tilt)
+        th_g_max    = 0 # torch.max(th_g)
+        exp_tilt    = torch.exp(th_g - th_g_max)
+        norm_const  = torch.mean(exp_tilt)
 
         if return_objective:
             # To return 'true' normalization constant, we need to correct again for th_g_max
