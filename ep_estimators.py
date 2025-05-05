@@ -60,7 +60,8 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
 
     else:
         # Chunked computation
-        combined_cov = torch.zeros((num_total, num_total), device=g_samples.device)
+        num_observables = g_samples.shape[1]
+        combined_cov = torch.zeros((num_observables, num_observables), device=g_samples.device)
         chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
 
         for r in range(num_chunks):
