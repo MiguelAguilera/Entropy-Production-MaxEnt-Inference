@@ -12,6 +12,7 @@ import torch
 
 sys.path.insert(0, '..')
 from methods_EP_parallel import *
+from ep_estimators import EPEstimators, tilted_statistics_bilinear_upper
 
 parser = argparse.ArgumentParser(description="Estimate EP for Neuropixels data.")
 
@@ -112,10 +113,10 @@ def calc(sizes, session_type, session_id, r):
         multi_spin_changes = np.mean(num_changes >= 2)
 
         T = S.shape[1]
-        S_t = torch.from_numpy(S[:, 1:] * 2. - 1.)
-        S1_t = torch.from_numpy(S[:, :-1] * 2. - 1.)
+        S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.)
+        S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.)
 
-        rep = S_t.shape[1]
+        nsamples = S_t.shape[0]
 
         if L2 == 'lin.1':
             lambda_ = 0.1 / N
@@ -124,8 +125,18 @@ def calc(sizes, session_type, session_id, r):
         else:
             lambda_ = 0
 
-        print(f"  [Info] Estimating EP (repetitions: {rep})...")
-        EP_maxent = get_torch(S_t, S1_t, mode=2, tol_per_param=1E-6, lambda_=lambda_)
+        print(f"  [Info] Estimating EP (nsamples: {nsamples})...")
+        g_mean = (S1_t.T @ S_t - S_t.T @ S1_t )/ nsamples  # shape (nspins, nspins)
+        triu_indices = torch.triu_indices(N, N, offset=1)
+        g_mean = g_mean[triu_indices[0], triu_indices[1]]
+        ep_estimator = EPEstimators(g_mean=g_mean, tilted_statistics_function=tilted_statistics_bilinear_upper, X=S_t, Xp=S1_t )
+        EP_maxent, theta,_ = ep_estimator.get_EP_GradientAscent(lr = 0.1/N, holdout=True, tol=1e-8, use_Adam=True)
+#        EP_maxent = get_torch(S_t.T, S1_t.T, mode=2, tol_per_param=1E-6, lambda_=lambda_)
+#        print(E, E2, EP_maxent)
+#        exit()
+        
+#        ep_estimator = EPEstimators(S_t.T, S1_t.T)
+#        ep_estimator.get_EP_GradientAscent()
 
         EP[n] = EP_maxent
         R[n] = spike_sum

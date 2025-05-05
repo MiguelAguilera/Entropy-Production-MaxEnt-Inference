@@ -84,61 +84,165 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
 
+def theta_to_upper_matrix(theta, n):
+    """
+    Map a vectorized upper triangle (i < j) into a full n x n matrix.
+    The diagonal and lower triangle are set to 0.
+
+    Parameters:
+        theta : (n*(n-1)//2,) vector
+        n     : number of spins
+
+    Returns:
+        Theta : (n, n) matrix with theta values in the upper triangle
+    """
+    Theta = torch.zeros((n, n), device=theta.device)
+    triu_indices = torch.triu_indices(n, n, offset=1)
+    Theta[triu_indices[0], triu_indices[1]] = theta
+    return Theta
+
+def tilted_statistics_bilinear_upper(X, Xp, theta, return_mean=False, return_covariance=False, return_objective=False, g_mean=None):
+    """
+    Computes tilted statistics (objective, mean, covariance) for bilinear g_{ij} = x_i * x'_j,
+    using upper-triangular theta without materializing full g_samples.
+    """
+    n = X.shape[1]
+    nsamples = X.shape[0]
+    triu = torch.triu_indices(n, n, offset=1)
+    
+    # 1. θᵀg_k
+    Theta = torch.zeros((n, n), device=theta.device)
+    Theta[triu[0], triu[1]] = theta
+    Y = (Theta - Theta.T) @ Xp.T
+    th_g = torch.sum(X * Y.T, dim=1)
+
+    th_g_max = torch.max(th_g)
+    exp_tilt = torch.exp(th_g - th_g_max)
+    norm_const  = torch.mean(exp_tilt)
+    weights = exp_tilt / norm_const
+    vals = {}
+    
+    if return_objective:
+        # To return 'true' normalization constant, we need to correct again for th_g_max
+        log_Z = torch.log(norm_const) + th_g_max
+        vals['objective'] = float(theta @ g_mean - log_Z)
+
+    if return_mean or return_covariance:
+        weighted_X = X * weights[:, None]
+        mean_mat = (weighted_X.T @ Xp) / nsamples / norm_const  # shape (n, n)
+        mean_mat_asymm = mean_mat - mean_mat.T
+        g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
+        vals['tilted_mean'] = g_mean_vec
+
+    return vals
+
+    
+        
 class EPEstimators(object):
     # EP estimators based on optimizing our variational principle
     #  
-    def __init__(self, g_mean, rev_g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
-        # Arguments:
-        #   g_mean                   : 1d tensor (1 x nobservables) containing means of observables of interest
-        #                              under forward process
-        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process
-        #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
-        #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
-        #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
-        #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
-        #                               numerical stability of linear solvers
+    def __init__(self, g_mean, rev_g_samples=None, tilted_statistics_function=None,
+                 X=None, Xp=None, use_upper_only=False,
+                 holdout_fraction=0.5, holdout_shuffle=False,
+                 num_chunks=None, linsolve_eps=1e-4):
+        """
+        Parameters:
+            g_mean            : 1d tensor of length nobservables
+            rev_g_samples     : optional 2d tensor (nsamples x nobservables)
+            rev_g_function    : optional function(X, Xp) returning rev_g_samples or sufficient statistics
+            X, Xp             : required if rev_g_function is used
+            use_upper_only    : if True, interpret theta as flattened upper-triangle (i<j) of n x n
+            holdout_fraction  : fraction of samples for test split
+            holdout_shuffle   : shuffle data before splitting
+            num_chunks        : chunk size for memory-efficient covariance computation
+            linsolve_eps      : regularization for linear solves
+        """
 
-        g_mean        = numpy_to_torch(g_mean)
-        rev_g_samples = numpy_to_torch(rev_g_samples)
-
-        self.g_mean           = g_mean
-        self.rev_g_samples    = rev_g_samples
-        self.nsamples, self.nobservables = rev_g_samples.shape
-        self.device           = rev_g_samples.device
-
-        assert holdout_fraction is None or (0 <= holdout_fraction <= 1)
+        self.g_mean = numpy_to_torch(g_mean)
+        self.linsolve_eps = linsolve_eps
+        self.num_chunks = num_chunks
         self.holdout_fraction = holdout_fraction
-        self.holdout_shuffle  = holdout_shuffle
+        self.holdout_shuffle = holdout_shuffle
+        self.use_upper_only = use_upper_only
 
-        self.num_chunks       = num_chunks
+        if rev_g_samples is not None:
+            self.rev_g_samples = numpy_to_torch(rev_g_samples)
+            self.nsamples, self.nobservables = self.rev_g_samples.shape
+            self.device = self.rev_g_samples.device
+            self.use_function = False
 
-        assert linsolve_eps  >= 0
-        self.linsolve_eps     = linsolve_eps
-            
-        # Used for copying of object
-        self._init_args = ['g_mean', 'holdout_fraction', 'holdout_shuffle', 'num_chunks', 'linsolve_eps']
+        elif tilted_statistics_function is not None:
+            assert X is not None and Xp is not None, "Must provide X and Xp when using rev_g_function"
+            self.tilted_statistics_function = tilted_statistics_function
+            self.X = numpy_to_torch(X)
+            self.Xp = numpy_to_torch(Xp)
+            self.nsamples, self.nspins = self.X.shape
+            self.nobservables = self.g_mean.shape[0]
+            self.device = self.X.device
+            self.use_function = True
+
+        else:
+            raise ValueError("Must provide either rev_g_samples or rev_g_function")
+
+        assert 0 <= holdout_fraction <= 1, "holdout_fraction must be between 0 and 1"
+        assert linsolve_eps >= 0, "linsolve_eps must be non-negative"
+
+        self._init_args = [
+            'g_mean', 'holdout_fraction', 'holdout_shuffle',
+            'num_chunks', 'linsolve_eps', 'use_upper_only'
+        ]
 
         
     def split_train_test(self):
-        # Split current data set into training part and heldout testing part
-        if not hasattr(self, 'trn_tst_split_'): # training and testign splits are cached
-            if self.holdout_shuffle:
-                perm = np.random.permutation(self.nsamples)
-                rev_g_samples = self.rev_g_samples[perm]
+        # Split current data set into training and heldout testing part
+        if not hasattr(self, 'trn_tst_split_'):
+
+            trn_nsamples = self.nsamples - int(self.nsamples * self.holdout_fraction)
+
+            kw_args = {k: getattr(self, k) for k in self._init_args}
+
+            if not self.use_function:
+                if self.holdout_shuffle:
+                    perm = np.random.permutation(self.nsamples)
+                    rev_g_samples = self.rev_g_samples[perm]
+                else:
+                    rev_g_samples = self.rev_g_samples
+
+                trn = EPEstimators(
+                    rev_g_samples=rev_g_samples[:trn_nsamples],
+                    **kw_args
+                )
+                tst = EPEstimators(
+                    rev_g_samples=rev_g_samples[trn_nsamples:],
+                    **kw_args
+                )
+
             else:
-                rev_g_samples = self.rev_g_samples
+                if self.holdout_shuffle:
+                    perm = np.random.permutation(self.nsamples)
+                    X = self.X[perm]
+                    Xp = self.Xp[perm]
+                else:
+                    X = self.X
+                    Xp = self.Xp
 
-            trn_nsamples = self.nsamples - int(self.nsamples*self.holdout_fraction)
+                trn = EPEstimators(
+                    X=X[:trn_nsamples], Xp=Xp[:trn_nsamples],
+                    tilted_statistics_function=self.tilted_statistics_function,
+                    **kw_args
+                )
+                tst = EPEstimators(
+                    X=X[trn_nsamples:], Xp=Xp[trn_nsamples:],
+                    tilted_statistics_function=self.tilted_statistics_function,
+                    **kw_args
+                )
 
-            kw_args = {k : getattr(self,k) for k in self._init_args}
-            trn = EPEstimators(rev_g_samples=rev_g_samples[:trn_nsamples,:], **kw_args)
-            tst = EPEstimators(rev_g_samples=rev_g_samples[trn_nsamples:,:], **kw_args)
             self.trn_tst_split_ = trn, tst
 
         return self.trn_tst_split_
 
 
+    
     # ====================================================================================
     # Methods to compute observable statistics under tilted reverse distribution
     # ====================================================================================
@@ -148,10 +252,21 @@ class EPEstimators(object):
 
         assert return_mean or return_covariance or return_objective
 
+
+        if hasattr(self, 'tilted_statistics_function') and self.tilted_statistics_function is not None:
+            return self.tilted_statistics_function(
+                X=self.X, Xp=self.Xp, theta=theta,
+                return_mean=return_mean,
+                return_covariance=return_covariance,
+                return_objective=return_objective,
+                g_mean=self.g_mean
+            )
+
         vals       = {}
 
         with torch.no_grad():
-            th_g       = self.rev_g_samples @ theta
+        
+            th_g = self.rev_g_samples @ theta
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
             # The same multiplicative corrections enters into the normalization constant and the tilted
@@ -353,7 +468,7 @@ class EPEstimators(object):
 
 
 
-    def get_EP_GradientAscent(self, theta_init=None, holdout=False, lr=0.01, max_iter=1000, tol=1e-4, verbose=False,
+    def get_EP_GradientAscent(self, theta_init=None, holdout=False, lr=0.01, max_iter=1000, min_iter=100, tol=1e-4, verbose=False,
                               use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
         """
         Estimate EP using gradient ascent algorithm
@@ -391,7 +506,7 @@ class EPEstimators(object):
 
             m = torch.zeros_like(new_theta)
             v = torch.zeros_like(new_theta)
-
+            
             for t in range(max_iter):
                 tilted_stats = trn._get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
                 f_new_trn    = tilted_stats['objective']
@@ -402,22 +517,36 @@ class EPEstimators(object):
                 # Different conditions that will stop optimization. See get_EP_Newton above
                 # for a description of different branches
                 last_round = False # flag that indicates whether to break after updating values
-                if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:
+                if is_infnan(f_new_trn):
+                    print(f"[Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
                     break
+#                elif f_new_trn <= f_cur_trn and t > min_iter:
+#                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+#                    break
                 elif f_new_trn > np.log(trn.nsamples):
+                    print(f"[Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                     f_new_trn = np.log(trn.nsamples)
                     last_round = True
-                elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                elif np.abs(f_new_trn - f_cur_trn) <= tol:
+                    print(f"[Converged] Training objective change below tol={tol} at iter {t}")
                     last_round = True
 
                 if holdout:
                     f_new_tst = tst.get_objective(new_theta) 
-                    if is_infnan(f_new_tst) or f_new_tst <= f_cur_tst:
+                    train_gain = f_new_trn - f_cur_trn
+                    test_drop = f_cur_tst - f_new_tst
+                    if is_infnan(f_new_tst):
+                        print(f"[Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
+                        break
+                    elif test_drop > 0 and train_gain > tol :
+                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
                         break
                     elif f_new_tst > np.log(tst.nsamples):
+                        print(f"[Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                         f_new_tst = np.log(tst.nsamples)
                         last_round = True
                     elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                        print(f"[Converged] Test objective change below tol={tol} at iter {t}")
                         last_round = True
 
                 f_cur_trn, theta = f_new_trn, new_theta
