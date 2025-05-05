@@ -129,13 +129,12 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
     N = J.shape[0]
     if H is None:
         H = np.zeros(N, dtype=DTYPE)
-    
     betaJ = (beta*J).astype(DTYPE)
     betaH = (beta*H).astype(DTYPE)
 
-    # Explain what happens here        
+    # Define matrix of spin states and spin flips      
     S = np.empty((samples_per_spin, N), dtype=np.int8)
-    F = np.empty((samples_per_spin, N), dtype=np.bool)
+    F = np.empty((samples_per_spin, N), dtype=np.bool_)
 
     samples_per_trial = samples_per_spin//num_restarts
     
@@ -174,7 +173,7 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
                 s1[i] = GlauberStep(betaH[i], betaJ[i, :], s)
 
             # Indicates if spin changed: 1 if flipped, 0 otherwise
-            F[sample_ix, :] = ((1-s1 * s)/2).astype(np.bool)  
+            F[sample_ix, :] = ((1-s1 * s)/2).astype(np.bool_)  
 
             if progressbar and sample_ix % print_every == 0:
                 with objmode():
