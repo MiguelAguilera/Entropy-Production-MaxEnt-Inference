@@ -6,11 +6,14 @@ import re
 import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
-import os
+import os, sys
 import gc
 from threading import Thread
-from ep_multipartite import EPEstimators
 import utils
+
+
+sys.path.insert(0, '..')
+from ep_multipartite import EPEstimators
 
 # -------------------------------
 # Entropy Production Calculation Functions
@@ -53,13 +56,13 @@ def get_spin_data(i, file_name, cap=None):
 #    return device
     
 #def calc_spin(i_args):
-#    i, N, rep, T, file_name, file_name_out = i_args
+#    i, N, beta, rep, T, file_name, file_name_out = i_args
 
 #    cap=1000000
 #    S_i, J_i, nflips = get_spin_data(i, file_name, cap= cap)
     
 def calc_spin(i_args):
-    i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips = i_args
+    i, N, beta, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips = i_args
 
 
     num_chunks = 5
@@ -89,7 +92,7 @@ def calc_spin(i_args):
     time_n1 = time.time() - t0
 
 
-    Emp = Pi * beta * float(utils.remove_i(J_i_t,i) @ obj.g_mean())
+    Emp = Pi * beta * float(utils.remove_i(J_i_t,i) @ ep_estimator.g_mean())
     del J_i_t
     torch.cuda.empty_cache()
     
@@ -154,7 +157,7 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
         
 
 ##def calc_spin_group(group_args):
-##    indices, N, rep, T, file_name, file_name_out, progress, lock, check_memory = group_args
+##    indices, N, beta, rep, T, file_name, file_name_out, progress, lock, check_memory = group_args
 
 ##    cuda_available = torch.cuda.is_available()
 ##    if cuda_available and check_memory:
@@ -168,7 +171,7 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
 ##        if i + 1 < N:
 ##            preload_thread = Thread(target=lambda: get_spin_data(i+1, file_name, cap= cap))
 ##            preload_thread.start()
-##        calc_spin((i, N, rep, T, file_name, file_name_out, S_i, J_i, nflips))
+##        calc_spin((i, N, beta, rep, T, file_name, file_name_out, S_i, J_i, nflips))
 ##        with lock:
 ##            progress.value += 1
 ##        del S_i, J_i
@@ -177,7 +180,7 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
 ##            preload_thread.join()
 ##            S_i, J_i, nflips = get_spin_data(i+1, file_name, cap= cap)
      
-def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=False, num_processes = 2, overwrite=True, check_memory=True):
+def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, parallel=False, num_processes = 2, overwrite=True, check_memory=True):
     """
     Compute entropy production rate (EP) estimates using multiple methods for a spin system.
 
@@ -188,12 +191,8 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     Returns:
         np.ndarray: EP estimates [empirical, MTUR, Newton-1, Newton-2]
     """
-    
     data = np.load(file_name)
     J = data["J"]
-    if 'H' in data:
-        H = data['H']
-        assert np.all(H == 0), "Non-zero local fields are not supported"
     
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
@@ -269,7 +268,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
             del S_i, J_i # Free RAM
             
             # Compute
-            calc_spin((i, N, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, nflips))
+            calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, nflips))
             progress.value += 1
 
             # Preload next spin if needed
@@ -314,7 +313,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
 #            updater = Thread(target=update_bar)
 #            updater.start()
 
-#            args_list = [(indices, N, rep, T, file_name, file_name_out, progress, lock, gpu_lock) for indices in grouped_indices]
+#            args_list = [(indices, N, beta, rep, T, file_name, file_name_out, progress, lock, gpu_lock) for indices in grouped_indices]
 #            with ctx.Pool(processes=num_processes) as pool:
 #                pool.map(calc_spin_group, args_list)
 

@@ -1,10 +1,12 @@
-import os
+import os, sys
 import argparse
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from get_spin_EP import *
 
+
+sys.path.insert(0, '..')
+from get_spin_EP import *
 
 if __name__ == "__main__":
 
@@ -17,7 +19,7 @@ if __name__ == "__main__":
                         help="Number of simulation steps (default: 128)")
     parser.add_argument("--rep", type=int, default=1_000_000,
                         help="Number of repetitions for the simulation (default: 1,000,000)")
-    parser.add_argument("--size", type=int, default=100,
+    parser.add_argument("--N", type=int, default=100,
                         help="System size (default: 100)")
     parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                         help="Base directory to store simulation results (default: '~/MaxEntData').")
@@ -41,7 +43,7 @@ if __name__ == "__main__":
                         help="Number of neighbors for sparse connectivity (default: None).")
     args = parser.parse_args()
 
-    N = args.size
+    N = args.N
     rep = args.rep
 
     # -------------------------------
@@ -75,13 +77,13 @@ if __name__ == "__main__":
                 file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
                 file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.h5"
             else:
-                file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_sN_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+                file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
                 file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.h5"
         else:
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_beta_{beta}_patterns_{args.patterns}.npz"
             file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        EP[:, ib] = calc(N, rep, file_name, file_name_out, overwrite=args.overwrite)
+        EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite)
         
 
     #np.savez(file_name_out, EP=EP, betas=betas)
@@ -131,5 +133,5 @@ if __name__ == "__main__":
         )
 
         # Save and show figure
-        plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
+        plt.savefig('../img/Fig_1a.pdf', bbox_inches='tight')
         plt.show()
