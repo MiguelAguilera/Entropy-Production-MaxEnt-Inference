@@ -192,3 +192,12 @@ def get_g_observables(S, F, i):
     g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
 
     return g_samples
+
+
+def get_spin_empirical_EP(beta, J, i, g_mean):
+    import utils
+    # Calculate contributions to empirical EP from observables of spin i
+    g_mean_t   = utils.numpy_to_torch(g_mean)
+    J_i_t      = utils.numpy_to_torch(J[i,:])
+    J_i_t_no_i = utils.remove_i(J_i_t, i)   # remove i'th entry, due to our convention
+    return float(beta * J_i_t_no_i @ g_mean_t)
