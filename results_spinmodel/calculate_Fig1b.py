@@ -71,6 +71,7 @@ if __name__ == "__main__":
     if not os.path.exists(SAVE_DATA_DIR):
         print(f'Creating base directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR)
+        
     N = args.N
     rep = args.rep
     beta = np.round(args.beta, 8)
