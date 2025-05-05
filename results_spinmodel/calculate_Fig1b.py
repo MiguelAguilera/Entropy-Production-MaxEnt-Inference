@@ -70,7 +70,7 @@ if __name__ == "__main__":
     SAVE_DATA_DIR = 'ep_data/spin'
     if not os.path.exists(SAVE_DATA_DIR):
         print(f'Creating base directory: {SAVE_DATA_DIR}')
-        os.makedirs(SAVE_DATA_DIR)
+        os.makedirs(SAVE_DATA_DIR, exist_ok=True)
         
     N = args.N
     rep = args.rep
