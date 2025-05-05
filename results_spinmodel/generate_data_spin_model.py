@@ -1,5 +1,7 @@
-import os, time, argparse
+import sys, os, time, argparse
 import numpy as np
+
+sys.path.insert(0, '..')
 import spin_model
 
 def save_data(file_name, J, S, F, beta, args):

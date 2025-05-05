@@ -1,11 +1,12 @@
-import os, argparse, time, psutil
+import sys, os, argparse, time, psutil
 from collections import defaultdict 
 from tqdm import tqdm
-
 import numpy as np
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 import torch
+
+sys.path.insert(0, '..')
 import utils
 import ep_multipartite as epm
             

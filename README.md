@@ -2,7 +2,9 @@
 
 ## Nonequilibrium spin model
 
-See `spin_example.py` for a demonstration of how to generate data and estimate EP for the nonequilibrium spin model.
+The repository includes the following files:
+
+* See spin_example.py` for a demonstration of how to generate data and estimate EP for the nonequilibrium spin model.
 
 The script calls functions from `spin_model.py` to generate a random coupling matrix and to 
 run the Monte Carlo sampler (`spin_model.run_simulation(...)`). It then calls functions from `ep_multipartite.py` to estimate EP from sampled data based on observables $g_{ij}(\vec{\boldsymbol{x}}) =(x_{i,1}-x_{i,0})x_{j,0}$ described in the main text.

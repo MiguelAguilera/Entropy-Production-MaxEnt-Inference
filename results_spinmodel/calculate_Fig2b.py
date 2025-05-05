@@ -1,5 +1,7 @@
-import argparse
+import argparse, sys
 import numpy as np
+
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 import torch
 from matplotlib import pyplot as plt
 from pathlib import Path
@@ -8,6 +10,9 @@ from scipy.spatial.distance import squareform
 import matplotlib.colors as mcolors
 import h5py
 import hdf5plugin
+
+
+sys.path.insert(0, '..')
 from methods_EP_parallel import *
 
 parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for a neuropixels dataset.")
