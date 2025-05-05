@@ -6,7 +6,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS
 import torch
 
 import spin_model
-import ep_estimator as epm
+import ep_estimators as epm
 #import ep_multipartite as epm
 import utils
 utils.set_default_torch_device()
