@@ -116,33 +116,35 @@ if __name__ == "__main__":
     print(f"R² (dbetaJ vs. dtheta_Newton): {r2_N2:.4f}")
 
 
-    if not args.no_plot:
-        # -------------------------------
-        # Visualization
-        # -------------------------------
-        fig, ax = plt.subplots(figsize=(4, 4))
-        cmap = plt.get_cmap('inferno_r')
+    # -------------------------------
+    # Visualization
+    # -------------------------------
+    fig, ax = plt.subplots(figsize=(4, 4))
+    cmap = plt.get_cmap('inferno_r')
 
-        sns.scatterplot(
-            x=dbetaJ[filtered_indices],
-            y=dtheta_N2[filtered_indices],
-            color=cmap(0.75), s=10, alpha=0.7, rasterized=True
-        )
+    sns.scatterplot(
+        x=dbetaJ[filtered_indices],
+        y=dtheta_N2[filtered_indices],
+        color=cmap(0.75), s=10, alpha=0.7, rasterized=True
+    )
 
-        dbetaJ_min, dbetaJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
-        plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
-        plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
+    dbetaJ_min, dbetaJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
+    plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
+    plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
 
-        ticks = np.arange(-4, 5, 2)
-        ax.set_xticks(ticks)
-        ax.set_yticks(ticks)
+    ticks = np.arange(-4, 5, 2)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
 
-        plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
-        plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
+    plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
+    plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
+
     IMG_DIR='img'
     if not os.path.exists(IMG_DIR):
         print(f'Creating base directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
     plt.savefig(f'{IMG_DIR}/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
-    plt.show()
+
+    if not args.no_plot:
+        plt.show()
 

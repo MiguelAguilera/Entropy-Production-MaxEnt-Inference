@@ -76,47 +76,46 @@ if __name__ == "__main__":
         EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite)
         
 
-    if not args.no_plot:
-        # -------------------------------
-        # Plot Results
-        # -------------------------------
-        plt.rc('text', usetex=True)
-        plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-        plt.rc('legend', fontsize=20)
-        plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+    # -------------------------------
+    # Plot Results
+    # -------------------------------
+    plt.rc('text', usetex=True)
+    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
+    plt.rc('legend', fontsize=20)
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-        labels = [
-            r'$\Sigma$', 
-            r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
-            r'$\widehat{\Sigma}_{\bm g}$', 
-            r'${\Sigma}_{\bm g}$'
-        ]
+    labels = [
+        r'$\Sigma$', 
+        r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
+        r'$\widehat{\Sigma}_{\bm g}$', 
+        r'${\Sigma}_{\bm g}$'
+    ]
 
-        cmap = plt.get_cmap('inferno_r')
-        colors = [cmap(0.25), cmap(0.5), cmap(0.75)]#, cmap(1.)]
+    cmap = plt.get_cmap('inferno_r')
+    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]#, cmap(1.)]
 
-        plt.figure(figsize=(4, 4))
+    plt.figure(figsize=(4, 4))
 
-        # Plot each EP estimator
-        plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
-        for i in range(1, EP.shape[0]):
-            plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
-        plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
+    # Plot each EP estimator
+    plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
+    for i in range(1, EP.shape[0]):
+        plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
+    plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
 
-        # Axes and labels
-        plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
-        plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
-        plt.xlabel(r'$\beta$')
+    # Axes and labels
+    plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
+    plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
+    plt.xlabel(r'$\beta$')
 
-        # Legend
-        plt.legend(
-            ncol=1,
-            columnspacing=0.25,
-            handlelength=1.0,
-            handletextpad=0.25,
-            labelspacing=0.25,  # reduce vertical space between entries
-            loc='best'
-        )
+    # Legend
+    plt.legend(
+        ncol=1,
+        columnspacing=0.25,
+        handlelength=1.0,
+        handletextpad=0.25,
+        labelspacing=0.25,  # reduce vertical space between entries
+        loc='best'
+    )
 
     # Save and show figure
     IMG_DIR='img'
@@ -124,4 +123,6 @@ if __name__ == "__main__":
         print(f'Creating base directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
     plt.savefig(f'{IMG_DIR}/Fig_1a.pdf', bbox_inches='tight')
-    plt.show()
+
+    if not args.no_plot:
+        plt.show()
