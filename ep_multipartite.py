@@ -111,7 +111,6 @@ class EPEstimators(object):
                     
                     K += (4 * S_chunk.T) @ S_chunk
 
-                    empty_cache()
             K /= self.nflips
 
             self.g_secondmoments_ = remove_i_rowcol(K, self.i)
@@ -164,8 +163,6 @@ class EPEstimators(object):
                 
                 th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_padded)
                 K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
-
-                empty_cache()
 
         K /= (self.nflips * Z)
 
