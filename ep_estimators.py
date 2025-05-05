@@ -33,6 +33,7 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
     #                              under reverse process 
     #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
     #                              under reverse process 
+    # Optional arguments
     #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
     #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
     #                               numerical stability of linear solvers
@@ -351,7 +352,7 @@ class EPEstimators(object):
                                        : hyperparameters for adjusting trust radius
         """
 
-        with torch.no_grad():
+        with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
 
             if holdout:
                 trn, tst = self.split_train_test()
@@ -490,7 +491,7 @@ class EPEstimators(object):
           Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
         """
 
-        with torch.no_grad():
+        with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
             if holdout:
                 trn, tst = self.split_train_test()
