@@ -62,7 +62,7 @@ with torch.no_grad():
 print(f"\nEntropy production estimates (took {time.time()-stime:3f}s):")
 print(f"  Σ     (Empirical)                         :    {sigma_emp:.6f}")
 print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g:.6f}")
-print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g:.6f}")
+print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2:.6f}")
 print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1:.6f}")
 print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}")
 

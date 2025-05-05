@@ -20,7 +20,7 @@ from collections import namedtuple
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
-from utils import * 
+from utils import *
 
 # EP estimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP

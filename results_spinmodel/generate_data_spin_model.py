@@ -14,7 +14,7 @@ def save_data(file_name, J, S, F, beta, args):
             Coupling matrix parameters.
         S : 2d np.array (int8) of {-1,1}
             Indicates -1,1 sampled spin states
-        F_bin : 2d np.ndarray (bool)
+        F : 2d np.ndarray (bool)
             Indicates which spins flipped.
     """
     # Spin states S are converted to boolean format, this can sometimes reduce storage requirements
