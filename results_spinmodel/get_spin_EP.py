@@ -7,8 +7,7 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
 import os
-from joblib import Parallel, delayed
-from methods_EP_multipartite import *
+
 import gc
 from threading import Thread
 
@@ -27,7 +26,7 @@ def get_spin_data(i, file_name, cap=None):
     data = np.load(file_name)
 
     F_i = data["F"][:, i]
-    S_i = data["S"][F_i, :]
+    S_i = data["S_bin"][F_i, :]
     J_i = data["J"][i, :]
     nflips = S_i.shape[0]
     if cap is None:
@@ -261,8 +260,9 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     
     data = np.load(file_name)
     J = data["J"]
-    H = data["H"]
-    assert np.all(H == 0), "Non-zero local fields are not supported"
+    if 'H' in data:
+        H = data['H']
+        assert np.all(H == 0), "Non-zero local fields are not supported"
     
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
