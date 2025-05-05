@@ -1,12 +1,17 @@
-import argparse
+import sys, argparse, os
+from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
-import torch
-from methods_EP_parallel import *
-import os
-from pathlib import Path
+
 import h5py
 import hdf5plugin
+
+
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
+import torch
+
+sys.path.insert(0, '..')
+from methods_EP_parallel import *
 
 parser = argparse.ArgumentParser(description="Estimate EP for Neuropixels data.")
 
