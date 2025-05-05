@@ -177,3 +177,18 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
 
     return S, F
 
+
+def get_g_observables(S, F, i):
+    # Use S and F to select states in which spin i flipped
+    S_i = S[F[:,i],:]
+
+    # Given states S_i in which spin i flipped, calculate observables 
+    #        g(x) = g_{ij} = (x_i' - x_i) x_j 
+    # where x_i' and x_i indicate the state of spin i after and before the jump, 
+    # and x_j is the state of every other spin .
+    g_samples = -2 * np.einsum('i,ij->ij', S_i[:, i], S_i)
+    
+    # We remove the i-th observable because its always -2
+    g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
+    
+    return g_samples

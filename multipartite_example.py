@@ -29,27 +29,21 @@ sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
 stime = time.time()
 
-def get_g_observables(S_i, i):
-    g_samples = -2 * np.einsum('i,ij->ij', S_i[:, i], S_i)
-    # We remove the i-th observable because its always 1
-    g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
-    return g_samples
-
 with torch.no_grad():
 
     # Because system is multipartite, we can separately estimate EP for each spin
     for i in tqdm(range(N)):
         p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
-        # Select states in which spin i flipped and use it create object for EP estimation 
-        S_i = S[F[:,i],:]
-
-        g_samples   = get_g_observables(S_i, i)
+        # Calculate samples of g observables for states in which spin i changes state
+        g_samples   = spin_model.get_g_observables(S, F, i)
         g_mean      = g_samples.mean(axis=0)
-        J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
 
         # Calculate empirical estimate of true EP
+        J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp  = beta * J_without_i @ g_mean
+
+
         obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
         # spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
