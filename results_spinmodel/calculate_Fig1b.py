@@ -1,11 +1,11 @@
 import os
 import argparse
 import numpy as np
-import torch
 import h5py
 import hdf5plugin
 from matplotlib import pyplot as plt
 import seaborn as sns
+
 from get_spin_EP import *
 
 # -------------------------------
@@ -68,7 +68,7 @@ else:
     file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
 print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         
-EP, theta_N1,theta_N2, J =  calc(N, rep, file_name, file_name_out, return_parameters=True, overwrite=args.overwrite)
+EP, theta_N1,theta_N2, J =  calc(N, beta, rep, file_name, file_name_out, return_parameters=True, overwrite=args.overwrite)
 print(theta_N1.shape)
 dJ = J-J.T
 
