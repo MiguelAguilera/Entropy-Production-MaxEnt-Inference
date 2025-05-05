@@ -13,8 +13,6 @@
 
 import os, time
 import numpy as np
-import scipy
-
 from collections import namedtuple
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
