@@ -39,11 +39,10 @@ for i in tqdm(range(N)):
     g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
     g_mean                  = g_samples.mean(axis=0)
 
-    # Calculate empirical estimate of true EP
-    J_i_t      = utils.numpy_to_torch(J[i,:])
-    J_i_t_no_i = utils.remove_i(J_i_t, i)   # remove i'th entry, due to our convention
-    spin_emp   = float(beta * J_i_t_no_i @ g_mean)
+    # Calculate empirical estimate of true EP (contribution from i-th spin)
 
+    spin_emp = spin_model.get_spin_empirical_EP(beta, J, i, g_mean)
+    
     obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
     # 1 step of Newton
