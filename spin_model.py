@@ -29,7 +29,7 @@ def get_couplings_random(N, k=None, J0=0.0, DJ=1.0):
 
     if k is not None:
         assert(k >= 0)
-        mask = np.random.rand(N, N) < k/N
+        mask = np.random.rand(N, N) < k/(N-1)
         rnd *= mask
         norm_const = np.sqrt(k)
     else:
