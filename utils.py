@@ -6,6 +6,22 @@ import warnings
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable fallback for MPS backend
 import torch
 
+def batch_outer(X, num_chunks=None):
+    # Compute outer product X @ X.T/nrow. Do it in batches if requested for lower memory requirements
+    nrow, ncol = X.shape
+    if num_chunks is None:
+        K = X@X.T
+    else:
+        # Chunked computation, sometimes helpful for memory reasons
+        K = torch.zeros((ncol, ncol), device=X.device)
+        chunk_size = (nrow + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for r in range(num_chunks):
+            start = r * chunk_size
+            end = min((r + 1) * chunk_size, ncol)
+            g_chunk = X[start:end]
+            K += g_chunk @ g_chunk.T
+    return K/nrow
 
 
 # Helpful tensor processing functions

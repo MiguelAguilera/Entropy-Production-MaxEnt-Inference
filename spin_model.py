@@ -176,3 +176,4 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
         print()
 
     return S, F
+

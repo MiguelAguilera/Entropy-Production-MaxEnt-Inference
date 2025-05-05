@@ -6,7 +6,8 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS
 import torch
 
 import spin_model
-import ep_multipartite
+import ep_estimator as epm
+#import ep_multipartite as epm
 import utils
 utils.set_default_torch_device()
 
@@ -36,13 +37,20 @@ with torch.no_grad():
 
         # Select states in which spin i flipped and use it create object for EP estimation 
         S_i = S[F[:,i],:]
-        obj = ep_multipartite.EPEstimators(S_i, i)
 
-        # Empirical estimate 
-        g_expectations = utils.add_i( obj.g_mean(), i ).cpu().numpy()
-        spin_emp = beta * J[i,:] @ g_expectations
+        if True:
+            g_samples = -2 * S_i[:, i][:, None] * S_i
+            g_mean    = g_samples.mean(axis=0)
 
-        spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
+            print(g_mean.shape, J[i,:].shape)
+            spin_emp = beta * J[i,:] @ g_mean
+
+            obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
+        else:
+            obj = epm.EPEstimators(S=S_i, i=i)
+            spin_emp = beta * J[i,:] @ utils.add_i(obj.g_mean(),i).cpu().numpy()
+
+        # spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
         spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
         
         # Full optimization with trust-region Newton method and holdout 
@@ -54,7 +62,7 @@ with torch.no_grad():
         sigma_emp  += p_i * spin_emp
         sigma_g    += p_i * spin_full
         sigma_N1   += p_i * spin_N1
-        sigma_MTUR += p_i * spin_MTUR
+        #sigma_MTUR += p_i * spin_MTUR
         sigma_g2   += p_i * spin_grad
 
         utils.empty_torch_cache()
