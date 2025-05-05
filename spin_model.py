@@ -64,30 +64,27 @@ def get_couplings_patterns(N, L):
 
 # ***** Monte Carlo code  *****
 
-@njit('float32(float32, float32[::1], float32[::1])', inline='always')
-def GlauberStep(Hi, Ji, s):
+@njit('float32(float32[::1], float32[::1])', inline='always')
+def GlauberStep(Ji, s):
     """
     Perform a single Glauber update for a given spin.
 
     Arguments:
-        Hi (float32): Local field.
         Ji (array)  : Couplings to other N spins
         s (array)   : Current spin configuration.
 
     Returns:
         int         : New value of the spin (-1 or 1).
     """
-    h = Hi + Ji @ s
-    return float(int(np.random.rand() < (np.tanh(h) + 1) / 2) * 2 - 1)
+    return float(int(np.random.rand() < (np.tanh(Ji @ s) + 1) / 2) * 2 - 1)
 
 
-@njit('float32[:](float32[::1], float32[:,::1], float32[::1], int32)', inline='always')
-def ParallelGlauberStep(H, J, s, T=1):
+@njit('float32[:](float32[:,::1], float32[::1], int32)', inline='always')
+def ParallelGlauberStep(J, s, T=1):
     """
     Parallel Glauber dynamics: all spins are updated simultaneously.
 
     Args:
-        H (array): Local fields.
         J (matrix): Coupling matrix.
         s (array): Initial spin state.
         T (int): Number of Monte Carlo sweeps.
@@ -99,12 +96,12 @@ def ParallelGlauberStep(H, J, s, T=1):
     for t in range(T):
         s_p = s.copy()
         for i in range(size):
-            s[i] = GlauberStep(H[i], J[i, :], s_p)
+            s[i] = GlauberStep(J[i, :], s_p)
     return s
 
 
 @njit(parallel=True, fastmath=True, cache=True)
-def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000, 
+def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, 
                    num_restarts=1, sequential=True, progressbar=True):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
@@ -113,7 +110,6 @@ def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000,
     Args:
         beta (float)                : Inverse temperature
         J (2d np.array)             : NxN matrix of coupling coefficients
-        h (1d np.array)             : N-long vector of local fields (set to all 0s if None)
         warmup (float)              : Ratio of Monte Carlo steps in-between saved samples
         samples_per_spin (int)      : Number of samples per spin to return
                                       In between these samples, we use a thinning factor of N
@@ -128,7 +124,6 @@ def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000,
     """
     N = J.shape[0]
     betaJ = (beta*J).astype(DTYPE)
-    betaH = (beta*H).astype(DTYPE)
 
     # Define matrix of spin states and spin flips      
     S = np.empty((samples_per_spin, N), dtype=np.int8)
@@ -146,9 +141,9 @@ def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000,
         if sequential:
             indices = np.random.randint(0, N, int(N * warmup * samples_per_trial))
             for i in indices:
-                s[i] = GlauberStep(betaH[i], betaJ[i, :], s)
+                s[i] = GlauberStep(betaJ[i, :], s)
         else:
-            s = ParallelGlauberStep(betaH, betaJ, s, T=int(samples_per_trial * warmup))
+            s = ParallelGlauberStep(betaJ, s, T=int(samples_per_trial * warmup))
 
         # Now draw samples from steady state
         for r in range(samples_per_trial):
@@ -156,10 +151,10 @@ def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000,
             if sequential:
                 indices = np.random.randint(0, N, int(N))
                 for i in indices:
-                    s[i] = GlauberStep(betaH[i], betaJ[i, :], s)
+                    s[i] = GlauberStep(betaJ[i, :], s)
 
             else:
-                s = ParallelGlauberStep(betaH, betaJ, s, T=1)
+                s = ParallelGlauberStep(betaJ, s, T=1)
             
             # Save the sampled state
             sample_ix = trial*samples_per_trial + r
@@ -168,7 +163,7 @@ def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000,
             # Sample possible flips for each spoin
             s1 = np.empty(N, dtype=DTYPE)
             for i in range(N):
-                s1[i] = GlauberStep(betaH[i], betaJ[i, :], s)
+                s1[i] = GlauberStep(betaJ[i, :], s)
 
             # Indicates if spin changed: 1 if flipped, 0 otherwise
             F[sample_ix, :] = ((1-s1 * s)/2).astype(np.bool_)  
