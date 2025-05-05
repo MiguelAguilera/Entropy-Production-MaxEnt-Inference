@@ -7,7 +7,11 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
 import os
+<<<<<<< HEAD
 from joblib import Parallel, delayed
+=======
+
+>>>>>>> 806440e9bddcf8084c95a819e327c19a54277f4e
 import gc
 from threading import Thread
 from ep_multipartite import EPEstimators
@@ -192,8 +196,9 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
     
     data = np.load(file_name)
     J = data["J"]
-    H = data["H"]
-    assert np.all(H == 0), "Non-zero local fields are not supported"
+    if 'H' in data:
+        H = data['H']
+        assert np.all(H == 0), "Non-zero local fields are not supported"
     
     if os.path.exists(file_name_out) and not overwrite:
         print(f"[Info] Output file '{file_name_out}' already exists. Skipping computation.")
