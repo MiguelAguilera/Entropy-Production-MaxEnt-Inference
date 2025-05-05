@@ -7,11 +7,6 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
 import os
-<<<<<<< HEAD
-from joblib import Parallel, delayed
-=======
-
->>>>>>> 806440e9bddcf8084c95a819e327c19a54277f4e
 import gc
 from threading import Thread
 from ep_multipartite import EPEstimators
