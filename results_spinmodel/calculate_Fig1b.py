@@ -61,10 +61,10 @@ SAVE_DATA_DIR = 'ep_data/spin'
 # -------------------------------
 
 if args.patterns is None:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_N_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.npz"
     file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}_num_neighbors_{args.num_neighbors}.h5"
 else:
-    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_steps_{args.num_steps}_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
+    file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_{N:06d}_beta_{beta}_patterns_{args.patterns}.npz"
     file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
 print(f"[Loading] Reading data from file:\n  → {file_name}\n")
         
@@ -104,12 +104,17 @@ dtheta_N2 = theta_N2 - theta_N2.T
 
 upper_indices = np.triu_indices(N, k=1)  # Upper triangle indices
 
+# Mask for non-zero dJ values
+nonzero_mask = dJ[upper_indices] != 0
+
+# Apply the mask
+filtered_indices = (upper_indices[0][nonzero_mask], upper_indices[1][nonzero_mask])
 
 def R2(delta_theta, beta_delta_w):
     residual = delta_theta - beta_delta_w
     return 1-np.mean(residual**2) / np.var(delta_theta)
-r2_N1 = R2(dtheta_N1[upper_indices],J[upper_indices])
-r2_N2 = R2(dtheta_N2[upper_indices],J[upper_indices])
+r2_N1 = R2(dtheta_N1[filtered_indices],dJ[filtered_indices])
+r2_N2 = R2(dtheta_N2[filtered_indices],dJ[filtered_indices])
 print(f"R² (dJ vs. dtheta_Gaussian): {r2_N1:.4f}")
 print(f"R² (dJ vs. dtheta_Newton): {r2_N2:.4f}")
 
@@ -117,33 +122,37 @@ print(f"R² (dJ vs. dtheta_Newton): {r2_N2:.4f}")
 # Visualization
 # -------------------------------
 
-plt.figure(figsize=(4, 4))
+fig, ax = plt.subplots(figsize=(4, 4))
 
 cmap = plt.get_cmap('inferno_r')
 colors = [cmap(0.25),cmap(0.5),cmap(0.75)]
 
 # Scatter plot with Seaborn aesthetics
-sns.scatterplot(x=dJ[upper_indices], y=dtheta_N1[upper_indices], color=cmap(0.5), s=10, alpha=0.7,rasterized=True)
-sns.scatterplot(x=dJ[upper_indices], y=dtheta_N2[upper_indices], color=cmap(0.75), s=10, alpha=0.7,rasterized=True)
-sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100, label=r'$\bm{\hat\theta}$', color=cmap(0.5), s=20)
-sns.scatterplot(x=np.ones(2)*100, y=np.ones(2)*100,label=r'$\bm \theta^*$', color=cmap(0.75), s=20)
+#sns.scatterplot(x=np.ones(2)*0, y=np.ones(2)*0, label=r'$\bm{\hat\theta}$', color=cmap(0.5), s=20)
+#sns.scatterplot(x=np.ones(2)*0, y=np.ones(2)*0,label=r'$\bm \theta^*$', color=cmap(0.75), s=20)
+#sns.scatterplot(x=dJ[filtered_indices], y=dtheta_N1[filtered_indices], color=cmap(0.5), s=10, alpha=0.7,rasterized=True)
+sns.scatterplot(x=dJ[filtered_indices], y=dtheta_N2[filtered_indices], color=cmap(0.75), s=10, alpha=0.7,rasterized=True)
 
 # Add reference line
-dJ_min, dJ_max = np.min(dJ), np.max(dJ)
+dJ_min, dJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
 plt.plot([dJ_min, dJ_max], [dJ_min, dJ_max], 'k', linestyle='dashed')
-plt.axis([dJ_min*1.05, dJ_max*1.05,dJ_min*1.05, dJ_max*1.05])
+plt.axis([dJ_min*1.0, dJ_max*1.0,dJ_min*1.0, dJ_max*1.0])
 # Labels and title
+ticks = np.arange(-4,5,2)
+ax.set_xticks(ticks)
+ax.set_yticks(ticks)
+
 plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
-plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=-5)
+plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
 #plt.title(r"Comparison of $J_{ij} - J_{ji}$ vs. $\theta_{ij}$", fontsize=18)
 #plt.legend()
-plt.legend(
-    ncol=1,
-    columnspacing=0.5,   # Reduce space between columns
-    handlelength=1.,    # Shorten the length of legend lines
-    handletextpad=0.5,   # Reduce space between line and label
-    loc='best'           # You can adjust the location if needed,
-)
+#plt.legend(
+#    ncol=1,
+#    columnspacing=0.5,   # Reduce space between columns
+#    handlelength=1.,    # Shorten the length of legend lines
+#    handletextpad=0.5,   # Reduce space between line and label
+#    loc='best'           # You can adjust the location if needed,
+#)
 plt.savefig('img/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
 
 plt.show()

@@ -7,9 +7,10 @@ import h5py
 import hdf5plugin # This needs to be imported even thought its not explicitly used
 import time
 import os
-
 import gc
 from threading import Thread
+from ep_multipartite import EPEstimators
+import utils
 
 # -------------------------------
 # Entropy Production Calculation Functions
@@ -35,21 +36,21 @@ def get_spin_data(i, file_name, cap=None):
         return S_i[:cap, :], J_i, nflips
 
 
-def select_device(threshold=0.6):
-    if not torch.cuda.is_available():
-        return torch.device("cpu")
+#def select_device(threshold=0.6):
+#    if not torch.cuda.is_available():
+#        return torch.device("cpu")
 
-    device = torch.device("cuda")
-    allocated = torch.cuda.memory_allocated(device)
-    reserved = torch.cuda.memory_reserved(device)
-    total = torch.cuda.get_device_properties(device).total_memory
+#    device = torch.device("cuda")
+#    allocated = torch.cuda.memory_allocated(device)
+#    reserved = torch.cuda.memory_reserved(device)
+#    total = torch.cuda.get_device_properties(device).total_memory
 
-    usage = max(allocated, reserved) / total
-    if usage > threshold:
-        print(f"⚠️ GPU usage {usage:.2%} exceeds threshold — switching to CPU.")
-        return torch.device("cpu")
+#    usage = max(allocated, reserved) / total
+#    if usage > threshold:
+#        print(f"⚠️ GPU usage {usage:.2%} exceeds threshold — switching to CPU.")
+#        return torch.device("cpu")
 
-    return device
+#    return device
     
 #def calc_spin(i_args):
 #    i, N, rep, T, file_name, file_name_out = i_args
@@ -62,82 +63,44 @@ def calc_spin(i_args):
 
 
     num_chunks = 5
-#    if S_i_t.shape[1] <= 10:
-#        print(f"  [Warning] Skipping spin {i}: insufficient time steps")
-#        return None
-
+    if S_i_t.shape[0] <= 100:
+        print(f"  [Warning] Skipping spin {i}: insufficient spin flips")
+        return None
+#    print( S_i_t.shape[1])
 #    print(f"[Spin {i}] Running on device: {device}")
 #    S_i_t.to(device)
 #    J_i_t.to(device)
     Pi = nflips / T
 
     t0 = time.time()
-    MTUR = Pi * get_EP_MTUR(S_i_t, i,num_chunks=num_chunks)
     time_tur = time.time() - t0
 
 
     t0 = time.time()
-    sig_N1, theta_N1, Da = get_EP_Newton(S_i_t, i,num_chunks=num_chunks)
+    
+    ep_estimator = EPEstimators(S_i_t, i, num_chunks=5)
+    
+    sig_MTUR, theta_N1, _ = ep_estimator.get_EP_MTUR()
+    MTUR = Pi * sig_MTUR
+    sig_N1, theta_N1, _ = ep_estimator.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True)
+    
     N1 = Pi * sig_N1
     theta_N1_np = theta_N1.detach().cpu().numpy()
     time_n1 = time.time() - t0
 
 
-    Emp = Pi * exp_EP_spin_model(Da, J_i_t, i)
+    Emp = Pi * beta * float(utils.remove_i(J_i_t,i) @ obj.g_mean())
     del J_i_t
     torch.cuda.empty_cache()
     
-    sig_N2, theta_N2 = get_EP_Newton_steps(S_i_t, theta_N1, sig_N1, Da, i, num_chunks=num_chunks)
-#    sig_new , theta_N2 = get_EP_Newton2(S_i_t, theta_N1, Da, i,num_chunks=num_chunks)   # Second newton step
-####    sig_N2, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Third newton step
-#    sig_old = sig_N1
-#    dsig = sig_new-sig_old
-#    count = 0
-#    sig_N2 = sig_new  # Initialize sig_N2 before the loop starts
-#    while dsig/sig_old > 1E-2 and count <50:
-#        count +=1
-#        sig_old = sig_new
-#        sig_new, theta_N2 = get_EP_Newton2(S_i_t, theta_N2.clone(), Da, i)   # Fourth newton step
-#        dsig = sig_new-sig_old
-#        
-#        if sig_old>sig_new or torch.isnan(torch.tensor(sig_new)):
-#            sig_N2 = sig_old
-#            print('break',sig_old, sig_new, count)
-#            break
-#        else:
-#            sig_N2 = sig_new
-            
-            
-#    sig_N2, theta_N2 = get_EP_Adam3(S_i_t, Da, theta_N1, i)
 
-#    sig_N2, theta_N2 = get_EP_BFGS(S_i_t, theta_N1, Da, i) 
-#    sig_N2, theta_N2 = get_EP_gd(S_i_t, i, x0=theta_N1.clone().detach().requires_grad(True),  num_iters=1000)
+    sig_N2, theta_N2, _ = ep_estimator.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False)
     
     N2 = Pi * sig_N2
     theta_N2_np = theta_N2.detach().cpu().numpy()
     time_n2 = time.time() - t0
     
-
     
-#    sig_Adam, theta_Adam = get_EP_Adam(S_i_t, theta_N1, Da, i)
-#    time_adam = time.time() - t0
-
-    # Modify output file name to include spin index
-#    spin_file_name = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
-
-#    # Save directly to .npz file
-#    np.savez(
-#        spin_file_name,
-#        MTUR=MTUR,
-#        time_tur=time_tur,
-#        N1=N1,
-#        theta_N1=theta_N1_np,
-#        time_n1=time_n1,
-#        N2=N2,
-#        theta_N2=theta_N2_np,
-#        time_n2=time_n2,
-#        Emp=Emp
-#    )
     del S_i_t
     torch.cuda.empty_cache()
     gc.collect()
@@ -159,38 +122,6 @@ def calc_spin(i_args):
         group.create_dataset("Emp", data=Emp)
         
         
-#def merge_spins(file_name_out, N):
-#    """
-#    Merge individual spin HDF5 files into a single merged file.
-
-#    Parameters:
-#        file_name_out (str): Base output file (e.g., 'data_N_100_beta_2.5.h5')
-#        N (int): System size (number of spins)
-
-#    Returns:
-#        str: Path to the merged HDF5 file
-#    """
-#    import os
-#    import h5py
-
-#    print(f"[Merging] Target merged file: {file_name_out}")
-#    
-#    with h5py.File(file_name_out, 'w') as f_out:
-#        for i in range(N):
-#            spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
-#            if not os.path.exists(spin_file):
-#                print(f"[Error] Spin file not found: {spin_file}")
-#                exit()
-
-#            data = np.load(spin_file)
-#            for key in data:
-#                dataset_name = f"{key}_{i}"
-#                f_out.create_dataset(dataset_name, data=data[key])
-#    for i in range(N):
-#        spin_file = file_name_out.replace(".h5", f"_spin_{i:06d}.npz")
-#        os.remove(spin_file)
-#    return file_name_out
-#    
 def load_results_from_file(file_name_out, N, return_parameters=False):
     S_Emp = S_TUR = S_N1 = S_N2 = time_tur = time_n1 = time_n2 = 0
     theta_N1_list = []
@@ -308,6 +239,11 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
             thread.start()
             preload_threads[preload_i] = thread
 
+        temp_file_name_out = file_name_out + ".tmp"
+        # If temp file exists from a crash, remove it
+        if os.path.exists(temp_file_name_out):
+            os.remove(temp_file_name_out)
+
         # Now start computing
         for i in tqdm(range(N), desc="Sequential spin progress"):
 
@@ -333,7 +269,7 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
             del S_i, J_i # Free RAM
             
             # Compute
-            calc_spin((i, N, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips))
+            calc_spin((i, N, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, nflips))
             progress.value += 1
 
             # Preload next spin if needed
@@ -346,7 +282,10 @@ def calc(N, rep, file_name, file_name_out, return_parameters=False, parallel=Fal
                 preload_threads[next_spin] = thread
 
 
-
+        # Move data to file
+        os.rename(temp_file_name_out, file_name_out)
+        
+        
 #    else:
 #        grouped_indices = np.array_split(np.arange(N), num_processes)
 #        grouped_indices = [list(g) for g in grouped_indices]

@@ -104,7 +104,7 @@ def ParallelGlauberStep(H, J, s, T=1):
 
 
 @njit(parallel=True, fastmath=True, cache=True)
-def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=1_000_000, 
+def run_simulation(beta, H, J, warmup=0.1, samples_per_spin=1_000_000, 
                    num_restarts=1, sequential=True, progressbar=True):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
@@ -114,7 +114,7 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
         beta (float)                : Inverse temperature
         J (2d np.array)             : NxN matrix of coupling coefficients
         h (1d np.array)             : N-long vector of local fields (set to all 0s if None)
-        warmup_steps_per_spin (int) : Number of Monte Carlo steps in-between saved samples
+        warmup (float)              : Ratio of Monte Carlo steps in-between saved samples
         samples_per_spin (int)      : Number of samples per spin to return
                                       In between these samples, we use a thinning factor of N
                                       throwaway samples
@@ -127,13 +127,10 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
         F: Nxsamples_per_spin bool array : Samples of state transitions (True: flipped, False: no flip)
     """
     N = J.shape[0]
-    if H is None:
-        H = np.zeros(N, dtype=DTYPE)
-    
     betaJ = (beta*J).astype(DTYPE)
     betaH = (beta*H).astype(DTYPE)
 
-    # Explain what happens here        
+    # Define matrix of spin states and spin flips      
     S = np.empty((samples_per_spin, N), dtype=np.int8)
     F = np.empty((samples_per_spin, N), dtype=np.bool_)
 
@@ -147,11 +144,11 @@ def run_simulation(beta, J, H=None, warmup_steps_per_spin=128, samples_per_spin=
         # Start from a random state, then warm up for N * warmup_steps_per_spin steps
         s = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         if sequential:
-            indices = np.random.randint(0, N, int(N * warmup_steps_per_spin))
+            indices = np.random.randint(0, N, int(N * warmup * samples_per_trial))
             for i in indices:
                 s[i] = GlauberStep(betaH[i], betaJ[i, :], s)
         else:
-            s = ParallelGlauberStep(betaH, betaJ, s, T=warmup_steps_per_spin)
+            s = ParallelGlauberStep(betaH, betaJ, s, T=int(samples_per_trial * warmup))
 
         # Now draw samples from steady state
         for r in range(samples_per_trial):
