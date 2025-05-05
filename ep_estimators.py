@@ -20,46 +20,89 @@ import torch
 
 from utils import *
 
-# EP estimators return Solution namedtuples such as the following
+
+def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
+    # Estimate EP using the multidimensional TUR method
+    #
+    # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
+    # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
+    # and K^-1 is covariance matrix of g under (p + ~p)/2.
+    # 
+    # Arguments
+    #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
+    #                              under reverse process 
+    #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
+    #                              under reverse process 
+    #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
+    #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
+    #                               numerical stability of linear solvers
+
+    g_samples     = numpy_to_torch(g_samples)
+    rev_g_samples = numpy_to_torch(rev_g_samples)
+
+    g_mean       = g_samples.mean(axis=0) 
+    rev_g_mean   = rev_g_samples.mean(axis=0)
+    mean_diff    = g_mean - rev_g_mean
+
+    # now compute covariance of (p + ~p)/2
+    combined_samples = torch.concatenate([g_samples, rev_g_samples], dim=0)
+    combined_mean    = (g_mean + rev_g_mean)/2
+
+    num_forward      = g_samples.shape[0] 
+    num_reverse      = rev_g_samples.shape[0]
+    num_total        = num_forward + num_reverse
+    weights          = torch.empty(num_forward + num_reverse)
+    weights[:num_forward] = 1.0/num_forward/2.0
+    weights[num_forward:] = 1.0/num_reverse/2.0
+
+    if num_chunks is None:
+        combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+
+    else:
+        # Chunked computation
+        combined_cov = torch.zeros((num_total, num_total), device=g_samples.device)
+        chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for r in range(num_chunks):
+            start = r * chunk_size
+            end = min((r + 1) * chunk_size, num_total)
+            chunk = combined_samples[start:end]
+            
+            combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+
+    combined_cov += linsolve_eps*eye_like(combined_cov)
+    x  = solve_linear_psd(combined_cov, mean_diff)
+    return float(x @ mean_diff)/2
+
+
+
+
+
+# EPEstimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
 #   theta (torch tensor of length nobservables) : optimal conjugate parameters
 #   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
-def numpy_to_torch(X):
-    return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
-
 class EPEstimators(object):
-    def __init__(self, g_mean, rev_g_samples, g_mean_ford_plus_back=None, g_cov_ford_minus_back=None, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    # EP estimators based on optimizing our variational principle
+    #  
+    def __init__(self, g_mean, rev_g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
-        #   g_samples                : 1d tensor (1 x nobservables) containing means of observables of interest
+        #   g_mean                   : 1d tensor (1 x nobservables) containing means of observables of interest
         #                              under forward process
         #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
         #                              under reverse process
-        #   g_mean_ford_plus_back               : 1d tensor (1 x nobservables) containing means of observables for (p(x)-p̃(x)))/2
-        #   g_cov_ford_minus_back         : 2d tensor (1 x nobservables) containing covariances of observables for (p(x)+p̃(x)))/2
         #   holdout_fraction (float) : fraction of samples to use as holdout test dataset (if holdout is used)
         #   holdout_shuffle (bool)   : whether to shuffle train/holdout assignments (if holdout is used) 
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                               numerical stability of linear solvers
 
-        if not isinstance(g_mean, torch.Tensor): # Conver to torch tensor if needed
-            if isinstance(g_mean, np.ndarray):
-                g_mean = numpy_to_torch(g_mean)
-            else:
-                raise Exception("g_mean must be a torch tensor or numpy array")
-
-        if not isinstance(rev_g_samples, torch.Tensor): # Conver to torch tensor if needed
-            if isinstance(rev_g_samples, np.ndarray):
-                rev_g_samples = numpy_to_torch(rev_g_samples)
-            else:
-                raise Exception("rev_g_samples must be a torch tensor or numpy array")
-
+        g_mean        = numpy_to_torch(g_mean)
+        rev_g_samples = numpy_to_torch(rev_g_samples)
 
         self.g_mean           = g_mean
-        self.g_mean_ford_plus_back       = g_mean_ford_plus_back
-        self.g_cov_ford_minus_back = g_cov_ford_minus_back
         self.rev_g_samples    = rev_g_samples
         self.nsamples, self.nobservables = rev_g_samples.shape
         self.device           = rev_g_samples.device
@@ -95,48 +138,10 @@ class EPEstimators(object):
 
         return self.trn_tst_split_
 
-    # ====================================================================================
-    # Methods to compute observable statistics under forward distribution
-    # ====================================================================================
-    # def g_mean(self):
-    #     # Mean of g under forward process
-    #     return self.g_mean
-
-    # # def g_secondmoments(self):
-    #     # Compute matrix of second moments of g observables
-    #     if not hasattr(self, 'g_secondmoments_'): # Cache values for speed
-    #         self.g_secondmoments_ = batch_outer(K, self.num_chunks)
-    #     return self.g_secondmoments_
-
-    # Compute outer product X @ X.T/nrow. Do it in batches if requested for lower memory requirements
-    # nrow, ncol = X.shape
-    # if num_chunks is None:
-    #     K = X@X.T
-    # else:
-    #     # Chunked computation, sometimes helpful for memory reasons
-    #     K = torch.zeros((ncol, ncol), device=X.device)
-    #     chunk_size = (nrow + num_chunks - 1) // num_chunks  # Ceiling division
-
-    #     for r in range(num_chunks):
-    #         start = r * chunk_size
-    #         end = min((r + 1) * chunk_size, ncol)
-    #         g_chunk = X[start:end]
-    #         K += g_chunk @ g_chunk.T
-    # return K/nrow
-
-
-
-
-    # def g_covariance(self): 
-    #     # Compute covariance matrix of g observables
-    #     if not hasattr(self, 'g_covariance_'): # Cache for speed
-    #         self.g_covariance_ = self.g_secondmoments() - torch.outer(self.g_mean(), self.g_mean())
-    #     return self.g_covariance_
 
     # ====================================================================================
     # Methods to compute observable statistics under tilted reverse distribution
     # ====================================================================================
-
     def _get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
         # This internal method computes tilted statistics reverse distribution titled by theta. This may include
         # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
@@ -206,36 +211,6 @@ class EPEstimators(object):
             # to estimate KL divergence larger than log(m) from m samples
             objective = np.log(self.nsamples)
         return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
-
-
-    def get_EP_MTUR(self):
-        # Estimate EP using the multidimensional TUR method
-
-        # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
-        # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
-        # and K^-1 is covariance matrix of g under (p + ~p)/2.
-        #
-        # In our case, g is antisymmetric (<g>_p=-<g>_~p), so
-        #        <g>_(p - ~p)  = 2<g>_p 
-        #        [K^-1]_ij     = <g_i g_j>
-
-        # # The code commented out below was for doing a 'heldout' estimate of the TUR
-        # # For simplicity, we removed it 
-        # if holdout:
-        #     trn, tst  = self.split_train_test()
-        #     sol       = trn.get_EP_MTUR(holdout=False)
-        #     theta     = sol.theta
-        #     tst_objective = tst.get_objective(theta)
-        # else:
-        #     A         = self.g_secondmoments()
-        #     A        += self.linsolve_eps*eye_like(A)
-        #     theta     = solve_linear_psd(A, 2*self.g_mean)
-        #     tst_objective = None
-
-        A = self.g_cov_ford_minus_back + self.linsolve_eps*eye_like(self.g_cov_ford_minus_back)
-        theta     = solve_linear_psd(A, 2*self.g_mean_ford_plus_back)
-        sigma     = float(theta @ self.g_mean)
-        return self.get_valid_solution(objective=sigma, theta=theta)
 
 
     def get_EP_Newton(self, max_iter=1000, tol=1e-4, holdout=False, verbose=False,

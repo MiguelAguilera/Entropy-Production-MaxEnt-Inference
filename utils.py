@@ -28,7 +28,7 @@ def batch_outer(X, num_chunks=None):
 
 def eye_like(A):    # Returns torch identity matrix with same dimensions, data type, and device as A
     assert(A.ndim == 2 and A.shape[0] == A.shape[1])
-    return torch.eye(A.size(-1), dtype=A.dtype, device=A.device)
+    return torch.eye(A.shape[0], dtype=A.dtype, device=A.device)
 
 def is_infnan(x): # return True if x is either infinite or NaN
     x = float(x)
@@ -37,6 +37,15 @@ def is_infnan(x): # return True if x is either infinite or NaN
 def remove_i(x, i):  # Helpful function to remove the i-th element from a 1d tensor x.
     r = torch.cat((x[:i], x[i+1:]))
     return r
+
+def numpy_to_torch(X):  # Convert numpy array to torch tensor if needed
+    if not isinstance(X, torch.Tensor): 
+        if isinstance(X, np.ndarray):
+            return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
+        else:
+            raise Exception("Argument must be a torch tensor or numpy array")
+    return X
+
 
 # Torch stuff
 
@@ -65,6 +74,8 @@ def torch_synchronize():  # Empty torch cache
         torch.cuda.synchronize()
     elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
         torch.mps.synchronize()
+
+# ****** Linear algebra stuff **********
 
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
     """

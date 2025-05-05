@@ -39,17 +39,15 @@ with torch.no_grad():
         g_samples               = spin_model.get_g_observables(S, F, i)
         g_mean                  = g_samples.mean(axis=0)
         g_mean_ford_plus_back   = g_mean.copy()
-        g_cov_ford_minus_back   = (g_samples.T @ g_samples) / g_samples.shape[0]
 
         # Calculate empirical estimate of true EP
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp  = beta * J_without_i @ g_mean
 
+        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
 
-        obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, g_mean_ford_plus_back=g_mean_ford_plus_back, g_cov_ford_minus_back=g_cov_ford_minus_back)
-
-        # spin_MTUR = obj.get_EP_MTUR().objective             # Multidimensional TUR
-        spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
+        # 1 step of Newton
+        spin_N1   = obj.get_EP_Newton(max_iter=1).objective 
         
         # Full optimization with trust-region Newton method and holdout 
         spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
@@ -57,10 +55,13 @@ with torch.no_grad():
         # Full optimization with gradient ascent method 
         spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
+        # Multidimensional TUR
+        spin_MTUR = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)             
+        
         sigma_emp  += p_i * spin_emp
         sigma_g    += p_i * spin_full
         sigma_N1   += p_i * spin_N1
-        #sigma_MTUR += p_i * spin_MTUR
+        sigma_MTUR += p_i * spin_MTUR
         sigma_g2   += p_i * spin_grad
 
         utils.empty_torch_cache()
