@@ -64,10 +64,10 @@ class Dataset(object):
     def split_train_test(self, holdout_fraction, holdout_shuffle=False):
         # Split current data set into training and heldout testing part
         trn_indices, tst_indices = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
-        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=self.rev_g_samples[trn_indices])
+        trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.rev_nsamples, holdout_fraction, holdout_shuffle)
 
-        trn_indices, tst_indices = self._get_trn_indices(self.rev_nsamples, holdout_fraction, holdout_shuffle)
-        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=self.rev_g_samples[tst_indices])
+        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=self.rev_g_samples[trn_indices_rev])
+        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=self.rev_g_samples[tst_indices_rev])
         return trn, tst
     
 
@@ -544,11 +544,6 @@ class EPEstimators(object):
         # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
         # and K^-1 is covariance matrix of g under (p + ~p)/2.
         # 
-        # Arguments
-        #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process 
-        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process 
         # Optional arguments
         #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
