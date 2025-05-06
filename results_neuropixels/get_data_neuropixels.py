@@ -130,14 +130,14 @@ def download_session(session, ind):
     print(f"Average percentage of spikes lost to bin collisions per unit: {mean_collision:.4f}%")
 
 
-    S = np.zeros((N, T), dtype=bool)
+    S = np.zeros((T,N), dtype=bool)
 
     for u, unit_id in enumerate(unit_ids):
         spike_times_discretized = np.floor((np.array(spike_times[unit_id]) - minT) / bin_size).astype(int)
         spike_times_discretized = spike_times_discretized[
             (spike_times_discretized >= 0) & (spike_times_discretized < T)
         ]
-        S[u, spike_times_discretized] = True
+        S[spike_times_discretized, u] = True
 
     # Generate masks for different stimulus conditions
     def create_time_mask(epochs):
@@ -154,9 +154,9 @@ def download_session(session, ind):
     print(f"Active bins: {np.sum(active_mask)}, Passive bins: {np.sum(passive_mask)}, Gabor bins: {np.sum(gabor_mask)}")
 
     # Subset spikes by condition
-    S_active = S[:, active_mask]
-    S_passive = S[:, passive_mask]
-    S_gabor = S[:, gabor_mask]
+    S_active = S[active_mask, :]
+    S_passive = S[passive_mask, :]
+    S_gabor = S[gabor_mask, :]
 
     # Save in background using HDF5 with Blosc compression
     filename = output_dir / f'data_binsize_{bin_size}_session_{ind}.h5'
