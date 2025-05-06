@@ -14,7 +14,7 @@ utils.set_default_torch_device()
 
 N    = 10     # system size
 k    = 6      # avg number of neighbors in sparse coupling matrix
-beta = 3.25   # inverse temperature
+beta = 3      # inverse temperature
 
 
 np.random.seed(42) # Set seed for reproducibility
@@ -37,12 +37,19 @@ N = J.shape[0]
 # Calculate antisymmetric observables explicitly
 g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
                         for i in range(N) for j in range(i+1, N) ]).T
-stime = time.time()
-data1         = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
+# Calculate antisymmetric observables explicitly
+g_samples = np.vstack([ (X1[:,i] - X0[:,i])*X1[:,j] 
+                        for i in range(N) for j in range(N) if i != j]).T
+
+data1         = ep_estimators.Dataset(g_samples=g_samples)
 estimator1    = ep_estimators.EPEstimators(data1)
+stime = time.time()
 sigma_g2_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
 time_g2_obs   = time.time() - stime
 
+stime = time.time()
+sigma_g3_obs  = estimator1.get_EP_Newton(holdout=True).objective
+time_g3_obs   = time.time() - stime
 
 # Estimate EP using gradient ascent method , from state samples
 stime = time.time()
@@ -55,5 +62,6 @@ time_g2_state  = time.time() - stime
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
 print(f"  Σ     (Empirical)                              :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
 print(f"  Σ_g   (Using observable samples, grad. ascent) :    {sigma_g2_obs    :.6f}  ({time_g2_obs    :.3f}s)")
+print(f"  Σ_g   (Using observable samples, Newton method):    {sigma_g3_obs    :.6f}  ({time_g3_obs    :.3f}s)")
 print(f"  Σ_g   (Using state samples, grad. ascent)      :    {sigma_g2_state  :.6f}  ({time_g2_state  :.3f}s)")
 

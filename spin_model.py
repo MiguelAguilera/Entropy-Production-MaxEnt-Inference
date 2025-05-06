@@ -195,7 +195,14 @@ def convert_to_nonmultipartite(S, F):
         Sp = S.copy()
         Sp[F[:,i],i] *= -1
         X1s.append(Sp)
-    return np.vstack(X0s), np.vstack(X1s)
+    X0 = np.vstack(X0s)
+    X1 = np.vstack(X1s)
+
+    # Shuffle data
+    perm = np.random.permutation(X0.shape[0])
+    return X0[perm], X1[perm]
+
+
 
 
 
