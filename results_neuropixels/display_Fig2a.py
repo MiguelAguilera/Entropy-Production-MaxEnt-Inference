@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 
+import h5py
+import hdf5plugin
+
 # ========================
 # Argument Parser
 # ========================
@@ -23,15 +26,15 @@ parser.add_argument("--order", type=str, default="random",
 parser.add_argument("--bin_size", type=float, default=0.01,
                     help="Bin size for spike binning (default: 0.01).")
 
-parser.add_argument("--R", type=int, default=10,
+parser.add_argument("--R", type=int, default=1,
                     help="Number of repetitions per session and size (default: 10).")
 
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to analyze.")
 
-parser.add_argument("--normalize", action="store_true", default=True, 
-                    help="Normalize EP by firing rate (default: True).")
+parser.add_argument("--no_normalize", action="store_true", default=False, 
+                    help="Do not normalize EP by firing rate (default: False).")
 
 parser.add_argument("--remove_outliers", action="store_true", default=False,
                     help="Remove outliers from EP values (default: False).")
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     order = args.order
     bin_size = args.bin_size
     sizes = args.sizes
-    normalize = args.normalize
+    normalize = not args.no_normalize
     remove_outliers_flag = args.remove_outliers
     types = args.types
     rep = args.R
@@ -85,15 +88,21 @@ if __name__ == "__main__":
         key = (session_type, session_id, r)
 
         if key not in _loaded_sessions:
-            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
+            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}.h5'
             try:
-                data = np.load(filename)
-                _loaded_sessions[key] = {
-                    'EP': data['EP'],
-                    'R': data['R'],
-                    'sizes': data['sizes']
-                }
-            except Exception:
+                with h5py.File(filename, 'r') as f:
+                    group_path = f"{session_type}/{session_id}/rep_{r}"
+                    if group_path not in f:
+                        _loaded_sessions[key] = None
+                    else:
+                        grp = f[group_path]
+                        _loaded_sessions[key] = {
+                            'EP': grp['EP'][:],
+                            'R': grp['R'][:],
+                            'sizes': grp['sizes'][:]
+                        }
+            except Exception as e:
+                print(f"[Warning] Failed to load data for {key}: {e}")
                 _loaded_sessions[key] = None
 
         session_data = _loaded_sessions[key]

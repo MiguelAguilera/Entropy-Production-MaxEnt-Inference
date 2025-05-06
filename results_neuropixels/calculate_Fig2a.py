@@ -197,9 +197,16 @@ def calc(sizes, session_type, session_id, r):
         print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes R: {spike_sum:.5f} | EP/R: {EP_maxent/spike_sum:.5f}")
 
     SAVE_DATA_DIR = 'ep_data'
-    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
+    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}.h5'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(save_path, R=R, EP=EP, sizes=sizes)
+    with h5py.File(save_path, 'a') as f:
+        group_path = f"{session_type}/{session_id}/rep_{r}"
+        if group_path in f:
+            del f[group_path]  # Overwrite the group if it exists
+        grp = f.create_group(group_path)
+        grp.create_dataset('EP', data=EP)
+        grp.create_dataset('R', data=R)
+        grp.create_dataset('sizes', data=sizes)
     print(f"\n[Saved] Results stored in: {save_path}")
     print("-" * 60)
 
