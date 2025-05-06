@@ -2,6 +2,7 @@ import sys, argparse, os
 from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
+import time
 
 import h5py
 import hdf5plugin
@@ -32,6 +33,19 @@ parser.add_argument("--bin_size", type=float, default="0.01",
 parser.add_argument("--order", type=str, default="random",
                     choices=["random", "sorted"],
                     help="Ordering of neurons: random or sorted by activity (default: random).")
+parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
+                    help="Disable Adam optimizer (enabled by default).")
+parser.set_defaults(args=True)
+parser.add_argument("--patience", type=int, default=10,
+                    help="Early stopping patience for the optimizer (default: 10).")
+parser.add_argument("--lr", type=float, default=0.01,
+                    help="Base learning rate (default: 0.01).")
+parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="sqrtN",
+                    help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
+parser.add_argument("--tol", type=float, default=1e-6,
+                    help="Base tolerance for convergence (default: 1e-6).")
+parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
+                    help="Scale the tolerance by 'N', 'sqrtN', or use it as-is with 'none' (default: N).")
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
@@ -52,6 +66,9 @@ order = args.order                          # selected neurons
 rep=args.rep                    # Repetitions of each EP estimation for different neuron samplings
 sizes =args.sizes       # Sizes estimated
 
+
+
+    
 def calc(sizes, session_type, session_id, r):
     print()
     print("=" * 60)
@@ -126,10 +143,29 @@ def calc(sizes, session_type, session_id, r):
             lambda_ = 1 / N
         else:
             lambda_ = 0
+            
+        if args.lr_scale == "none":
+            lr = args.lr
+        elif args.lr_scale == "N":
+            lr = args.lr / N
+        elif args.lr_scale == "sqrtN":
+            lr = args.lr / N**0.5
+        else:
+            raise ValueError(f"Unknown lr_scale value: {args.lr_scale}")
+            
+        if args.tol_scale == "none":
+            tol = args.tol
+        elif args.tol_scale == "N":
+            tol = args.tol / N
+        elif args.tol_scale == "sqrtN":
+            tol = args.tol / N**0.5
+        else:
+            raise ValueError(f"Unknown tol_scale value: {args.tol_scale}")
+            
 
         print(f"  [Info] Estimating EP (nsamples: {nsamples})...")
         
-        import time
+#        
 #        start_time = time.time()
 #        EP_maxent = get_torch(S_t.T, S1_t.T, mode=2, tol_per_param=1E-6, lambda_=lambda_)
 #        print(f"Time for Gradient Ascent2: {time.time() - start_time:.4f} seconds")
@@ -143,7 +179,8 @@ def calc(sizes, session_type, session_id, r):
         ep_est = ep_estimators.EPEstimators(data)
 
         start_time = time.time()
-        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = 0.01/N**0.5, holdout=True, tol=1e-6/N, use_Adam=True, verbose=True,patience=100)
+        
+        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, holdout=True, tol=tol, use_Adam=args.use_Adam, verbose=True,patience=args.patience)
 #        print(f"Time for Gradient Ascent: {time.time() - start_time:.4f} seconds")
         
         if device.type == "cuda":
