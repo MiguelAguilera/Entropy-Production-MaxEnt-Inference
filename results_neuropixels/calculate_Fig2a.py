@@ -12,7 +12,7 @@ import torch
 
 sys.path.insert(0, '..')
 from methods_EP_parallel import *
-from ep_estimators import EPEstimators, tilted_statistics_bilinear_upper
+import ep_estimators
 
 parser = argparse.ArgumentParser(description="Estimate EP for Neuropixels data.")
 
@@ -113,9 +113,11 @@ def calc(sizes, session_type, session_id, r):
         multi_spin_changes = np.mean(num_changes >= 2)
 
         T = S.shape[1]
+        
+        
+        
         S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.)
         S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.)
-
         nsamples = S_t.shape[0]
 
         if L2 == 'lin.1':
@@ -126,12 +128,27 @@ def calc(sizes, session_type, session_id, r):
             lambda_ = 0
 
         print(f"  [Info] Estimating EP (nsamples: {nsamples})...")
-        g_mean = (S1_t.T @ S_t - S_t.T @ S1_t )/ nsamples  # shape (nspins, nspins)
-        triu_indices = torch.triu_indices(N, N, offset=1)
-        g_mean = g_mean[triu_indices[0], triu_indices[1]]
-        ep_estimator = EPEstimators(g_mean=g_mean, tilted_statistics_function=tilted_statistics_bilinear_upper, X=S_t, Xp=S1_t )
-        EP_maxent,theta,_ = ep_estimator.get_EP_GradientAscent(lr = 0.01/N, holdout=True, tol=1e-8, use_Adam=True)
+        
+        import time
+#        start_time = time.time()
 #        EP_maxent = get_torch(S_t.T, S1_t.T, mode=2, tol_per_param=1E-6, lambda_=lambda_)
+#        print(f"Time for Gradient Ascent2: {time.time() - start_time:.4f} seconds")
+#        print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes R: {spike_sum:.5f} | EP/R: {EP_maxent/spike_sum:.5f}")
+#        print()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.).to(device)
+        S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.).to(device)
+        data          = ep_estimators.RawDataset(S_t, S1_t)
+        ep_est = ep_estimators.EPEstimators(data)
+
+        start_time = time.time()
+        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = 0.01/N**0.5, holdout=True, tol=1e-6/N, use_Adam=True, verbose=True,patience=100)
+#        print(f"Time for Gradient Ascent: {time.time() - start_time:.4f} seconds")
+        
+        if device.type == "cuda":
+            del S_t, S1_t, data, ep_est, theta  # free up memory explicitly
+            torch.cuda.empty_cache()
 #        print(E, E2, EP_maxent)
 #        exit()
         
@@ -142,7 +159,8 @@ def calc(sizes, session_type, session_id, r):
         R[n] = spike_sum
         print(f"  [Result] EP: {EP_maxent:.5f} | Expected sum of spikes R: {spike_sum:.5f} | EP/R: {EP_maxent/spike_sum:.5f}")
 
-    save_path = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
+    SAVE_DATA_DIR = 'ep_data'
+    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     np.savez(save_path, R=R, EP=EP, sizes=sizes)
     print(f"\n[Saved] Results stored in: {save_path}")
