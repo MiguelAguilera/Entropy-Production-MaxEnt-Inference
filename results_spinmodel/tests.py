@@ -140,10 +140,20 @@ def test_consistency():
     estimator2     = ep_estimators.EPEstimators(data2)
     sigma_g2_state = estimator2.get_EP_GradientAscent(holdout=True).objective
 
+    data3         = ep_estimators.Dataset(g_samples=g_samples)
+    estimator3    = ep_estimators.EPEstimators(data3)
+    sigma_g3_obs  = estimator3.get_EP_GradientAscent(holdout=True).objective
+
+
     theta = np.random.rand(data1.nobservables)
     assert(torch.norm(data1.g_mean - data2.g_mean)<1e-5)
-
     assert(np.abs(data1.get_objective(theta)-data2.get_objective(theta))<1e-5)
     assert(torch.norm(data1.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']-
                       data2.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean'])<1e-5)
+
+    assert(torch.norm(data1.g_mean - data3.g_mean)<1e-5)
+    assert(np.abs(data1.get_objective(theta)-data3.get_objective(theta))<1e-5)
+    assert(torch.norm(data1.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']-
+                      data3.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean'])<1e-5)
+
 

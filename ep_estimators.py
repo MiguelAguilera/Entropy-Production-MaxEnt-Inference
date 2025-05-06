@@ -603,6 +603,5 @@ class EPEstimators(object):
         combined_cov += linsolve_eps*eye_like(combined_cov)
         x  = solve_linear_psd(combined_cov, mean_diff)
 
-
-
-        return float(x @ mean_diff)/2
+        obj = float(x @ mean_diff)/2
+        return self.get_valid_solution(objective=obj, theta=None)
