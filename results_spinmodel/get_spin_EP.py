@@ -91,21 +91,19 @@ def calc_spin(i_args):
     mask[i] = False
     g_samples = -2 * S_i_t[:, i][:, None] * S_i_t[:,mask]
 
-    g_mean      = g_samples.mean(axis=0)
-    
-
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
-    # Calculate empirical estimate of true EP
-    spin_emp  = beta * J_without_i @ g_mean
-    
-    data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+    data = ep_estimators.Dataset(g_samples)
     est = ep_estimators.EPEstimators(data)
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
+    # Calculate empirical estimate of true EP
+    spin_emp  = beta * J_without_i @ data.g_mean
+    
+
     # Compute MTUR
     t0 = time.time()
-    sig_MTUR = ep_estimators.get_EP_MTUR(g_samples,-g_samples)
+    sig_MTUR = est.get_EP_MTUR().objective
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 
