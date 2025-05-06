@@ -76,7 +76,7 @@ for i in tqdm(range(N)):
     utils.empty_torch_cache()
 
 
-print(f"\nEntropy production estimates (N={N}, k={k}, beta={beta})")
+print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
 print(f"  Σ     (Empirical)                         :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
 print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
 print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")

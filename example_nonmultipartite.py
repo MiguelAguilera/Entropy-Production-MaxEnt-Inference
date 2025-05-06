@@ -52,7 +52,7 @@ sigma_g2_state = estimator2.get_EP_GradientAscent(holdout=True).objective
 time_g2_state  = time.time() - stime
 
 
-print(f"\nEntropy production estimates (N={N}, k={k}, beta={beta})")
-print(f"  Σ     (Empirical)                               :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
-print(f"  Σ_g   (Using observables samples, grad. ascent) :    {sigma_g2_obs    :.6f}  ({time_g2_obs    :.3f}s)")
-print(f"  Σ_g   (Using state samples, grad. ascent)       :    {sigma_g2_state  :.6f}  ({time_g2_state  :.3f}s)")
+print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
+print(f"  Σ     (Empirical)                              :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ_g   (Using observable samples, grad. ascent) :    {sigma_g2_obs    :.6f}  ({time_g2_obs    :.3f}s)")
+print(f"  Σ_g   (Using state samples, grad. ascent)      :    {sigma_g2_state  :.6f}  ({time_g2_state  :.3f}s)")
