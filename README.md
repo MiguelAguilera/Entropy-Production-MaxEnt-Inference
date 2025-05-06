@@ -2,7 +2,7 @@
 
 The repository includes the following files:
 
-**multipartite_example.py**: simple demonstration script, illustrating how to generate data and estimate EP for a multipartite system (the nonequilibrium spin model).
+**example_multipartite.py**: simple demonstration script, illustrating how to generate data and estimate EP for a multipartite system (the nonequilibrium spin model).
 
 **spin_model.py**: functions related to the nonequilibrium spin model. This includes generation of random coupling matrices, Monte Carlo sampling (`spin_model.run_simulation(...)`), calculation of observables $g_{ij}(\vec{\boldsymbol{x}}) =(x_{i,1}-x_{i,0})x_{j,0}$, and estimation of ``ground-truth'' EP from empirical statistics.
 

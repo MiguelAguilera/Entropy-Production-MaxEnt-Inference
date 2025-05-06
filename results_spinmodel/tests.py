@@ -51,22 +51,29 @@ def run_inference(beta, J, S, F, num_chunks=None):
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = spin_model.get_g_observables(S, F, i)
         g_mean     = g_samples.mean(axis=0)
-        obj = ep_estimators.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=num_chunks)
+        data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+        obj = ep_estimators.EPEstimators(data=data)
 
         # Empirical estimate 
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp = beta * J_without_i @ g_mean
         
-        spin_N1   = obj.get_EP_Newton(max_iter=1).objective # 1-step of Newton
+        spin_N1   = obj.get_EP_Newton(max_iter=1, num_chunks=num_chunks).objective # 1-step of Newton
         
+        # Full optimization with trust-region Newton method and no holdout 
+        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=False, num_chunks=num_chunks).objective
+
         # Full optimization with trust-region Newton method and holdout 
-        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
+        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True, num_chunks=num_chunks).objective
+
+        # Full optimization with gradient ascent method , no holdout
+        spin_grad = obj.get_EP_GradientAscent(holdout=False).objective
 
         # Full optimization with gradient ascent method 
         spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
         # Multidimensional TUR
-        spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, g_samples, num_chunks=num_chunks)
+        spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, -g_samples, num_chunks=num_chunks)
         
 
         sigma_emp  += p_i * spin_emp
@@ -99,6 +106,6 @@ def test_inference_chunks():
 
 
 def test_objective():
-    nobservbables = 9
-    obj = ep_estimators.EPEstimators(g_mean=np.random.randn(nobservbables), rev_g_samples=np.random.randn(100,nobservbables))
-    assert(np.isclose( obj.get_objective(torch.zeros(nobservbables)),0))
+    nobservables = 9
+    data = ep_estimators.Dataset(g_mean=np.random.randn(nobservables), rev_g_samples=np.random.randn(100,nobservables))
+    assert(np.isclose( data.get_objective(torch.zeros(nobservables)),0))

@@ -178,6 +178,27 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
     return S, F
 
 
+def convert_to_nonmultipartite(S, F):
+    # Convert samples S and F to non-multipartite form
+    # Arguments:
+    #   S: samples_per_spin x N
+    #   F: samples_per_spin x N
+    # Returns:
+    #   X0: samples_per_spin x N (initial states)
+    #   X1: samples_per_spin x N (final states)
+
+    # Stack S and F into non-multipartite datastructure
+    X0s, X1s = [], []
+    N = S.shape[1]
+    for i in range(N):
+        X0s.append(S)
+        Sp = S.copy()
+        Sp[F[:,i],i] *= -1
+        X1s.append(Sp)
+    return np.vstack(X0s), np.vstack(X1s)
+
+
+
 def get_g_observables(S, F, i):
     # Use S and F to select states in which spin i flipped
     S_i = S[F[:,i],:]
@@ -194,13 +215,35 @@ def get_g_observables(S, F, i):
     return g_samples
 
 
+def get_empirical_EP(beta, J, S, F):
+    # Calculate empirical EP from samples S and F
+    num_samples_per_spin, N = S.shape
+    total_flips = N * num_samples_per_spin  # Total spin-flip attempts
+
+    # Running sums to keep track of EP estimates
+    sigma_emp = 0.0
+
+    # Because system is multipartite, we can separately estimate EP for each spin
+    for i in range(N):
+        p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
+
+        # Select states in which spin i flipped and use it create object for EP estimation 
+        g_samples  = get_g_observables(S, F, i)
+        g_mean     = g_samples.mean(axis=0)
+
+        sigma_emp   += p_i * get_spin_empirical_EP(beta, J, i, g_mean)
+
+    return sigma_emp
+
+
 def get_spin_empirical_EP(beta, J, i, g_mean):
     # Calculate ``ground truth'' EP contribution from spin i. Here g_mean is the expectation of samples
     # return by get_g_observables, i.e., 
     #       g_mean = get_g_observables(S, F, i).mean(axis=0) 
-    import utils
+
     # Calculate contributions to empirical EP from observables of spin i
-    g_mean_t   = utils.numpy_to_torch(g_mean)
-    J_i_t      = utils.numpy_to_torch(J[i,:])
-    J_i_t_no_i = utils.remove_i(J_i_t, i)   # remove i'th entry, due to our convention
-    return float(beta) * float(J_i_t_no_i @ g_mean_t)
+    J_i         = J[i,:]
+    J_i_no_i    = np.hstack([J_i[:i], J_i[i+1:]])   # remove i'th entry, due to our convention
+    spin_emp    = float(beta) * float(J_i_no_i @ g_mean)
+
+    return spin_emp
