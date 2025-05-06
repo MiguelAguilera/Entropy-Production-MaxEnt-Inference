@@ -65,7 +65,7 @@ for i in tqdm(range(N)):
 
     # Multidimensional TUR
     stime = time.time()
-    spin_MTUR = estimator_obj.get_EP_MTUR()
+    spin_MTUR = estimator_obj.get_EP_MTUR().objective
     time_MTUR += time.time() - stime
     
     sigma_g    += p_i * spin_full
