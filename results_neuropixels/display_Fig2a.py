@@ -33,7 +33,7 @@ parser.add_argument("--sizes", nargs="+", type=int,
 parser.add_argument("--normalize", action="store_true", default=True, 
                     help="Normalize EP by firing rate (default: True).")
 
-parser.add_argument("--remove_outliers", action="store_true", default=False,
+parser.add_argument("--remove_outliers", action="store_true", default=True,
                     help="Remove outliers from EP values (default: False).")
 
 parser.add_argument("--types", nargs="+", default=["active", "passive", "gabor"],
