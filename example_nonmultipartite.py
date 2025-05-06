@@ -56,3 +56,10 @@ print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
 print(f"  Σ     (Empirical)                              :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
 print(f"  Σ_g   (Using observable samples, grad. ascent) :    {sigma_g2_obs    :.6f}  ({time_g2_obs    :.3f}s)")
 print(f"  Σ_g   (Using state samples, grad. ascent)      :    {sigma_g2_state  :.6f}  ({time_g2_state  :.3f}s)")
+
+theta = np.random.rand(data1.nobservables)
+print(data1.get_objective(theta))
+print(data2.get_objective(theta))
+
+print(data1.get_tilted_statistics(theta=theta, return_mean=True))
+print(data2.get_tilted_statistics(theta=theta, return_mean=True))
