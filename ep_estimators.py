@@ -124,7 +124,8 @@ class Dataset(object):
 
         assert return_mean or return_covariance or return_objective
 
-        vals       = {}
+        vals  = {}
+        theta = numpy_to_torch(theta)
 
         with torch.no_grad():
         
@@ -169,7 +170,7 @@ class Dataset(object):
 
     def get_objective(self, theta):
         # Return objective value for parameters theta
-        v = self.get_tilted_statistics(theta, return_objective=True)
+        v = self.get_tilted_statistics(numpy_to_torch(theta), return_objective=True)
         return v['objective']
 
 
@@ -216,6 +217,11 @@ class RawDataset(Dataset):
         if return_covariance:
             raise NotImplementedError("Covariance not implemented for RawDataset")
         
+        assert return_objective or return_mean
+        
+        vals = {}
+        theta = numpy_to_torch(theta)
+
 
         triu = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
         
@@ -229,16 +235,15 @@ class RawDataset(Dataset):
         exp_tilt = torch.exp(th_g - th_g_max)
         norm_const  = torch.mean(exp_tilt)
         weights = exp_tilt / norm_const
-        vals = {}
         
         if return_objective:
             # To return 'true' normalization constant, we need to correct again for th_g_max
             log_Z = torch.log(norm_const) + th_g_max
             vals['objective'] = float(theta @ self.g_mean - log_Z)
 
-        if return_mean or return_covariance:
+        if return_mean:
             weighted_X = self.X0 * weights[:, None]
-            mean_mat = (weighted_X.T @ self.X1) / self.nsamples / norm_const  # shape (n, n)
+            mean_mat = (weighted_X.T @ self.X1) / self.nsamples / norm_const  
             mean_mat_asymm = mean_mat - mean_mat.T
             g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
             vals['tilted_mean'] = g_mean_vec
