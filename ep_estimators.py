@@ -269,32 +269,33 @@ class EPEstimators(object):
 
 
     def get_EP_Newton(self, 
-                      holdout=False, holdout_fraction=1/2, holdout_shuffle=False, verbose=False,
+                      holdout=False, holdout_fraction=1/2, holdout_shuffle=False, verbose=0,
                       max_iter=1000, tol=1e-4, linsolve_eps=1e-4, num_chunks=None,
                       trust_radius=None, solve_constrained=True, adjust_radius=False,
                       eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
-        """
-        Estimate EP by optimizing objective using Newton's method. We support advanced
-        features like Newton's method with trust region constraints
+        # Estimate EP by optimizing objective using Newton's method. We support advanced
+        # features like Newton's method with trust region constraints
+        #
+        # Arguments (all optional):
+        #   holdout (bool)   : if True, we split the data into training and testing sets
+        #   holdout_fraction : fraction of samples for test split
+        #   holdout_shuffle  : shuffle data before splitting
+        #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
+        #   max_iter (int)   : maximum number of iterations
+        #   tol (float)      : early stopping once objective does not improve by more than tol
+        #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
+        #   num_chunks       : chunk size for memory-efficient covariance computation
+        #
+        # Trust-region-related arguments (all optional):
+        #   trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
+        #   solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
+        #                                  if False, we simply rescale usual Newton step to desired maximum norm 
+        #   adjust_radius (bool)         : change trust-region radius in an adaptive way
+        #   eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
+        #                                : hyperparameters for adjusting trust radius
 
-        Arguments (all optional):
-          holdout (bool)   : if True, we split the data into training and testing sets
-          holdout_fraction : fraction of samples for test split
-          holdout_shuffle  : shuffle data before splitting
-          verbose (bool)   : print debugging information
-          max_iter (int)   : maximum number of iterations
-          tol (float)      : early stopping once objective does not improve by more than tol
-          linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
-          num_chunks       : chunk size for memory-efficient covariance computation
+        funcname = 'get_EP_Newton_steps'
 
-        Trust-region-related arguments (all optional):
-          trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
-          solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
-                                         if False, we simply rescale usual Newton step to desired maximum norm 
-          adjust_radius (bool)         : change trust-region radius in an adaptive way
-          eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
-                                       : hyperparameters for adjusting trust radius
-        """
         with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
 
             if holdout:
@@ -315,7 +316,8 @@ class EPEstimators(object):
 
                 if is_infnan(H_theta.sum()): 
                     # Error occured, usually it means theta is too big
-                    if verbose: print('invalid Hessian in get_EP_Newton_steps')
+                    if verbose: 
+                        print('{funcname} : [Stopping] Invalid Hessian in ')
                     break
 
                 grad = trn.g_mean - g_theta
@@ -355,7 +357,7 @@ class EPEstimators(object):
 
                     else: # for loop finished without breaking
                         if verbose: 
-                            print("max_iter reached in adjust_radius loop!")
+                            print("{funcname} : max_iter reached in adjust_radius loop!")
 
                 else:
                     # Find regular Newton direction
@@ -371,23 +373,35 @@ class EPEstimators(object):
                 last_round = False # set to True if we want break after updating theta and objective values
 
                 if is_infnan(f_new_trn) or f_new_trn <= f_cur_trn:  
+                    if verbose:
+                        print(f"{funcname} : [Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
                     break                  # Training value should be finite and increasing
                 elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                    if verbose:
+                        print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
                     last_round = True      # Break when training objective stops improving by more than tol
                 elif f_new_trn > np.log(trn.nsamples):  
                     # One cannot reliably estimate KL divergence larger than log(# samples).
                     # This is a signature of undersampling; when it happens, we clip our estimate of the 
                     # objective and exit
+                    if verbose:
+                        print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                     f_new_trn = np.log(trn.nsamples)
                     last_round = True
 
                 if holdout:                # Do the same checks but now on the heldout test data
                     f_new_tst = tst.get_objective(new_theta) 
                     if is_infnan(f_new_tst) or f_new_tst <= f_cur_tst:
+                        if verbose:
+                            print(f"{funcname} : [Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
                         break
                     elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                        if verbose:
+                            print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                         last_round = True
                     elif f_new_tst > np.log(tst.nsamples):
+                        if verbose:
+                            print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                         f_new_tst = np.log(tst.nsamples)
                         last_round = True
 
@@ -415,29 +429,29 @@ class EPEstimators(object):
 
     def get_EP_GradientAscent(self, theta_init=None, 
                               holdout=False, holdout_fraction=1/2, holdout_shuffle=False, 
-                              lr=0.01, max_iter=1000, patience = 10, tol=1e-4, verbose=False,
+                              lr=0.01, max_iter=1000, patience = 10, tol=1e-4, verbose=0,
                               use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
-        """
-        Estimate EP using gradient ascent algorithm
+        # Estimate EP using gradient ascent algorithm
 
-        Arguments:
-          theta_init     : torch tensor (of length (nspins-1)), specifiying initial parameters (set to 0s if None)
-          holdout (bool)   : if True, we split the data into training and testing sets
-          holdout_fraction : fraction of samples for test split
-          holdout_shuffle  : shuffle data before splitting
-          lr             : learning rate
-          max_iter (int) : maximum number of iterations
-          tol (float)    : early stopping once objective does not improve by more than tol
-          verbose (bool) : print debugging information
+        # Arguments:
+        #   theta_init       : torch tensor (of length (nspins-1)), specifiying initial parameters (set to 0s if None)
+        #   holdout (bool)   : if True, we split the data into training and testing sets
+        #   holdout_fraction : fraction of samples for test split
+        #   holdout_shuffle  : shuffle data before splitting
+        #   lr               : learning rate
+        #   max_iter (int)   : maximum number of iterations
+        #   tol (float)      : early stopping once objective does not improve by more than tol
+        #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
+        #
+        # Adam-related arguments:
+        #   use_Adam       : whether to use use_Adam algorithm w/ momentum or just regular grad. ascent
+        #   beta1, beta2   : Adam moment decay parameters
+        #   skip_warm_up   : Adam option
+        #
+        # Returns:
+        #   Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
 
-        Adam-related arguments:
-          use_Adam       : whether to use use_Adam algorithm w/ momentum or just regular grad. ascent
-          beta1, beta2   : Adam moment decay parameters
-          skip_warm_up   : Adam option
-        
-        Returns:
-          Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
-        """
+        funcname = 'get_EP_GradientAscent'
 
         with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
@@ -469,19 +483,19 @@ class EPEstimators(object):
                 last_round = False # flag that indicates whether to break after updating values
                 if is_infnan(f_new_trn):
                     if verbose:
-                        print(f"[Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
+                        print(f"{funcname} : [Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
                     break
 #                elif f_new_trn <= f_cur_trn and t > min_iter:
 #                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
 #                    break
                 elif f_new_trn > np.log(trn.nsamples):
                     if verbose:
-                        print(f"[Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                        print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                     f_new_trn = np.log(trn.nsamples)
                     last_round = True
                 elif np.abs(f_new_trn - f_cur_trn) <= tol:
                     if verbose:
-                        print(f"[Converged] Training objective change below tol={tol} at iter {t}")
+                        print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
                     last_round = True
 
                 if holdout:
@@ -490,19 +504,19 @@ class EPEstimators(object):
                     test_drop = f_cur_tst - f_new_tst
                     if is_infnan(f_new_tst):
                         if verbose:
-                            print(f"[Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
+                            print(f"{funcname} : [Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
                         break
 #                    elif test_drop > 0 and train_gain > tol :
 #                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
 #                        break
                     elif f_new_tst > np.log(tst.nsamples):
                         if verbose:
-                            print(f"[Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
+                            print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                         f_new_tst = np.log(tst.nsamples)
                         last_round = True
                     elif np.abs(f_new_tst - f_cur_tst) <= tol:
                         if verbose:
-                            print(f"[Converged] Test objective change below tol={tol} at iter {t}")
+                            print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                         last_round = True
                     
                     if f_new_tst > best_tst_score:
@@ -513,7 +527,7 @@ class EPEstimators(object):
                         patience_counter += 1
                     if patience_counter >= patience:
                         if verbose:
-                            print(f"[Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
+                            print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
                         theta = best_theta.clone()
                         break
                         
