@@ -174,9 +174,7 @@ class Dataset(object):
 
 
 
-
-
-
+# TODO :Explain what this does, i.e., calculate statistics directly from state samples
 class RawDataset(Dataset):
     def __init__(self, X0, X1):
         # Arguments:

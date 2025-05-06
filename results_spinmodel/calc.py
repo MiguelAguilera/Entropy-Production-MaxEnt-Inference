@@ -8,7 +8,7 @@ import torch
 
 sys.path.insert(0, '..')
 import utils
-import ep_estimators as epm
+import ep_estimators
 import spin_model
 
 device = utils.set_default_torch_device()
@@ -21,7 +21,8 @@ def calc_spin(beta, J, i, g_samples):
     sigmas, times, thetas = {}, {}, {}
 
     g_mean = g_samples.mean(axis=0)
-    obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
+    data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+    obj  = ep_estimators.EPEstimators(data=data)
 
 
     to_run = [
@@ -53,7 +54,7 @@ def calc_spin(beta, J, i, g_samples):
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=g_mean)
 
     stime = time.time()
-    sigmas['TUR'] = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
+    sigmas['TUR'] = ep_estimators.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
     times['TUR'] = time.time() - stime
 
     for k, f, kwargs in to_run:
@@ -101,9 +102,9 @@ def calc(file_name):
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
-    S      = torch.from_numpy(data["S_bin"]).to(device)*2-1
+    S      = data['S_bin']*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
     rep, N = S.shape
-    F      = torch.from_numpy(data["F"]).to(device).bool()
+    F      = data['F'] # torch.from_numpy(data["F"]).to(device).bool()
 
     if False:
         vvv=data['J'].reshape([1,-1])[0,:]
@@ -112,9 +113,9 @@ def calc(file_name):
         plt.show()
         #asf
 
-    J = torch.from_numpy(data['J']).to(device)
+    J = data['J'] # torch.from_numpy(data['J']).to(device)
 
-    frequencies = F.float().sum(axis=0).cpu().numpy()/(N*rep)
+    frequencies = F.sum(axis=0)/(N*rep) # F.float().sum(axis=0).cpu().numpy()/(N*rep)
     epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
                 'thetas':{}, 'ep':{}, 'times':{}}
 
