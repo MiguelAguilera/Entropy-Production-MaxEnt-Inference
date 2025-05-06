@@ -28,22 +28,35 @@ from utils import *
 # ================================================================================
 
 class Dataset(object):
-    def __init__(self, g_samples, rev_g_samples):
+    def __init__(self, g_samples, rev_g_samples=None):
         # Arguments:
         #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
         #                              under reverse process 
         #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process 
+        #                              under reverse process . If None, we assume antisymmetric observables
+        #                              where rev_g_samples = -g_samples
         self.g_samples     = numpy_to_torch(g_samples)
-        self.rev_g_samples = numpy_to_torch(rev_g_samples)
+        self.forward_nsamples, self.nobservables = self.g_samples.shape
 
-        self.g_mean        = self.g_samples.mean(axis=0)
+        if rev_g_samples is not None:
+            self.rev_g_samples = numpy_to_torch(rev_g_samples)
+            self.nsamples, self.rev_nobservables = self.g_samples.shape
+            assert(self.nobservables == self.rev_nobservables)
+        else:
+            self.rev_g_samples = None
+            self.nsamples = self.forward_nsamples
 
-        self.nsamples    , self.nobservables = self.g_samples.shape
-        self.rev_nsamples, self.rev_nobservables = self.g_samples.shape
-
-        assert(self.nobservables == self.rev_nobservables)
+        self.g_mean = self.g_samples.mean(axis=0)
         self.device = self.g_samples.device
+
+
+    def get_rev_g_samples(self):
+        # Return reverse samples. If not provided, we assume antisymmetric observables
+        if self.rev_g_samples is not None:
+            return self.rev_g_samples
+        else:
+            return -self.g_samples
+        
 
     @staticmethod
     def _get_trn_indices(nsamples, holdout_fraction, holdout_shuffle=False):
@@ -63,11 +76,17 @@ class Dataset(object):
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=False):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
-        trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.rev_nsamples, holdout_fraction, holdout_shuffle)
+        trn_indices, tst_indices = self._get_trn_indices(self.forward_nsamples, holdout_fraction, holdout_shuffle)
 
-        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=self.rev_g_samples[trn_indices_rev])
-        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=self.rev_g_samples[tst_indices_rev])
+        if self.rev_g_samples is not None:
+            trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+            rev_trn = self.rev_g_samples[trn_indices_rev]
+            rev_tst = self.rev_g_samples[tst_indices_rev]
+        else:
+            rev_trn, rev_tst = None, None 
+
+        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
         return trn, tst
     
 
@@ -82,7 +101,7 @@ class Dataset(object):
 
         with torch.no_grad():
         
-            th_g = self.rev_g_samples @ theta
+            th_g = self.get_rev_g_samples() @ theta
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
             # The same multiplicative corrections enters into the normalization constant and the tilted
@@ -97,12 +116,13 @@ class Dataset(object):
                 vals['objective'] = float( theta @ self.g_mean - log_Z )
 
             if return_mean or return_covariance:
-                mean = exp_tilt @ self.rev_g_samples / self.nsamples / norm_const
+                mean = exp_tilt @ self.get_rev_g_samples()
+                mean = mean / self.nsamples / norm_const
                 vals['tilted_mean'] = mean
 
                 if return_covariance:
                     if num_chunks is None:
-                        K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+                        K = torch.einsum('k,ki,kj->ij', exp_tilt, self.get_rev_g_samples() , self.get_rev_g_samples() )
 
                     else:
                         # Chunked computation
@@ -112,7 +132,7 @@ class Dataset(object):
                         for r in range(num_chunks):
                             start = r * chunk_size
                             end = min((r + 1) * chunk_size, self.nsamples)
-                            g_chunk = self.rev_g_samples[start:end]
+                            g_chunk = self.get_rev_g_samples()[start:end]
                             
                             K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
@@ -128,7 +148,12 @@ class Dataset(object):
 
 
 
-# TODO :Explain what this does, i.e., calculate statistics directly from state samples
+
+    
+
+
+# TODO : Explain what this does, i.e., calculate statistics directly from state samples
+# from forward process. It depends on antisymmetric observables
 class RawDataset(Dataset):
     def __init__(self, X0, X1):
         # Arguments:
@@ -142,6 +167,7 @@ class RawDataset(Dataset):
         
         # self.N indicates dimensionality of the system
         self.nsamples, self.N = self.X0.shape
+        self.nsamples = self.nsamples
 
         self.device = self.X0.device
 
@@ -195,10 +221,6 @@ class RawDataset(Dataset):
             vals['objective'] = float(theta @ self.g_mean - log_Z)
 
         if return_mean:
-            # g_mean_raw = (torch.einsum('k,ki,kj->ij', weights, self.X0, self.X1) -
-            #               torch.einsum('k,ki,kj->ij', weights, self.X1, self.X0))/self.nsamples
-            # g_mean_vec = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
-            
             weighted_X = self.X0 * weights[:, None]
             mean_mat = (weighted_X.T @ self.X1) / self.nsamples  
             mean_mat_asymm = mean_mat - mean_mat.T
@@ -538,6 +560,7 @@ class EPEstimators(object):
                 return self.get_valid_solution(objective=f_cur_trn, theta=theta)
 
 
+
     # Estimate EP using the multidimensional TUR method
     def get_EP_MTUR(self, num_chunks=None, linsolve_eps=1e-4):
         # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
@@ -549,24 +572,25 @@ class EPEstimators(object):
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                               numerical stability of linear solvers
 
-        rev_g_mean   = self.data.rev_g_samples.mean(axis=0)
-        mean_diff    = self.data.g_mean - rev_g_mean
+        obj = self.data
+        rev_g_mean   = obj.get_rev_g_samples().mean(axis=0)
+        mean_diff    = obj.g_mean - rev_g_mean
 
         # now compute covariance of (p + ~p)/2
-        combined_samples = torch.concatenate([self.data.g_samples, self.data.rev_g_samples], dim=0)
-        combined_mean    = (self.data.g_mean + rev_g_mean)/2
+        combined_samples = torch.concatenate([obj.g_samples, obj.get_rev_g_samples()], dim=0)
+        combined_mean    = (obj.g_mean + rev_g_mean)/2
 
-        num_total        = self.data.nsamples + self.data.rev_nsamples
+        num_total        = obj.nsamples + obj.nsamples
         weights          = torch.empty(num_total)
-        weights[:self.data.nsamples] = 1.0/self.data.nsamples/2.0
-        weights[self.data.nsamples:] = 1.0/self.data.rev_nsamples/2.0
+        weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
+        weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
 
         if num_chunks is None:
             combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
 
         else:
             # Chunked computation
-            combined_cov = torch.zeros((self.nobservables, self.nobservables), device=self.data.device)
+            combined_cov = torch.zeros((obj.nobservables, obj.nobservables), device=obj.device)
             chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
 
             for r in range(num_chunks):
@@ -581,5 +605,4 @@ class EPEstimators(object):
 
 
 
-        return self.get_valid_solution(objective=float(x @ mean_diff)/2, theta=None)
-
+        return float(x @ mean_diff)/2

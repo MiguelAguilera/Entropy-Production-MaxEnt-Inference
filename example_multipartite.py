@@ -45,7 +45,7 @@ for i in tqdm(range(N)):
     g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
     g_mean                  = g_samples.mean(axis=0)
 
-    data = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
+    data = ep_estimators.Dataset(g_samples=g_samples)
     estimator_obj = ep_estimators.EPEstimators(data)
 
     # 1 step of Newton
