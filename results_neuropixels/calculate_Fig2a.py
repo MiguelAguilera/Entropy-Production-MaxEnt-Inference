@@ -35,7 +35,7 @@ parser.add_argument("--order", type=str, default="random",
                     help="Ordering of neurons: random or sorted by activity (default: random).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
-parser.set_defaults(use_Adam=True)
+parser.set_defaults(args=True)
 parser.add_argument("--patience", type=int, default=10,
                     help="Early stopping patience for the optimizer (default: 10).")
 parser.add_argument("--lr", type=float, default=0.01,
@@ -179,6 +179,7 @@ def calc(sizes, session_type, session_id, r):
         ep_est = ep_estimators.EPEstimators(data)
 
         start_time = time.time()
+        
         EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, holdout=True, tol=tol, use_Adam=args.use_Adam, verbose=True,patience=args.patience)
 #        print(f"Time for Gradient Ascent: {time.time() - start_time:.4f} seconds")
         
