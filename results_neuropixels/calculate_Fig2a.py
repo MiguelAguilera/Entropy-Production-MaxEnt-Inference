@@ -180,7 +180,7 @@ def calc(sizes, session_type, session_id, r):
 
         start_time = time.time()
         
-        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, holdout=True, tol=tol, use_Adam=args.use_Adam, verbose=True,patience=args.patience)
+        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, holdout=True, tol=tol, use_Adam=args.use_Adam, verbose=True,patience=args.patience, holdout_shuffle=True)
 #        print(f"Time for Gradient Ascent: {time.time() - start_time:.4f} seconds")
         
         if device.type == "cuda":
