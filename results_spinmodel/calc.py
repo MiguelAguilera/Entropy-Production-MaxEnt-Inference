@@ -45,7 +45,8 @@ def calc_spin(beta, J, i, g_samples):
 # #        ('T na h' ,      obj.get_EP_TRON        , dict(holdout=True, trust_radius_init=1/4, adjust_radius=False) ),
 #         #('N h'    ,      obj.get_EP_Newton_steps, dict(holdout=True, trust_radius=1/4) ),
         
-  #        ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
+#          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
+          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True, max_iter=5000, lr=5e-2, tol=1e-8, use_Adam=False) ),
 #          ('G'    ,      obj.get_EP_GradientAscent  , dict() ),
     ]
 

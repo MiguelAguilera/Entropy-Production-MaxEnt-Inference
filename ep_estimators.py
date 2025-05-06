@@ -170,12 +170,15 @@ class RawDataset(Dataset):
         self.nsamples = self.nsamples
 
         self.device = self.X0.device
-
-        g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 )/ self.nsamples  # shape (N, N)
-        self.triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
-        self.g_mean = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
-
+    
+        self.g_mean = self._get_g_mean()
         self.nobservables = self.g_mean.shape[0]
+
+
+    def _get_g_mean(self): # Calculate mean of observables under forward process
+        triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
+        g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 )/ self.nsamples  # shape (N, N)
+        return g_mean_raw[triu_indices[0], triu_indices[1]]
 
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=True):
@@ -201,9 +204,8 @@ class RawDataset(Dataset):
         vals = {}
         theta = numpy_to_torch(theta)
 
-
         triu = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
-        
+
         # 1. θᵀg_k
         Theta = torch.zeros((self.N, self.N), device=self.device)
         Theta[triu[0], triu[1]] = theta
@@ -231,6 +233,45 @@ class RawDataset(Dataset):
 
     
         
+class RawDataset2(RawDataset):
+    def _get_g_mean(self): # Calculate mean of observables under forward process
+        # Here we consider g_{ij} = (x_i' - x_i) x_j
+        return ((self.X1 - self.X0).T @ self.X0 / self.nsamples).flatten()
+    
+    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
+        # Compute tilted statistics under the reverse distribution titled by theta. This may include
+        # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
+
+        if return_covariance:
+            raise NotImplementedError("Covariance not implemented for RawDataset2")
+        
+        assert return_objective or return_mean
+        
+        vals = {}
+        theta = numpy_to_torch(theta)
+
+        # 1. θᵀg_k 
+        theta2d = torch.reshape(theta, (self.N, self.N))
+        th_g    = torch.einsum('ij,ki,kj->k', theta2d, self.X0 - self.X1, self.X0)
+
+        th_g_max = torch.max(th_g)
+        exp_tilt = torch.exp(th_g - th_g_max)
+        norm_const = torch.mean(exp_tilt)
+        weights = exp_tilt / norm_const
+        
+        if return_objective:
+            # To return 'true' normalization constant, we need to correct again for th_g_max
+            log_Z = torch.log(norm_const) + th_g_max
+            vals['objective'] = float(theta @ self.g_mean - log_Z)
+
+        if return_mean:
+            g_mean = torch.einsum('k,ki,kj->ij', weights, self.X0-self.X1, self.X0)/self.nsamples
+            vals['tilted_mean'] = g_mean.flatten()
+
+        return vals
+
+
+
 
 # EPEstimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
@@ -471,6 +512,9 @@ class EPEstimators(object):
             best_tst_score = -float('inf')  # for maximization
             patience_counter = 0
             for t in range(max_iter):
+                if verbose and verbose > 1 and t%10 == 0: 
+                    print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
+
                 tilted_stats = trn.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
                 f_new_trn    = tilted_stats['objective']
 
@@ -519,7 +563,8 @@ class EPEstimators(object):
                         patience_counter += 1
                     if patience_counter >= patience:
                         if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
-                        theta = best_theta.clone()
+                        theta     = best_theta.clone()
+                        f_cur_tst = best_tst_score
                         break
                         
                 f_cur_trn, theta = f_new_trn, new_theta
