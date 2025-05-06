@@ -431,7 +431,7 @@ class EPEstimators(object):
 
     def get_EP_GradientAscent(self, theta_init=None, 
                               holdout=False, holdout_fraction=1/2, holdout_shuffle=False, 
-                              lr=0.01, max_iter=1000, min_iter=100, tol=1e-4, verbose=False,
+                              lr=0.01, max_iter=1000, patience = 10, tol=1e-4, verbose=False,
                               use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
         """
         Estimate EP using gradient ascent algorithm
@@ -472,6 +472,8 @@ class EPEstimators(object):
             m = torch.zeros_like(new_theta)
             v = torch.zeros_like(new_theta)
             
+            best_tst_score = -float('inf')  # for maximization
+            patience_counter = 0
             for t in range(max_iter):
                 tilted_stats = trn.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
                 f_new_trn    = tilted_stats['objective']
@@ -505,10 +507,9 @@ class EPEstimators(object):
                         if verbose:
                             print(f"[Stopping] Invalid value (NaN or Inf) in test objective at iter {t}")
                         break
-                    elif test_drop > 0 and train_gain > tol :
-                        if verbose:
-                            print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
-                        break
+#                    elif test_drop > 0 and train_gain > tol :
+#                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
+#                        break
                     elif f_new_tst > np.log(tst.nsamples):
                         if verbose:
                             print(f"[Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
@@ -518,7 +519,18 @@ class EPEstimators(object):
                         if verbose:
                             print(f"[Converged] Test objective change below tol={tol} at iter {t}")
                         last_round = True
-
+                    
+                    if f_new_tst > best_tst_score:
+                        best_tst_score = f_new_tst
+                        best_theta = new_theta.clone()  # Save the best model
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                    if patience_counter >= patience:
+                        print(f"[Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
+                        theta = best_theta.clone()
+                        break
+                        
                 f_cur_trn, theta = f_new_trn, new_theta
                 if holdout:
                     f_cur_tst = f_new_tst
