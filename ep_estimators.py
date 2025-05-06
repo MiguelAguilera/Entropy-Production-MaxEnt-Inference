@@ -252,6 +252,7 @@ class RawDataset2(RawDataset):
 
         # 1. θᵀg_k 
         theta2d = torch.reshape(theta, (self.N, self.N))
+#        theta2d[range(self.N),range(self.N)]=0
         th_g    = torch.einsum('ij,ki,kj->k', theta2d, self.X0 - self.X1, self.X0)
 
         th_g_max = torch.max(th_g)
