@@ -21,7 +21,7 @@ np.random.seed(42) # Set seed for reproducibility
 
 stime = time.time()
 J    = spin_model.get_couplings_random(N=N, k=k)
-S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
+S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=100000)
 print(f"Ran Monte Carlo in {time.time()-stime:.3f}s")
 
 # Empirical estimate 
