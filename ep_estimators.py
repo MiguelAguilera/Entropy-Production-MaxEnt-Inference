@@ -563,7 +563,8 @@ class EPEstimators(object):
                         patience_counter += 1
                     if patience_counter >= patience:
                         if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
-                        theta = best_theta.clone()
+                        theta     = best_theta.clone()
+                        f_cur_tst = best_tst_score
                         break
                         
                 f_cur_trn, theta = f_new_trn, new_theta

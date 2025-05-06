@@ -126,8 +126,8 @@ if __name__ == "__main__":
 
         beta = res['beta']
         for k, v in res['ep'].items():
-            if k.endswith(' tst'):
-                continue
+            #if k.endswith(' tst'):
+            #    continue
             if k not in EPvals:
                 EPvals[k] = []
             EPvals[k].append( (beta, v) )
