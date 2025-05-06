@@ -193,8 +193,8 @@ class RawDataset(Dataset):
         self.device = self.X0.device
 
         g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 )/ self.nsamples  # shape (N, N)
-        triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
-        self.g_mean = g_mean_raw[triu_indices[0], triu_indices[1]]
+        self.triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
+        self.g_mean = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
 
         self.nobservables = self.g_mean.shape[0]
 
@@ -242,10 +242,14 @@ class RawDataset(Dataset):
             vals['objective'] = float(theta @ self.g_mean - log_Z)
 
         if return_mean:
-            weighted_X = self.X0 * weights[:, None]
-            mean_mat = (weighted_X.T @ self.X1) / self.nsamples / norm_const  
-            mean_mat_asymm = mean_mat - mean_mat.T
-            g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
+            g_mean_raw = (torch.einsum('k,ki,kj->ij', weights, self.X0, self.X1) -
+                          torch.einsum('k,ki,kj->ij', weights, self.X1, self.X0))/self.nsamples
+            g_mean_vec = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
+            
+            # weighted_X = self.X0 * weights[:, None]
+            # mean_mat = (weighted_X.T @ self.X1) / self.nsamples / norm_const  
+            # mean_mat_asymm = mean_mat - mean_mat.T
+            # g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
             vals['tilted_mean'] = g_mean_vec
 
         return vals
