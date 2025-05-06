@@ -6,7 +6,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS
 import torch
 
 import spin_model
-import ep_estimators as epm
+import ep_estimators
 import utils
 
 # The following allows torch to use GPU for computation
@@ -24,12 +24,18 @@ J    = spin_model.get_couplings_random(N=N, k=k)
 S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin  # Total spin-flip attempts
-print(f"Samples {total_flips} transitions in {time.time()-stime:.3f}s")
+print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
+
+# Empirical estimate 
+stime = time.time()
+sigma_emp = spin_model.get_empirical_EP(beta, J, S, F)
+time_emp  = time.time() - stime
 
 # Running sums to keep track of EP estimates
-sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
+sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
-stime = time.time()
+# Running sums to keep track of EP estimates
+time_g  = time_g2 = time_N1 = time_MTUR = 0.0
 
 # Because system is multipartite, we can separately estimate EP for each spin
 for i in tqdm(range(N)):
@@ -39,24 +45,29 @@ for i in tqdm(range(N)):
     g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
     g_mean                  = g_samples.mean(axis=0)
 
-    # Calculate empirical estimate of true EP (contribution from i-th spin)
-    spin_emp = spin_model.get_spin_empirical_EP(beta, J, i, g_mean)
-
-    obj = epm.EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples)
+    data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+    estimator_obj = ep_estimators.EPEstimators(data)
 
     # 1 step of Newton
-    spin_N1   = obj.get_EP_Newton(max_iter=1).objective 
+    stime = time.time()
+    spin_N1   = estimator_obj.get_EP_Newton(max_iter=1).objective 
+    time_N1 += time.time() - stime
     
     # Full optimization with trust-region Newton method and holdout 
-    spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
+    stime = time.time()
+    spin_full = estimator_obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
+    time_g  += time.time() - stime
 
     # Full optimization with gradient ascent method 
-    spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
+    stime = time.time()
+    spin_grad = estimator_obj.get_EP_GradientAscent(holdout=True).objective
+    time_g2 += time.time() - stime
 
     # Multidimensional TUR
-    spin_MTUR = epm.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)             
+    stime = time.time()
+    spin_MTUR = ep_estimators.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
+    time_MTUR += time.time() - stime
     
-    sigma_emp  += p_i * spin_emp
     sigma_g    += p_i * spin_full
     sigma_N1   += p_i * spin_N1
     sigma_MTUR += p_i * spin_MTUR
@@ -66,9 +77,9 @@ for i in tqdm(range(N)):
 
 
 print(f"\nEntropy production estimates (took {time.time()-stime:3f}s):")
-print(f"  Σ     (Empirical)                         :    {sigma_emp:.6f}")
-print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g:.6f}")
-print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2:.6f}")
-print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1:.6f}")
-print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}")
+print(f"  Σ     (Empirical)                         :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
+print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
+print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
+print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
 

@@ -43,6 +43,7 @@ def set_default_torch_device():
         device = torch.device("cpu")
     torch.set_default_device(device)
     warnings.filterwarnings("ignore", message="The operator 'aten::_linalg_solve_ex.result' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
+    warnings.filterwarnings("ignore", message="The operator 'aten::triu_indices' is not currently supported on the MPS backend and will fall back to run on the CPU", category=UserWarning)
     return device
 
 
