@@ -181,11 +181,11 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
 def convert_to_nonmultipartite(S, F):
     # Convert samples S and F to non-multipartite form
     # Arguments:
-    #   S: samples_per_spin x N
-    #   F: samples_per_spin x N
+    #   S: samples_per_spin x N (int)  : initial state at beginning of each of samples_per_spin x N transition attempts
+    #   F: samples_per_spin x N (bool) : whether each spin flipped or not in each of samples_per_spin x N transition attempts
     # Returns:
-    #   X0: samples_per_spin x N (initial states)
-    #   X1: samples_per_spin x N (final states)
+    #   X0: (samples_per_spin x N) x N : initial states for each spin attempt
+    #   X1: (samples_per_spin x N) x N : final states for each spin attempt
 
     # Stack S and F into non-multipartite datastructure
     X0s, X1s = [], []
