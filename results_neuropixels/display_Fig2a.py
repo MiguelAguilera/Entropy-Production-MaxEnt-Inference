@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import os
 
 # ========================
 # Argument Parser
@@ -140,7 +141,7 @@ if __name__ == "__main__":
 
     # Scatter plot
     plt.figure(figsize=(8, 6))
-    cmap = plt.get_cmap('inferno_r')
+    cmap = plt.get_cmap('viridis_r')
     colors = list(cmap(np.linspace(0, 1, len(types) + 2)[1:-1][::-1]))
 
     for session_type, color in zip(types, colors):
@@ -210,7 +211,10 @@ if __name__ == "__main__":
         handlelength=1., handletextpad=0.5,
         bbox_to_anchor=(0.03, 0.55)
     )
-
+    IMG_DIR='img'
+    if not os.path.exists(IMG_DIR):
+        print(f'Creating base directory: {IMG_DIR}')
+        os.makedirs(IMG_DIR)
     plt.savefig('img/Fig2a.pdf', bbox_inches='tight', pad_inches=0)
     plt.show()
 
