@@ -38,16 +38,16 @@ N = J.shape[0]
 g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
                         for i in range(N) for j in range(i+1, N) ]).T
 stime = time.time()
-data          = ep_estimators.Dataset(g_mean=g_samples.mean(axis=0), rev_g_samples=-g_samples)
-estimator1    = ep_estimators.EPEstimators(data)
+data1         = ep_estimators.Dataset(g_mean=g_samples.mean(axis=0), rev_g_samples=-g_samples)
+estimator1    = ep_estimators.EPEstimators(data1)
 sigma_g2_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
 time_g2_obs   = time.time() - stime
 
 
 # Estimate EP using gradient ascent method , from state samples
 stime = time.time()
-data           = ep_estimators.RawDataset(X0, X1)
-estimator2     = ep_estimators.EPEstimators(data)
+data2          = ep_estimators.RawDataset(X0, X1)
+estimator2     = ep_estimators.EPEstimators(data2)
 sigma_g2_state = estimator2.get_EP_GradientAscent(holdout=True).objective
 time_g2_state  = time.time() - stime
 
