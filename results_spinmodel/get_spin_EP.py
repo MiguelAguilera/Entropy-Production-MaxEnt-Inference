@@ -10,7 +10,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
 import torch
 
 sys.path.insert(0, '..')
-from ep_estimators import EPEstimators, get_EP_MTUR
+import ep_estimators
 import utils
 
 
@@ -99,17 +99,19 @@ def calc_spin(i_args):
     # Calculate empirical estimate of true EP
     spin_emp  = beta * J_without_i @ g_mean
     
-    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
+    data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+    est = ep_estimators.EPEstimators(data)
+#    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
     # Compute MTUR
     t0 = time.time()
-    sig_MTUR = get_EP_MTUR(g_samples,-g_samples)
+    sig_MTUR = ep_estimators.get_EP_MTUR(g_samples,-g_samples)
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 
     # Compute 1-step Newton
     t0 = time.time()
-    sig_Gaussian, theta_Gaussian, _ = ep_estimator.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True)
+    sig_Gaussian, theta_Gaussian, _ = est.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True, num_chunks=5)
     N1 = Pi * sig_Gaussian
     theta_Gaussian_np = theta_Gaussian.detach().cpu().numpy()
     time_Gaussian = time.time() - t0
@@ -118,7 +120,7 @@ def calc_spin(i_args):
     Emp = Pi * spin_emp
 
     # Compute Newton estimation
-    sig_MaxEnt, theta_MaxEnt, _ = ep_estimator.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False)
+    sig_MaxEnt, theta_MaxEnt, _ = est.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False, num_chunks=5)
     N2 = Pi * sig_MaxEnt
     theta_MaxEnt_np = theta_MaxEnt.detach().cpu().numpy()
     time_MaxEnt = time.time() - t0
