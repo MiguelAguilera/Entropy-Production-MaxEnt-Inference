@@ -71,6 +71,7 @@ if __name__ == "__main__":
     rep = args.R
 
     num_sessions = 103
+    SAVE_DATA_DIR = 'ep_data'
 
     # Data containers
     EP = {session_type: {size: [] for size in sizes} for session_type in types}
@@ -84,7 +85,7 @@ if __name__ == "__main__":
         key = (session_type, session_id, r)
 
         if key not in _loaded_sessions:
-            filename = f'data/neuropixels/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
+            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_{session_type}_id_{session_id}_binsize_{bin_size}_L2_{L2}_rep_{r}.npz'
             try:
                 data = np.load(filename)
                 _loaded_sessions[key] = {
