@@ -20,62 +20,6 @@ import torch
 
 from utils import *
 
-# ================================================================================
-# Estimate EP using the multidimensional TUR method
-# ================================================================================
-def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
-    # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
-    # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
-    # and K^-1 is covariance matrix of g under (p + ~p)/2.
-    # 
-    # Arguments
-    #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
-    #                              under reverse process 
-    #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
-    #                              under reverse process 
-    # Optional arguments
-    #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
-    #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
-    #                               numerical stability of linear solvers
-
-    g_samples     = numpy_to_torch(g_samples)
-    rev_g_samples = numpy_to_torch(rev_g_samples)
-
-    g_mean       = g_samples.mean(axis=0) 
-    rev_g_mean   = rev_g_samples.mean(axis=0)
-    mean_diff    = g_mean - rev_g_mean
-
-    # now compute covariance of (p + ~p)/2
-    combined_samples = torch.concatenate([g_samples, rev_g_samples], dim=0)
-    combined_mean    = (g_mean + rev_g_mean)/2
-
-    num_forward      = g_samples.shape[0] 
-    num_reverse      = rev_g_samples.shape[0]
-    num_total        = num_forward + num_reverse
-    weights          = torch.empty(num_forward + num_reverse)
-    weights[:num_forward] = 1.0/num_forward/2.0
-    weights[num_forward:] = 1.0/num_reverse/2.0
-
-    if num_chunks is None:
-        combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
-
-    else:
-        # Chunked computation
-        num_observables = g_samples.shape[1]
-        combined_cov = torch.zeros((num_observables, num_observables), device=g_samples.device)
-        chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
-
-        for r in range(num_chunks):
-            start = r * chunk_size
-            end = min((r + 1) * chunk_size, num_total)
-            chunk = combined_samples[start:end]
-            
-            combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
-
-    combined_cov += linsolve_eps*eye_like(combined_cov)
-    x  = solve_linear_psd(combined_cov, mean_diff)
-    return float(x @ mean_diff)/2
-
 
 # ================================================================================
 # Dataset class
@@ -84,39 +28,48 @@ def get_EP_MTUR(g_samples, rev_g_samples, num_chunks=None, linsolve_eps=1e-4):
 # ================================================================================
 
 class Dataset(object):
-    def __init__(self, g_mean, rev_g_samples):
+    def __init__(self, g_samples, rev_g_samples):
         # Arguments:
-        #   g_mean            : 1d tensor of length nobservables
-        #   rev_g_samples     : optional 2d tensor (nsamples x nobservables)
-        self.g_mean        = numpy_to_torch(g_mean)
+        #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process 
+        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process 
+        self.g_samples     = numpy_to_torch(g_samples)
         self.rev_g_samples = numpy_to_torch(rev_g_samples)
 
-        self.nsamples, self.nobservables = self.rev_g_samples.shape
-        self.device = self.rev_g_samples.device
+        self.g_mean        = self.g_samples.mean(axis=0)
 
+        self.nsamples    , self.nobservables = self.g_samples.shape
+        self.rev_nsamples, self.rev_nobservables = self.g_samples.shape
 
-    def _get_trn_indices(self, holdout_fraction, holdout_shuffle=False):
+        assert(self.nobservables == self.rev_nobservables)
+        self.device = self.g_samples.device
+
+    @staticmethod
+    def _get_trn_indices(nsamples, holdout_fraction, holdout_shuffle=False):
         # Get indices for training and testing data
         assert 0 <= holdout_fraction <= 1, "holdout_fraction must be between 0 and 1"
-        trn_nsamples = self.nsamples - int(self.nsamples * holdout_fraction)
+        trn_nsamples = nsamples - int(nsamples * holdout_fraction)
 
         if holdout_shuffle:
-            perm = np.random.permutation(self.nsamples)
+            perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
             tst_indices = perm[trn_nsamples:]
         else:
             trn_indices = np.arange(trn_nsamples)
-            tst_indices = np.arange(trn_nsamples, self.nsamples)
-
+            tst_indices = np.arange(trn_nsamples, nsamples)
         return trn_indices, tst_indices
     
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=False):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(holdout_fraction, holdout_shuffle)
-        trn = type(self)(g_mean=self.g_mean, rev_g_samples=self.rev_g_samples[trn_indices])
-        tst = type(self)(g_mean=self.g_mean, rev_g_samples=self.rev_g_samples[tst_indices])
+        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=self.rev_g_samples[trn_indices])
+
+        trn_indices, tst_indices = self._get_trn_indices(self.rev_nsamples, holdout_fraction, holdout_shuffle)
+        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=self.rev_g_samples[tst_indices])
         return trn, tst
+    
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
@@ -201,7 +154,7 @@ class RawDataset(Dataset):
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=False):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(holdout_fraction, holdout_shuffle)
+        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
         trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
@@ -242,14 +195,14 @@ class RawDataset(Dataset):
             vals['objective'] = float(theta @ self.g_mean - log_Z)
 
         if return_mean:
-            g_mean_raw = (torch.einsum('k,ki,kj->ij', weights, self.X0, self.X1) -
-                          torch.einsum('k,ki,kj->ij', weights, self.X1, self.X0))/self.nsamples
-            g_mean_vec = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
+            # g_mean_raw = (torch.einsum('k,ki,kj->ij', weights, self.X0, self.X1) -
+            #               torch.einsum('k,ki,kj->ij', weights, self.X1, self.X0))/self.nsamples
+            # g_mean_vec = g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
             
-            # weighted_X = self.X0 * weights[:, None]
-            # mean_mat = (weighted_X.T @ self.X1) / self.nsamples / norm_const  
-            # mean_mat_asymm = mean_mat - mean_mat.T
-            # g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
+            weighted_X = self.X0 * weights[:, None]
+            mean_mat = (weighted_X.T @ self.X1) / self.nsamples  
+            mean_mat_asymm = mean_mat - mean_mat.T
+            g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
             vals['tilted_mean'] = g_mean_vec
 
         return vals
@@ -489,18 +442,19 @@ class EPEstimators(object):
 
                 grad         = trn.g_mean - tilted_stats['tilted_mean']   # Gradient
 
-
                 # Different conditions that will stop optimization. See get_EP_Newton above
                 # for a description of different branches
                 last_round = False # flag that indicates whether to break after updating values
                 if is_infnan(f_new_trn):
-                    print(f"[Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
+                    if verbose:
+                        print(f"[Stopping] Invalid value (NaN or Inf) in training objective at iter {t}")
                     break
 #                elif f_new_trn <= f_cur_trn and t > min_iter:
 #                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
 #                    break
                 elif f_new_trn > np.log(trn.nsamples):
-                    print(f"[Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                    if verbose:
+                        print(f"[Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                     f_new_trn = np.log(trn.nsamples)
                     last_round = True
                 elif np.abs(f_new_trn - f_cur_trn) <= tol:
@@ -536,7 +490,8 @@ class EPEstimators(object):
                     else:
                         patience_counter += 1
                     if patience_counter >= patience:
-                        print(f"[Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
+                        if verbose:
+                            print(f"[Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
                         theta = best_theta.clone()
                         break
                         
@@ -581,4 +536,55 @@ class EPEstimators(object):
                 return self.get_valid_solution(objective=objective, theta=theta, tst_objective=f_cur_tst)
             else:
                 return self.get_valid_solution(objective=f_cur_trn, theta=theta)
+
+
+    # Estimate EP using the multidimensional TUR method
+    def get_EP_MTUR(self, num_chunks=None, linsolve_eps=1e-4):
+        # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
+        # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
+        # and K^-1 is covariance matrix of g under (p + ~p)/2.
+        # 
+        # Arguments
+        #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process 
+        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process 
+        # Optional arguments
+        #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
+        #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
+        #                               numerical stability of linear solvers
+
+        rev_g_mean   = self.data.rev_g_samples.mean(axis=0)
+        mean_diff    = self.data.g_mean - rev_g_mean
+
+        # now compute covariance of (p + ~p)/2
+        combined_samples = torch.concatenate([self.data.g_samples, self.data.rev_g_samples], dim=0)
+        combined_mean    = (self.data.g_mean + rev_g_mean)/2
+
+        num_total        = self.data.nsamples + self.data.rev_nsamples
+        weights          = torch.empty(num_total)
+        weights[:self.data.nsamples] = 1.0/self.data.nsamples/2.0
+        weights[self.data.nsamples:] = 1.0/self.data.rev_nsamples/2.0
+
+        if num_chunks is None:
+            combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+
+        else:
+            # Chunked computation
+            combined_cov = torch.zeros((self.nobservables, self.nobservables), device=self.data.device)
+            chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
+
+            for r in range(num_chunks):
+                start = r * chunk_size
+                end = min((r + 1) * chunk_size, num_total)
+                chunk = combined_samples[start:end]
+                
+                combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+
+        combined_cov += linsolve_eps*eye_like(combined_cov)
+        x  = solve_linear_psd(combined_cov, mean_diff)
+
+
+
+        return self.get_valid_solution(objective=float(x @ mean_diff)/2, theta=None)
 

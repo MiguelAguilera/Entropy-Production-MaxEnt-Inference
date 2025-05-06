@@ -38,7 +38,7 @@ N = J.shape[0]
 g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
                         for i in range(N) for j in range(i+1, N) ]).T
 stime = time.time()
-data1         = ep_estimators.Dataset(g_mean=g_samples.mean(axis=0), rev_g_samples=-g_samples)
+data1         = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
 estimator1    = ep_estimators.EPEstimators(data1)
 sigma_g2_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
 time_g2_obs   = time.time() - stime
@@ -57,9 +57,3 @@ print(f"  Σ     (Empirical)                              :    {sigma_emp :.6f} 
 print(f"  Σ_g   (Using observable samples, grad. ascent) :    {sigma_g2_obs    :.6f}  ({time_g2_obs    :.3f}s)")
 print(f"  Σ_g   (Using state samples, grad. ascent)      :    {sigma_g2_state  :.6f}  ({time_g2_state  :.3f}s)")
 
-theta = np.random.rand(data1.nobservables)
-print(data1.get_objective(theta))
-print(data2.get_objective(theta))
-
-print(data1.get_tilted_statistics(theta=theta, return_mean=True))
-print(data2.get_tilted_statistics(theta=theta, return_mean=True))

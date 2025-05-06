@@ -20,8 +20,7 @@ def calc_spin(beta, J, i, g_samples):
 
     sigmas, times, thetas = {}, {}, {}
 
-    g_mean = g_samples.mean(axis=0)
-    data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+    data = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
     obj  = ep_estimators.EPEstimators(data=data)
 
 
@@ -29,6 +28,7 @@ def calc_spin(beta, J, i, g_samples):
         #('N1'     ,      obj.get_EP_Newton , dict()),
         #('N1v'       ,      obj.get_EP_Newton_steps, dict(max_iter=1, holdout=False,verbose=True) ),
         ('N1'      ,      obj.get_EP_Newton, dict(max_iter=1, holdout=True) ),
+        ('TUR'      ,      obj.get_EP_MTUR, dict() ),
 #        ('NR h'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True) ),
         #('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1, holdout=True, adjust_radius=True) ),
         ('NR h a'     ,      obj.get_EP_Newton, dict(trust_radius=1/4, holdout=True, adjust_radius=True) ),
@@ -50,12 +50,7 @@ def calc_spin(beta, J, i, g_samples):
     ]
 
 
-    # Compute empirical EP for spin i
-    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=g_mean)
-
     stime = time.time()
-    sigmas['TUR'] = ep_estimators.get_EP_MTUR(g_samples=g_samples, rev_g_samples=-g_samples)
-    times['TUR'] = time.time() - stime
 
     for k, f, kwargs in to_run:
         stime = time.time()
@@ -113,10 +108,11 @@ def calc(file_name):
         plt.show()
         #asf
 
-    J = data['J'] # torch.from_numpy(data['J']).to(device)
+    J    = data['J']
+    beta = data['beta']
 
     frequencies = F.sum(axis=0)/(N*rep) # F.float().sum(axis=0).cpu().numpy()/(N*rep)
-    epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': data['beta'], 
+    epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': beta, 
                 'thetas':{}, 'ep':{}, 'times':{}}
 
     pbar = tqdm(range(N))
@@ -125,10 +121,16 @@ def calc(file_name):
     print(f"  Starting EP estimation | System size: {N}")
     print("=" * 70)
 
+    # Compute empirical EP
+    stime = time.time()
+    ep_sums['Emp'] = spin_model.get_empirical_EP(beta=beta, J=J, S=S, F=F)
+    time_sums['Emp'] = time.time() - stime
+
+
     for i in pbar:
         g_samples = spin_model.get_g_observables(S, F, i)
         
-        res = calc_spin( data['beta'], J, i, g_samples)
+        res = calc_spin( beta, J, i, g_samples)
 
         epdata[i] = res 
         sigmas, times, thetas = res

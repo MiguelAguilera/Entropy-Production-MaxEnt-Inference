@@ -50,13 +50,12 @@ def run_inference(beta, J, S, F, num_chunks=None):
 
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = spin_model.get_g_observables(S, F, i)
-        g_mean     = g_samples.mean(axis=0)
-        data = ep_estimators.Dataset(g_mean=g_mean, rev_g_samples=-g_samples)
+        data = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
         obj = ep_estimators.EPEstimators(data=data)
 
         # Empirical estimate 
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
-        spin_emp = beta * J_without_i @ g_mean
+        spin_emp = beta * float(utils.numpy_to_torch(J_without_i) @ utils.numpy_to_torch(data.g_mean))
         
         spin_N1   = obj.get_EP_Newton(max_iter=1, num_chunks=num_chunks).objective # 1-step of Newton
         
@@ -73,7 +72,7 @@ def run_inference(beta, J, S, F, num_chunks=None):
         spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
         # Multidimensional TUR
-        spin_MTUR = ep_estimators.get_EP_MTUR(g_samples, -g_samples, num_chunks=num_chunks)
+        spin_MTUR = obj.get_EP_MTUR().objective
         
 
         sigma_emp  += p_i * spin_emp
@@ -107,5 +106,44 @@ def test_inference_chunks():
 
 def test_objective():
     nobservables = 9
-    data = ep_estimators.Dataset(g_mean=np.random.randn(nobservables), rev_g_samples=np.random.randn(100,nobservables))
+    samp = np.random.randn(100,nobservables)
+    data = ep_estimators.Dataset(g_samples=samp, rev_g_samples=-samp)
     assert(np.isclose( data.get_objective(torch.zeros(nobservables)),0))
+
+
+
+def test_consistency():
+
+
+    N    = 10     # system size
+    k    = 6      # avg number of neighbors in sparse coupling matrix
+    beta = 3.25   # inverse temperature
+
+
+    np.random.seed(42) # Set seed for reproducibility
+
+    J    = spin_model.get_couplings_random(N=N, k=k)
+    S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=1000)
+
+    sigma_emp = spin_model.get_empirical_EP(beta, J, S, F)
+
+    X0, X1 = spin_model.convert_to_nonmultipartite(S, F)
+
+    N = J.shape[0]
+    g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
+                            for i in range(N) for j in range(i+1, N) ]).T
+    data1         = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
+    estimator1    = ep_estimators.EPEstimators(data1)
+    sigma_g2_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
+
+    data2          = ep_estimators.RawDataset(X0, X1)
+    estimator2     = ep_estimators.EPEstimators(data2)
+    sigma_g2_state = estimator2.get_EP_GradientAscent(holdout=True).objective
+
+    theta = np.random.rand(data1.nobservables)
+    assert(torch.norm(data1.g_mean - data2.g_mean)<1e-5)
+
+    assert(np.abs(data1.get_objective(theta)-data2.get_objective(theta))<1e-5)
+    assert(torch.norm(data1.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']-
+                      data2.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean'])<1e-5)
+
