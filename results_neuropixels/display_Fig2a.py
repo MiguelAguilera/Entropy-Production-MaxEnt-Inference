@@ -45,6 +45,10 @@ parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
+parser.add_argument("--lr", type=float, default=0.01,
+                    help="Base learning rate (default: 0.01).")
+parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
+                    help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
 
 
 args = parser.parse_args()
@@ -94,7 +98,7 @@ if __name__ == "__main__":
         key = (session_type, session_id, r)
 
         if key not in _loaded_sessions:
-            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}.h5'
+            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
             try:
                 with h5py.File(filename, 'r') as f:
                     group_path = f"{session_type}/{session_id}/rep_{r}"

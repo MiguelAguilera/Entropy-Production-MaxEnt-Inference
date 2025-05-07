@@ -14,6 +14,8 @@ from methods_EP_parallel import *
 import ep_estimators
 import utils
 utils.set_default_torch_device()
+
+
 torch.set_grad_enabled(False)
 
 parser = argparse.ArgumentParser(description="Estimate EP for Neuropixels data.")
@@ -145,9 +147,8 @@ def calc(sizes, session_type, session_id, r):
         #num_changes = np.sum(dS, axis=0)
         #one_spin_changes = np.mean(num_changes == 1)
         #multi_spin_changes = np.mean(num_changes >= 2)
-        
-        S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.)
-        S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.)
+        S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.).to(torch.get_default_device())
+        S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.).to(torch.get_default_device())
 
         
         nsamples = S_t.shape[0]
@@ -206,7 +207,7 @@ def calc(sizes, session_type, session_id, r):
         print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
 
     SAVE_DATA_DIR = 'ep_data'
-    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}.h5'
+    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(save_path, 'a') as f:
         group_path = f"{session_type}/{session_id}/rep_{r}"
