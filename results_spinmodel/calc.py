@@ -92,7 +92,7 @@ def calc_spin(beta, J, i, g_samples):
         else: # holdout was used
             sigmas[k] = data.get_objective(res.theta)
             sigmas[k+' tst'] = res.objective
-            print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
+            #print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
 
         
     if False:  # histogram of g outcomes
