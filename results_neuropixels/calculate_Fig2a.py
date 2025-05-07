@@ -122,8 +122,9 @@ def calc(sizes, session_type, session_id, r):
         N0 = S.shape[0]
 
         if order != 'sorted':
-            raise Exception(f"Without order=sorted, we should at least restrict to neurons with enough spikes")
-            good_ixs = np.sum(S, axis=1)>=10000
+            min_spikes = 10000
+            print(f"!!! with order={order}, we restrict attention only to  neurons with >= {min_spikes} spikes")
+            good_ixs = np.sum(S, axis=1)>=min_spikes
             S = S[good_ixs, :]
             N0 = S.shape[0]
 
