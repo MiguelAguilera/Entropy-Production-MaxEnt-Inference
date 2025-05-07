@@ -94,7 +94,7 @@ if __name__ == "__main__":
         key = (session_type, session_id, r)
 
         if key not in _loaded_sessions:
-            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}.h5'
+            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{lr}_lr-scale_{lr_scale}.h5'
             try:
                 with h5py.File(filename, 'r') as f:
                     group_path = f"{session_type}/{session_id}/rep_{r}"
