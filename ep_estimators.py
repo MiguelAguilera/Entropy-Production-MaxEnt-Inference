@@ -549,6 +549,7 @@ class EPEstimators(object):
         #   Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
 
         funcname = 'get_EP_GradientAscent'
+        report_every = 10  # if verbose > 1, we report every report_every iterations
 
         with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
@@ -567,11 +568,14 @@ class EPEstimators(object):
             m = torch.zeros_like(new_theta)
             v = torch.zeros_like(new_theta)
             
-            best_tst_score = -float('inf')  # for maximization
+            best_tst_score   = -float('inf')  # for maximization
             patience_counter = 0
+            old_time         = time.time()
             for t in range(max_iter):
-                if verbose and verbose > 1 and t%10 == 0: 
-                    print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
+                if verbose and verbose > 1 and t % report_every == 0:
+                    new_time = time.time()
+                    print(f'{funcname} : iteration {t:5d} | {(new_time - old_time)/report_every:3f}s/iter | f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
+                    old_time = new_time
 
                 tilted_stats = trn.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
                 f_new_trn    = tilted_stats['objective']
@@ -683,34 +687,35 @@ class EPEstimators(object):
         obj = self.data
         mean_diff    = obj.g_mean - obj.rev_g_mean
 
-        # now compute covariance of (p + ~p)/2
-        combined_samples = torch.concatenate([obj.g_samples, obj.get_rev_g_samples()], dim=0)
         combined_mean    = (obj.g_mean + obj.rev_g_mean)/2
 
-        num_total        = obj.nsamples + obj.nsamples
-        weights          = torch.empty(num_total)
-        weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
-        weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
-
-        if num_chunks is None:
-            combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
-
-        elif num_chunks == -1:
+        # now compute covariance of (p + ~p)/2
+        if num_chunks == -1:
             second_moment_forward = obj.g_cov() + torch.outer(obj.g_mean, obj.g_mean)
             second_moment_reverse = obj.rev_g_cov() + torch.outer(obj.rev_g_mean, obj.rev_g_mean)
             combined_cov = (second_moment_forward + second_moment_reverse)/2 - torch.outer(combined_mean, combined_mean)
-
+        
         else:
-            # Chunked computation
-            combined_cov = torch.zeros((obj.nobservables, obj.nobservables), device=obj.device)
-            chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
+            combined_samples = torch.concatenate([obj.g_samples, obj.get_rev_g_samples()], dim=0)
+            num_total        = obj.nsamples + obj.nsamples
+            weights          = torch.empty(num_total)
+            weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
+            weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
 
-            for r in range(num_chunks):
-                start = r * chunk_size
-                end = min((r + 1) * chunk_size, num_total)
-                chunk = combined_samples[start:end]
-                
-                combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+            if num_chunks is None:
+                combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+
+            else:
+                # Chunked computation
+                combined_cov = torch.zeros((obj.nobservables, obj.nobservables), device=obj.device)
+                chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
+
+                for r in range(num_chunks):
+                    start = r * chunk_size
+                    end = min((r + 1) * chunk_size, num_total)
+                    chunk = combined_samples[start:end]
+                    
+                    combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
 
         x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
         objective = float(x @ mean_diff)/2
