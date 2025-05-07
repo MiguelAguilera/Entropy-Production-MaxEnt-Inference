@@ -33,16 +33,14 @@ num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin  # Total spin-flip attempts
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
 
-# Empirical estimate 
-stime = time.time()
-sigma_emp = spin_model.get_empirical_EP(beta, J, S, F)
-time_emp  = time.time() - stime
+# Running sums to keep track of EP estimates
+sigma_g = 0.0
 
 # Running sums to keep track of EP estimates
-sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
+time_g = sample_time = 0.0
 
-# Running sums to keep track of EP estimates
-time_g  = time_g2 = time_N1 = time_MTUR = 0.0
+stime0 = time.time()
+
 
 # Because system is multipartite, we can separately estimate EP for each spin
 for i in tqdm(range(N), smoothing=0):
@@ -51,12 +49,11 @@ for i in tqdm(range(N), smoothing=0):
     # Calculate samples of g observables for states in which spin i changes state
     stime = time.time()
     g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
-    time_MTUR += time.time() - stime
-#    g_mean                  = g_samples.mean(axis=0)
+    sample_time            += time.time() - stime
 
     do_holdout = False
+    stime = time.time()
     if not test_old:
-        stime = time.time()
         data = epm.Dataset(g_samples=g_samples)
         # Create dataset with holdout data
         # Full optimization with trust-region Newton method and holdout 
@@ -65,7 +62,6 @@ for i in tqdm(range(N), smoothing=0):
             spin_full = epm.get_EP_Newton(train, trust_radius=1/4, holdout_data=test).objective
         else:
             spin_full = epm.get_EP_Newton(data).objective
-        time_g  += time.time() - stime
 
         sigma_g    += p_i * spin_full
         # # Full optimization with gradient ascent method and holdout
@@ -76,21 +72,15 @@ for i in tqdm(range(N), smoothing=0):
     else:
         # Create dataset with holdout data
         # Full optimization with trust-region Newton method and holdout 
-        stime = time.time()
         obj = epm.EPEstimators(g_samples=g_samples) 
         spin_grad = obj.get_EP_Newton(trust_radius=1/4, holdout=do_holdout).objective
-        time_g2 += time.time() - stime
-        sigma_g2   += p_i * spin_grad
+        sigma_g   += p_i * spin_grad
+
+    time_g  += time.time() - stime
 
 
-
-    utils.empty_torch_cache()
-
-
-print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
-print(f"  Σ     (Empirical)                         :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"\nEntropy production estimates (N={N}, k={k}, β={beta}, test_old={test_old})")
 print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
-print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
-print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
-print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
+print("Total time for inference: {time.time()-stime0} | for creating _samples: {sample_time}")
+
 
