@@ -89,35 +89,43 @@ def calc_spin(i_args):
     
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
+    num_chunks=5
+    num_chunks=-1
     data = ep_estimators.Dataset(g_samples)
     est = ep_estimators.EPEstimators(data)
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
     # Calculate empirical estimate of true EP
-    spin_emp  = beta * J_without_i @ data.g_mean
-    
+    spin_emp  = beta * (J_without_i @ data.g_mean).item()
 
     # Compute MTUR
     t0 = time.time()
-    sig_MTUR = est.get_EP_MTUR().objective
+#    sig_MTUR = est.get_EP_MTUR(num_chunks=num_chunks).objective
+    sig_MTUR = 0
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 
+#    torch.cuda.empty_cache()
+#    gc.collect()
+    
     # Compute 1-step Newton
     t0 = time.time()
-    sig_Gaussian, theta_Gaussian, _ = est.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True, num_chunks=5)
+    sig_Gaussian, theta_Gaussian, _ = est.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True, num_chunks=num_chunks)
     N1 = Pi * sig_Gaussian
     theta_Gaussian_np = theta_Gaussian.detach().cpu().numpy()
     time_Gaussian = time.time() - t0
 
-    # Compute empirical EP
-    Emp = Pi * spin_emp
+#    torch.cuda.empty_cache()
+#    gc.collect()
 
     # Compute Newton estimation
-    sig_MaxEnt, theta_MaxEnt, _ = est.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False, num_chunks=5)
+    sig_MaxEnt, theta_MaxEnt, _ = est.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False, num_chunks=num_chunks)
     N2 = Pi * sig_MaxEnt
     theta_MaxEnt_np = theta_MaxEnt.detach().cpu().numpy()
     time_MaxEnt = time.time() - t0
+
+    # Compute empirical EP
+    Emp = Pi * spin_emp
 
     # Free memory
     del g_samples, J_i_t
