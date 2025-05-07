@@ -24,23 +24,13 @@ from utils import *
 
 # EP estimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
-#   theta (torch tensor of length N-1) : optimal parameters
+#   theta (torch tensor of length N) : optimal parameters
 #   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
-def add_i(theta, i):
-    return torch.cat([theta[:i], torch.tensor([0.0], dtype=theta.dtype, device=theta.device), theta[i:]])
-
-def remove_i_rowcol(K, i):
-    device = K.device
-    # Remove i-th row
-    K_reduced = torch.cat([K[:i], K[i+1:]], dim=0)
-    # Remove i-th column
-    K_reduced = torch.cat([K_reduced[:, :i], K_reduced[:, i+1:]], dim=1)
-    return K_reduced.to(device)
 
 class EPEstimators(object):
-    def __init__(self, S, i, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   S (torch tensor)         : 2d tensor (nflips x nspins) containing samples of 
         #                              states of the system in which spin i changed state
@@ -51,18 +41,15 @@ class EPEstimators(object):
         #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
         #                              numerical stability of linear solvers
 
-        if not isinstance(S, torch.Tensor): # Conver to torch tensor if needed
-            if isinstance(S, np.ndarray):
-                S = torch.from_numpy(S.astype('float32')).to(torch.get_default_device()).contiguous()
+        if not isinstance(g_samples, torch.Tensor): # Conver to torch tensor if needed
+            if isinstance(g_samples, np.ndarray):
+                g_samples = torch.from_numpy(g_samples.astype('float32')).to(torch.get_default_device()).contiguous()
             else:
                 raise Exception("S must be a torch tensor or numpy array")
 
-        self.S = S
-        self.nflips, self.N = S.shape
-        self.device = S.device
-
-        assert 0 <= i <= self.N-1
-        self.i = i
+        self.g_samples = g_samples
+        self.nflips, self.N = g_samples.shape
+        self.device = g_samples.device
 
         assert 0 <= holdout_fraction <= 1
         self.holdout_fraction = holdout_fraction
@@ -82,9 +69,9 @@ class EPEstimators(object):
         if not hasattr(self, 'trn_tst_split_'): # training and testign splits are cached
             if self.holdout_shuffle:
                 perm = np.random.permutation(self.nflips)
-                S = self.S[perm]
+                S = self.g_samples[perm]
             else:
-                S = self.S
+                S = self.g_samples
 
             trn_nflips = self.nflips - int(self.nflips*self.holdout_fraction)
 
@@ -102,16 +89,14 @@ class EPEstimators(object):
     def g_mean(self):
         # Compute means of g observables
         if not hasattr(self, 'g_mean_'): # Cache values for speed
-            i = self.i
-            g = (-2 * self.S[:, i]) @ self.S / self.nflips 
-            self.g_mean_ = remove_i(g, i)
+            self.g_mean_ = torch.mean(self.g_samples, axis=0)
         return self.g_mean_
 
     def g_secondmoments(self):
         # Compute matrix of second moments of g observables
         if not hasattr(self, 'g_secondmoments_'): # Cache values for speed
             if self.num_chunks is None:
-                K = (4 * self.S.T) @ self.S
+                K = (4 * self.g_samples.T) @ self.g_samples
             else:
                 # Chunked computation
                 K = torch.zeros((self.N, self.N), device=self.device)
@@ -120,13 +105,13 @@ class EPEstimators(object):
                 for r in range(self.num_chunks):
                     start = r * chunk_size
                     end = min((r + 1) * chunk_size, self.nflips)
-                    S_chunk = self.S[start:end]
+                    g_samples_chunk = self.g_samples[start:end]
                     
-                    K += (4 * S_chunk.T) @ S_chunk
+                    K += (4 * g_samples_chunk.T) @ g_samples_chunk
 
             K /= self.nflips
 
-            self.g_secondmoments_ = remove_i_rowcol(K, self.i)
+            self.g_secondmoments_ = K
         return self.g_secondmoments_
 
     def g_covariance(self): 
@@ -147,18 +132,11 @@ class EPEstimators(object):
         assert return_mean or return_covariance or return_objective
 
         vals       = {}
-        i          = self.i
 
-        theta_pad  = add_i(theta, i)
-
-        if not hasattr(self, '_2SiS'): # cache for faster computations
-            self._2SiS = torch.einsum('j,ji->ji', -2 * self.S[:,i], self.S).contiguous()
-
-        th_g       = self._2SiS @ theta_pad
+        th_g       = self.g_samples @ theta
         th_g_min   = torch.min(th_g)    # substract max of -th_g for numerical stability
         Y          = torch.exp(-th_g+th_g_min)
         norm_const = torch.mean(Y)
-        S1_S       = -(-2 * self.S[:, i]) * Y
 
         if return_objective:
             # trueZ = Z*torch.exp(-th_g_min)
@@ -166,15 +144,14 @@ class EPEstimators(object):
             vals['objective'] = float( theta @ self.g_mean() - log_Z )
 
         if return_mean or return_covariance:
-            mean       = S1_S @ self.S / (self.nflips * norm_const)
-            mean_noi   = remove_i(mean, i)
+            mean       = - Y @ self.g_samples / (self.nflips * norm_const)
 
             if return_mean:
-                vals['tilted_mean'] = mean_noi
+                vals['tilted_mean'] = mean
             
             if return_covariance:
                 if self.num_chunks is None:
-                    K = (4 * Y * self.S.T) @ self.S
+                    K = (Y * self.g_samples.T) @ self.g_samples
                 else:
                     # Chunked computation
                     K = torch.zeros((self.N, self.N), device=self.device)
@@ -183,14 +160,14 @@ class EPEstimators(object):
                     for r in range(self.num_chunks):
                         start = r * chunk_size
                         end = min((r + 1) * chunk_size, self.nflips)
-                        S_chunk = self.S[start:end]
+                        g_samples_chunk = self.g_samples[start:end]
                         
-                        th_g_chunk = (-2 * S_chunk[:, i]) * (S_chunk @ theta_pad)
-                        K += (4 * torch.exp(-th_g_chunk+th_g_min) * S_chunk.T) @ S_chunk
+                        th_g_chunk = g_samples_chunk @ theta
+                        K += (torch.exp(-th_g_chunk+th_g_min) * g_samples_chunk.T) @ g_samples_chunk
 
                 K /= (self.nflips * norm_const)
 
-                vals['tilted_covariance'] = remove_i_rowcol(K,i) - torch.outer(mean_noi,mean_noi)
+                vals['tilted_covariance'] = K - torch.outer(mean,mean)
 
         return vals
 
@@ -272,7 +249,6 @@ class EPEstimators(object):
                                        : hyperparameters for adjusting trust radius
         """
 
-        i      = self.i 
         if holdout:
             trn, tst = self.split_train_test()
             f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
@@ -280,8 +256,8 @@ class EPEstimators(object):
             trn = self
             f_cur_trn = f_new_trn = 0.0
         
-        theta = torch.zeros(self.N-1, device=self.device)
-        I     = torch.eye(self.N-1, device=self.device)
+        theta = torch.zeros(self.N, device=self.device)
+        I     = torch.eye(self.N, device=self.device)
 
         for _ in range(max_iter):
             # Find Newton step direction. We first get gradient and Hessian
@@ -418,13 +394,12 @@ class EPEstimators(object):
             trn = self
             f_cur_trn = np.nan
         
-        i           = self.i 
         S           = trn.S.T.contiguous()   # Transposing seems to lead to faster calculations
 
         if theta_init is not None:
             new_theta = theta_init
         else:
-            new_theta = torch.zeros(self.N-1, device=self.device)
+            new_theta = torch.zeros(self.N, device=self.device)
 
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
