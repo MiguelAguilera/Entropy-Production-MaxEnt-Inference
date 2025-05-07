@@ -56,15 +56,16 @@ area_centers = (area_start_indices + area_end_indices) / 2
 # Define symmetric logarithmic normalization for better contrast,
 # especially helpful when θ values vary widely around zero.
 
+vmax = np.percentile(np.abs(th), 99.5)  # Use 95th percentile instead of max
 if args.fancy_color_scale:
     norm = mcolors.SymLogNorm(
         linthresh=0.012,    # Linear range around zero
         linscale=0.05,     # Controls the size of the linear region
-        vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
-        vmax=np.max(np.abs(th))
+        vmin=-vmax,  # Symmetric color scale limits
+        vmax=vmax
     )
 else:
-    norm = None
+    norm = mcolors.Normalize(vmin=-vmax, vmax=vmax)
 
 # Create a new figure with specified size
 plt.figure(figsize=(5, 4))
