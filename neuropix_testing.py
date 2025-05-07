@@ -35,23 +35,23 @@ print()
 
 stime = time.time()
 data1       = ep_estimators.RawDataset(X0, X1)
-estimatorS1 = ep_estimators.EPEstimators(data1)
+trn1, tst1  = data1.split_train_test()
 print("Running get_EP_GradientAscent with RawDataset")
-solutionS1  = estimatorS1.get_EP_GradientAscent(holdout=True, max_iter=5000, lr=5e-1, tol=1e-8, use_Adam=False, verbose=2)
+solutionS1  = ep_estimators.get_EP_GradientAscent(data=trn1, holdout_data=tst1, max_iter=5000, lr=5e-1, tol=1e-8, use_Adam=False, verbose=2)
 time_S1     = time.time() - stime
 
 
 data2       = ep_estimators.RawDataset2(X0, X1)
-estimatorS2 = ep_estimators.EPEstimators(data2)
+trn2, tst2  = data2.split_train_test()
 print("Running get_EP_GradientAscent with RawDataset2")
-solutionS2  = estimatorS2.get_EP_GradientAscent(holdout=True, max_iter=5000, lr=5e-1, tol=1e-8, use_Adam=False, verbose=2)
+solutionS2  = ep_estimators.get_EP_GradientAscent(data=trn2, holdout_data=tst2, max_iter=5000, lr=5e-1, tol=1e-8, use_Adam=False, verbose=2)
 time_S2     = time.time() - stime
 
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
-print(f"  Σ     (Empirical)                                     :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
-print(f"  Σ_g   (Using antisymmetric observables, grad. ascent) :    {solutionS1.objective  :.6f}  test objective={solutionS1.tst_objective:6f}  ({time_S1  :.3f}s)")
-print(f"  Σ_g   (Using full observables         , grad. ascent) :    {solutionS2.objective  :.6f}  test objective={solutionS2.tst_objective:6f}  ({time_S2  :.3f}s)")
+print(f"  Σ     (Empirical)                                     :                  {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ_g   (Using antisymmetric observables, grad. ascent) :    tst objective={solutionS1.objective:6f}  ({time_S1  :.3f}s)")
+print(f"  Σ_g   (Using full observables         , grad. ascent) :    tst objective={solutionS2.objective:6f}  ({time_S2  :.3f}s)")
 
 
 

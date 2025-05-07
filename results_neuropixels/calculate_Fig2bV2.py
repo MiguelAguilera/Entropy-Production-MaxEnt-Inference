@@ -104,7 +104,7 @@ else:
 trn, tst = data.split_train_test()
 res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, # skip_warm_up=True,
                                          verbose=2, report_every=10, patience=patience)
-sigma = res.tst_objective
+sigma = res.objective
 print("EP:", sigma)
 
 # Extract coupling matrix θ

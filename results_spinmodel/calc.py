@@ -15,39 +15,39 @@ device = utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
 
-def calc_spin2(beta, J, i, g_samples):
-    verbose=False
-    import ep_multipartite
+# def calc_spin2(beta, J, i, g_samples):
+#     verbose=False
+#     import ep_multipartite
 
-    sigmas, times, thetas = {}, {}, {}
-    obj = ep_multipartite.EPEstimators(g_samples=g_samples) 
+#     sigmas, times, thetas = {}, {}, {}
+#     obj = ep_multipartite.EPEstimators(g_samples=g_samples) 
 
-    stime = time.time()
-    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=obj.g_mean().cpu().numpy())
-    times['Emp'] = time.time() - stime
+#     stime = time.time()
+#     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=obj.g_mean().cpu().numpy())
+#     times['Emp'] = time.time() - stime
 
 
-    to_run = [ ('NR h a', obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, adjust_radius=True) ),]
+#     to_run = [ ('NR h a', obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, adjust_radius=True) ),]
 
-    stime = time.time()
+#     stime = time.time()
 
-    for k, f, kwargs in to_run:
-        stime = time.time()
-        res = f(**kwargs)
-        utils.torch_synchronize()
-        sigmas[k] = res.objective
+#     for k, f, kwargs in to_run:
+#         stime = time.time()
+#         res = f(**kwargs)
+#         utils.torch_synchronize()
+#         sigmas[k] = res.objective
 
-        times[k] = time.time() - stime
-        if res.theta is not None:
-            thetas[k] = res.theta.cpu().numpy()
-            #sigmas[k] = data.get_objective(res.theta)
-        if res.tst_objective is not None:
-            sigmas[k+' tst'] = res.tst_objective
+#         times[k] = time.time() - stime
+#         if res.theta is not None:
+#             thetas[k] = res.theta.cpu().numpy()
+#             #sigmas[k] = data.get_objective(res.theta)
+#         if res.tst_objective is not None:
+#             sigmas[k+' tst'] = res.tst_objective
 
-    del obj # , trn, tst 
-    #utils.empty_torch_cache()
+#     del obj # , trn, tst 
+#     #utils.empty_torch_cache()
 
-    return sigmas, times, thetas
+#     return sigmas, times, thetas
 
 
 def calc_spin(beta, J, i, g_samples):
@@ -66,14 +66,15 @@ def calc_spin(beta, J, i, g_samples):
 
     to_run = [
 #        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
-#        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 
         ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=True) ),
 
         
-#          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
-#          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True, max_iter=5000, lr=1e-2, tol=1e-8, use_Adam=False) ),
-#          ('G'    ,      obj.get_EP_GradientAscent  , dict() ),
+#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
+          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
+    #      ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, tol=1e-8, use_Adam=False) ),
+#          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     #utils.empty_torch_cache()
 
@@ -86,11 +87,12 @@ def calc_spin(beta, J, i, g_samples):
         times[k] = time.time() - stime
         if res.theta is not None:
             thetas[k] = res.theta.cpu().numpy()
+        if res.trn_objective is None:  
+            sigmas[k] = res.objective
+        else: # holdout was used
             sigmas[k] = data.get_objective(res.theta)
-        else:
-            sigmas[k] = res
-        if res.tst_objective is not None:
-            sigmas[k+' tst'] = res.tst_objective
+            sigmas[k+' tst'] = res.objective
+            print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
 
         
     if False:  # histogram of g outcomes
