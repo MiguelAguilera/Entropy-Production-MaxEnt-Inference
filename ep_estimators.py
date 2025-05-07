@@ -249,6 +249,9 @@ class RawDataset(DatasetBase):
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
 
+    def get_random_batch(self, batch_size):
+        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
+        return self.__class__(X0=self.X0[indices], X1=self.X1[indices])
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
@@ -505,7 +508,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
 
-            if holdout_data is not None:                # Do the same checks but now on the heldout test data
+            if holdout_data is not None and t%10 ==0:                # Do the same checks but now on the heldout test data
                 f_new_tst = holdout_data.get_objective(new_theta) 
                 if is_infnan(f_new_tst):
                     if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
@@ -545,7 +548,8 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
                             max_iter=10000, lr=0.01, patience = 10, tol=1e-4, 
-                            use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
+                            use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False,
+                            batch_size=None):
     # Estimate EP using gradient ascent algorithm
 
     # Arguments:
@@ -595,11 +599,15 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 old_time = new_time
 
 
-            tilted_stats = data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
+            if batch_size is not None:
+                c_data = data.get_random_batch(batch_size)
+            else:
+                c_data = data
+            tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
             #continue 
             f_new_trn    = tilted_stats['objective']
 
-            grad         = data.g_mean - tilted_stats['tilted_mean']   # Gradient
+            grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
@@ -669,6 +677,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
                 # Compute parameter update
                 delta_theta = lr * m_hat / (v_hat.sqrt() + 1e-8)
+
                 new_theta += delta_theta
 
             else:

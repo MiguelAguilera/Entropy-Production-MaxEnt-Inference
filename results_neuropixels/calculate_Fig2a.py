@@ -56,8 +56,10 @@ parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], def
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
-parser.add_argument("--max_sessions", default=103, type=int,
-                    help="Number of sessions to compute (default: 103).")
+parser.add_argument("--min_session", default=0, type=int,
+                    help="First sessions to compute (default: 0).")
+parser.add_argument("--max_session", default=103, type=int,
+                    help="Max sessions to compute (default: 103).")
 
 args = parser.parse_args()
 
@@ -196,7 +198,7 @@ def calc(sizes, session_type, session_id, r):
         start_time = time.time()
         EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
-                                                # verbose=2,report_every=10, 
+                                                verbose=2,report_every=10, 
                                                 )
         
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
@@ -224,7 +226,7 @@ def calc(sizes, session_type, session_id, r):
 # Run the pipeline
 print(f'Doing {rep} repetitions')
 for r in range(rep):
-    for session_id in range(args.max_sessions):
+    for session_id in range(args.min_session, args.max_session):
         for session_type in types:
             print(f"\n--- Running estimation for session {session_id} | Type: {session_type} | Repetition {r} ---")
             calc(sizes, session_type, session_id, r)

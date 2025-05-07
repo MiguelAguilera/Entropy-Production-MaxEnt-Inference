@@ -1,11 +1,7 @@
 import argparse, sys, os
 import numpy as np
 
-from matplotlib import pyplot as plt
 from pathlib import Path
-from scipy.cluster.hierarchy import linkage, leaves_list
-from scipy.spatial.distance import squareform
-import matplotlib.colors as mcolors
 import h5py
 import hdf5plugin
 
@@ -14,7 +10,7 @@ import torch
 
 
 sys.path.insert(0, '..')
-from methods_EP_parallel import *
+# from methods_EP_parallel import *
 import ep_estimators, utils
 utils.set_default_torch_device()
 torch.set_grad_enabled(False)
@@ -24,8 +20,6 @@ parser.add_argument("--BASE_DIR", type=str, default="~/Neuropixels",
                     help="Base directory to store the data (default: '~/Neuropixels').")
 parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
-parser.add_argument("--fancy_color_scale", dest="fancy_color_scale", action="store_true",
-                    help="Fancy color rescaling.")
 args = parser.parse_args()
 
 
@@ -41,13 +35,6 @@ N = 200  # Number of neurons
 
 
 
-
-
-# Configure LaTeX rendering in matplotlib
-plt.rc('text', usetex=True)
-plt.rc('font', size=18, family='serif', serif=['latin modern roman'])
-plt.rc('legend', fontsize=18)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
 print(f"** DOING SYSTEM SIZE {N} of type {session_type} with session ID {session_id} **", flush=True)
 
@@ -80,9 +67,14 @@ S = S[inds2, :]
 areas = areas[inds2]
 
 # --- Fit MaxEnt model ---
-S_t = torch.from_numpy(S[:, 1:]).T
-S1_t = torch.from_numpy(S[:, :-1]).T
 #f = lambda theta: -obj_fn(theta, S_t, S1_t)
+
+# With gradient ascent (regular , no Adam), I get
+# get_EP_GradientAscent : iteration  1460 | 0.255515s/iter | f_cur_trn= 0.585399 f_cur_tst= 0.330752
+# get_EP_GradientAscent : iteration  1470 | 0.255177s/iter | f_cur_trn= 0.587430 f_cur_tst= 0.330722
+# get_EP_GradientAscent : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for 30 steps iter 1477
+# EP: 0.3307626247406006
+# 2025-05-07 21:42:21.722 python[96973:118866165] +[IMKClient subclass]: chose IMKClient_Modern
 
 
 # > Processing system size 200 neurons
@@ -90,15 +82,28 @@ S1_t = torch.from_numpy(S[:, :-1]).T
 #   [Result took 22.283140] EP tst/full: 0.24623 0.48643 | R: 18.40379 | EP tst/R: 0.01338
 
 if args.obs == 1:
-    data = ep_estimators.RawDataset(S_t, S1_t)
+    cls = ep_estimators.RawDataset
 elif args.obs == 2:
-    data = ep_estimators.RawDataset2(S_t, S1_t)
+    cls = ep_estimators.RawDataset2
 else:
     raise ValueError(f"Invalid observable type {args.obs}. Use 1 or 2.")
 
-lr=0.000500
+data = cls(X0=S[:, 1:].T, X1=S[:, :-1].T)
+
+if False:
+    use_Adam=True
+    lr=0.0001
+    patience =100
+
+else:
+    # lr=0.002
+    patience =100
+    use_Adam = False
+    lr=0.25/N
+
 trn, tst = data.split_train_test()
-res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, verbose=2, report_every=10, patience=30 )
+res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, # skip_warm_up=True,
+                                         verbose=2, report_every=10, patience=patience)
 sigma = res.tst_objective
 print("EP:", sigma)
 
@@ -113,83 +118,13 @@ else:
     th[triu_indices[0], triu_indices[1]] = theta
     th=th-th.T
 
-# --- Area names ---
-area_names, area_start_indices = np.unique(areas, return_index=True)
-area_end_indices = np.r_[area_start_indices[1:], [len(areas)]]
-area_centers = (area_start_indices + area_end_indices) / 2
 
-# --- Cluster neurons based on θ ---
-dist_matrix = np.abs(th) + np.abs(th.T)
-np.fill_diagonal(dist_matrix, 0)
-condensed_dist = squareform(dist_matrix)
-linkage_matrix = linkage(condensed_dist, method='average')
-sorted_indices = leaves_list(linkage_matrix)
+filename = f"coupling_coefficients_N{N}_obs{args.obs}.npz"
 
-th_sorted = th[sorted_indices, :][:, sorted_indices]
-
-# --- Save and re-plot sorted matrix with improved visualization ---
-areas = areas[sorted_indices]
-inds3 = np.argsort(areas)
-areas = areas[inds3]
-th = th_sorted[inds3, :][:, inds3]
-
-area_names, area_start_indices = np.unique(areas, return_index=True)
-area_end_indices = np.r_[area_start_indices[1:], [len(areas)]]
-area_centers = (area_start_indices + area_end_indices) / 2
-
-# Define symmetric logarithmic normalization for better contrast,
-# especially helpful when θ values vary widely around zero.
-
-if args.fancy_color_scale:
-    norm = mcolors.SymLogNorm(
-        linthresh=0.012,    # Linear range around zero
-        linscale=0.05,     # Controls the size of the linear region
-        vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
-        vmax=np.max(np.abs(th))
-    )
-else:
-    norm = None
-
-# Create a new figure with specified size
-plt.figure(figsize=(5, 4))
-
-# Plot the θ matrix using red-white-blue colormap for signed values
-# 'equal' ensures square pixels; 'nearest' avoids interpolation artifacts
-plt.imshow(th, cmap='bwr', aspect='equal', interpolation='nearest', norm=norm)
-
-# Add a label to the left side of the plot as a "title"
-plt.text(-0.25, 0.5, r'$\theta_{ij}^*$', fontsize=18, 
-         va='center', ha='center', rotation=0, transform=plt.gca().transAxes)
-
-# Draw dotted lines to separate different brain areas visually
-for idx in area_start_indices[1:]:  # Skip the first index (0)
-    plt.axhline(idx - 0.5, color='k', linewidth=1, linestyle=':')
-    plt.axvline(idx - 0.5, color='k', linewidth=1, linestyle=':')
-
-# Compute the center positions of each area block for labeling
-area_centers = (area_start_indices + area_end_indices) / 2
-
-# Set axis tick positions and labels based on area centers
-plt.xticks(area_centers, area_names, rotation=90)
-plt.yticks(area_centers, area_names)
-
-# Adjust tick label size for better readability
-plt.tick_params(axis='both', which='major', labelsize=14)
-
-# Add colorbar and adjust colorbar ticks
-cbar = plt.colorbar(shrink=0.85)
-
-tick_positions = [-1.0e-1,-0.5e-1,-0.25e-1, 0.0 ,0.25e-1,0.5e-1,1.e-1]
-tick_labels = [r'$-0.1$', r'$-0.05$', r'$-0.025$', r'$0$', r'$0.025$', r'$0.05$', r'$0.1$']
-
-cbar.set_ticks(tick_positions)              # Only these positions
-cbar.set_ticklabels(tick_labels)            # Custom labels
-cbar.ax.tick_params(length=6, width=1.5)     # Optional: adjust tick bar style
-cbar.ax.minorticks_off()   
-
-
-# Automatically adjust layout to minimize clipping
-plt.tight_layout()
-plt.savefig('img/Fig2b.pdf', bbox_inches='tight', pad_inches=0)
-plt.show()
-
+np.savez(
+    filename,
+    areas=areas,
+    th=th,
+    sigma=sigma
+)
+print(f"Inferred coupling coefficients saved to {filename}")
