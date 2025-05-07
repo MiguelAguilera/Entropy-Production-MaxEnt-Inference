@@ -1,8 +1,6 @@
 import argparse, sys, os
 import numpy as np
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
-import torch
 from matplotlib import pyplot as plt
 from pathlib import Path
 from scipy.cluster.hierarchy import linkage, leaves_list
@@ -11,13 +9,23 @@ import matplotlib.colors as mcolors
 import h5py
 import hdf5plugin
 
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
+import torch
+
 
 sys.path.insert(0, '..')
 from methods_EP_parallel import *
+import ep_estimators, utils
+utils.set_default_torch_device()
+torch.set_grad_enabled(False)
 
 parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for a neuropixels dataset.")
 parser.add_argument("--BASE_DIR", type=str, default="~/Neuropixels",
                     help="Base directory to store the data (default: '~/Neuropixels').")
+parser.add_argument("--obs", type=int, default=1,
+                    help="Observable (default: 1).")
+parser.add_argument("--fancy_color_scale", dest="fancy_color_scale", action="store_true",
+                    help="Fancy color rescaling.")
 args = parser.parse_args()
 
 
@@ -26,9 +34,14 @@ BASE_DIR = Path(args.BASE_DIR).expanduser()
 DTYPE = 'float32'
 tol_per_param = 1e-6
 bin_size = 0.01
-session_id = 8
+session_id = 0 # 8
 session_type = 'active'
 N = 200  # Number of neurons
+
+
+
+
+
 
 # Configure LaTeX rendering in matplotlib
 plt.rc('text', usetex=True)
@@ -40,6 +53,7 @@ print(f"** DOING SYSTEM SIZE {N} of type {session_type} with session ID {session
 
 # --- Load and preprocess data ---
 filename = BASE_DIR / f"data_binsize_{bin_size}_session_{session_id}.h5"
+print(f'Loading data from {filename}, session_type={session_type}')
 
 with h5py.File(filename, 'r') as f:
     if session_type == 'active':
@@ -66,36 +80,48 @@ S = S[inds2, :]
 areas = areas[inds2]
 
 # --- Fit MaxEnt model ---
-S_t = torch.from_numpy(S[:, 1:])
-S1_t = torch.from_numpy(S[:, :-1])
-f = lambda theta: -obj_fn(theta, S_t, S1_t)
+S_t = torch.from_numpy(S[:, 1:]).T
+S1_t = torch.from_numpy(S[:, :-1]).T
+#f = lambda theta: -obj_fn(theta, S_t, S1_t)
 
-args = get_torchmin_args(S_t, tol_per_param)
-#args['x0'] = torch.zeros((N * (N - 1)) // 2)  # Upper-triangular vector
-#args['lambda_'] = 0
-res = minimize2(f, **args)
+
+# > Processing system size 200 neurons
+#   [Info] Estimating EP (nsamples: 360322, lr: 0.000500, patience: 30, % with transition: 0.998449)...
+#   [Result took 22.283140] EP tst/full: 0.24623 0.48643 | R: 18.40379 | EP tst/R: 0.01338
+
+if args.obs == 1:
+    data = ep_estimators.RawDataset(S_t, S1_t)
+elif args.obs == 2:
+    data = ep_estimators.RawDataset2(S_t, S1_t)
+else:
+    raise ValueError(f"Invalid observable type {args.obs}. Use 1 or 2.")
+
+lr=0.000500
+trn, tst = data.split_train_test()
+res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, verbose=2, report_every=10, patience=30 )
+sigma = res.tst_objective
+print("EP:", sigma)
 
 # Extract coupling matrix θ
-theta = res.x.numpy()
-th = np.zeros((N, N), dtype=theta.dtype)
-triu_indices = np.triu_indices(N, k=1)
-th[triu_indices[0], triu_indices[1]] = theta
-th=th-th.T
-sigma = -res.fun
-print("EP:", sigma)
+theta = res.theta.cpu().numpy()
+if args.obs == 2:
+    th = theta.reshape(N, N)
+else:
+    # Upper triangular matrix
+    th = np.zeros((N, N), dtype=theta.dtype)
+    triu_indices = np.triu_indices(N, k=1)
+    th[triu_indices[0], triu_indices[1]] = theta
+    th=th-th.T
 
 # --- Area names ---
 area_names, area_start_indices = np.unique(areas, return_index=True)
 area_end_indices = np.r_[area_start_indices[1:], [len(areas)]]
 area_centers = (area_start_indices + area_end_indices) / 2
 
-print(th)
 # --- Cluster neurons based on θ ---
-th_abs = np.abs(th)
-
-th_sign = np.sign(th)
-
-condensed_dist = squareform(th_abs)
+dist_matrix = np.abs(th) + np.abs(th.T)
+np.fill_diagonal(dist_matrix, 0)
+condensed_dist = squareform(dist_matrix)
 linkage_matrix = linkage(condensed_dist, method='average')
 sorted_indices = leaves_list(linkage_matrix)
 
@@ -113,12 +139,16 @@ area_centers = (area_start_indices + area_end_indices) / 2
 
 # Define symmetric logarithmic normalization for better contrast,
 # especially helpful when θ values vary widely around zero.
-norm = mcolors.SymLogNorm(
-    linthresh=0.012,    # Linear range around zero
-    linscale=0.05,     # Controls the size of the linear region
-    vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
-    vmax=np.max(np.abs(th))
-)
+
+if args.fancy_color_scale:
+    norm = mcolors.SymLogNorm(
+        linthresh=0.012,    # Linear range around zero
+        linscale=0.05,     # Controls the size of the linear region
+        vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
+        vmax=np.max(np.abs(th))
+    )
+else:
+    norm = None
 
 # Create a new figure with specified size
 plt.figure(figsize=(5, 4))
