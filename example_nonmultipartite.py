@@ -42,22 +42,21 @@ g_samples = np.vstack([ (X1[:,i] - X0[:,i])*X1[:,j]
                         for i in range(N) for j in range(N) if i != j]).T
 
 data1         = ep_estimators.Dataset(g_samples=g_samples)
-estimator1    = ep_estimators.EPEstimators(data1)
+train, test   = data1.split_train_test() 
 
 stime = time.time()
-sigma_N_obs  = estimator1.get_EP_Newton(holdout=True, trust_radius=1).objective
+sigma_N_obs  = ep_estimators.get_EP_Newton(train, holdout_data=test).objective
 time_N_obs   = time.time() - stime
 
 
 stime = time.time()
-sigma_G_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
+sigma_G_obs  = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
 time_G_obs   = time.time() - stime
 
 # Estimate EP using gradient ascent method , from state samples
 stime = time.time()
-data2          = ep_estimators.RawDataset2(X0, X1)
-estimatorS     = ep_estimators.EPEstimators(data2)
-sigma_S_state = estimatorS.get_EP_GradientAscent(holdout=True).objective
+trainS, testS = ep_estimators.RawDataset2(X0, X1).split_train_test()
+sigma_S_state = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
 time_S_state  = time.time() - stime
 
 
