@@ -45,6 +45,10 @@ parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
+parser.add_argument("--lr", type=float, default=0.01,
+                    help="Base learning rate (default: 0.01).")
+parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
+                    help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
 
 
 args = parser.parse_args()

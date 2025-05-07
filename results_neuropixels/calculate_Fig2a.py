@@ -207,7 +207,7 @@ def calc(sizes, session_type, session_id, r):
         print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
 
     SAVE_DATA_DIR = 'ep_data'
-    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{lr}_lr-scale_{lr_scale}.h5'
+    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(save_path, 'a') as f:
         group_path = f"{session_type}/{session_id}/rep_{r}"
