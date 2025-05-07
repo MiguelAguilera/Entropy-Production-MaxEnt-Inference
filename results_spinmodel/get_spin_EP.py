@@ -12,12 +12,25 @@ import torch
 sys.path.insert(0, '..')
 import ep_estimators
 import utils
-
+from numba import njit
 
 # -------------------------------
 # Entropy Production Calculation Functions
 # -------------------------------
 
+#@njit
+def compute_spin_differences(S_i, i):
+    """
+    S_i: np.ndarray of shape (T, N), dtype=bool
+    i: index of reference spin
+
+    Returns g = 1 if any spin differs from spin i at any time, else 0.
+    """
+    ref = S_i[:, i]  # shape (T,)
+    X = S_i ^ ref[:, None]  # shape (T, N)
+    X = np.delete(X, i, axis=1)  
+    return X
+    
 def get_spin_data(i, file_name, cap=None):
     """
     Loads data for spin `i` from a .npz file.
@@ -31,8 +44,11 @@ def get_spin_data(i, file_name, cap=None):
     
     if cap is not None:
         S_i = S_i[:cap, :]
-        
-    return S_i, J_i, nflips
+    mask = np.ones(S_i.shape[1], dtype=bool)
+    mask[i] = False
+    # Return spin changes, J_i, and number of spin flips
+    X = compute_spin_differences(S_i, i)
+    return X, J_i, nflips
 
         
 def load_results_from_file(file_name_out, N, return_parameters=False):
@@ -96,6 +112,7 @@ def calc_spin(i_args):
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
     # Calculate empirical estimate of true EP
+    
     spin_emp  = beta * (J_without_i @ data.g_mean).item()
 
     # Compute MTUR
@@ -197,7 +214,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     progress = DummyProgress()
     print("[Sequential] Running on a single process")
 
-    preload_depth = 4  # Number of spins to preload in parallel
+    preload_depth = 10  # Number of spins to preload in parallel
     preload_threads = {}
     preload_results = {}
 
@@ -218,25 +235,29 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     for i in tqdm(range(N), desc="Sequential spin progress"):
         if i in preload_threads:
             preload_threads[i].join()
-            S_i, J_i, nflips = preload_results.pop(i)
+            X_i, J_i, nflips = preload_results.pop(i)
             preload_threads.pop(i)
         else:
-            S_i, J_i, nflips = get_spin_data(i, file_name, cap=cap)
+            X_i, J_i, nflips = get_spin_data(i, file_name, cap=cap)
 
         # Convert to torch tensors on appropriate device
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
 
         
-#        S_i_t = torch.from_numpy(S_i).to(device).float() * 2 - 1  # {0,1} → {-1,1}
-        mask = torch.ones(S_i.shape[1], dtype=bool)
-        mask[i] = False
-        # g = - 2*S_i[:, i] * S_i[:,mask], with S_ij = +1/-1
-        g = (S_i[:, i][:, None] ^ S_i[:,mask])
-        g_samples = 2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
+        g_samples = torch.from_numpy(X_i).to(device).float() * 4 - 2  # {0,1} → {-1,1}
+#        mask = np.ones(S_i.shape[1], dtype=bool)
+#        mask[i] = False
+#        # g = - 2*S_i[:, i] * S_i[:,mask], with S_ij = +1/-1
+#        g = (S_i[:, i][:, None] ^ S_i)
+#        g_samples = 2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
         J_i_t = torch.from_numpy(J_i).to(device)
 
-        del S_i, J_i  # Free memory
+#        mask = torch.ones(S_i.shape[1], dtype=bool)
+#        mask[i] = False
+##        
+#        g_samples = -2*S_i_t[:, i][:, None] * S_i_t[:,mask]
+        del X_i, J_i  # Free memory
 
         # Perform estimation
         calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, g_samples, J_i_t, nflips))
