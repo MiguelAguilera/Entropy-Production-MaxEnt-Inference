@@ -55,8 +55,8 @@ parser.add_argument("--num_beta", type=int, default=101,
                     help="Number of beta values to simulate (default: 101).")
 parser.add_argument("--J0", type=float, default=0.0,
                     help="Mean interaction coupling (default: 0.0).")
-parser.add_argument("--DJ", type=float, default=0.5,
-                    help="Variance of the quenched disorder (default: 0.5).")
+parser.add_argument("--DJ", type=float, default=1.0,
+                    help="Variance of the quenched disorder (default: 1.0).")
 parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
 parser.add_argument("--num_neighbors", type=int, default=None,
