@@ -23,7 +23,7 @@ k    = 6    # avg number of neighbors in sparse coupling matrix
 beta = 2.0   # inverse temperature
 rep =100000
 N=1000
-rep=10000
+#rep=10000
 np.random.seed(42) # Set seed for reproducibility
 
 stime = time.time()
@@ -43,7 +43,7 @@ stime0 = time.time()
 
 
 # Because system is multipartite, we can separately estimate EP for each spin
-for i in tqdm(range(N), smoothing=0):
+for i in tqdm(range(N//100), smoothing=0):
     p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
     # Calculate samples of g observables for states in which spin i changes state
