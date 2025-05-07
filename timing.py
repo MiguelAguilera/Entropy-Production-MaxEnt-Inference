@@ -8,7 +8,9 @@ import torch
 import spin_model
 import utils
 
-test_old=False
+test_old=True
+do_holdout = False
+
 if test_old:
     print('testing old version')
     import ep_multipartite as epm
@@ -16,14 +18,14 @@ else:
     print('testing new version')
     import ep_estimators as epm
 # The following allows torch to use GPU for computation
-# utils.set_default_torch_device()                
+#utils.set_default_torch_device()                
 print(torch.get_default_device())
 N    = 10   # system size
 k    = 6    # avg number of neighbors in sparse coupling matrix
 beta = 2.0   # inverse temperature
 rep =100000
 N=1000
-rep=10000
+rep=100000
 np.random.seed(42) # Set seed for reproducibility
 
 stime = time.time()
@@ -51,7 +53,6 @@ for i in tqdm(range(N), smoothing=0):
     g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
     sample_time            += time.time() - stime
 
-    do_holdout = False
     stime = time.time()
     if not test_old:
         data = epm.Dataset(g_samples=g_samples)
@@ -61,7 +62,7 @@ for i in tqdm(range(N), smoothing=0):
             train, test = data.split_train_test(holdout_shuffle=False)
             spin_full = epm.get_EP_Newton(train, trust_radius=1/4, holdout_data=test).objective
         else:
-            spin_full = epm.get_EP_Newton(data).objective
+            spin_full = epm.get_EP_Newton(data, trust_radius=1/4).objective
 
         sigma_g    += p_i * spin_full
         # # Full optimization with gradient ascent method and holdout

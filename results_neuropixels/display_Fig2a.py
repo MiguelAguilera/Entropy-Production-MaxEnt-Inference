@@ -41,6 +41,11 @@ parser.add_argument("--remove_outliers", action="store_true", default=False,
 
 parser.add_argument("--types", nargs="+", default=["active", "passive", "gabor"],
                     help="Session types to include.")
+parser.add_argument("--obs", type=int, default=1,
+                    help="Observable (default: 1).")
+parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
+                    help="Disable Adam optimizer (enabled by default).")
+
 
 args = parser.parse_args()
 
@@ -75,6 +80,7 @@ if __name__ == "__main__":
 
     num_sessions = 103
     SAVE_DATA_DIR = 'ep_data'
+    do_Adam = True
 
     # Data containers
     EP = {session_type: {size: [] for size in sizes} for session_type in types}
@@ -88,7 +94,7 @@ if __name__ == "__main__":
         key = (session_type, session_id, r)
 
         if key not in _loaded_sessions:
-            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}.h5'
+            filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}.h5'
             try:
                 with h5py.File(filename, 'r') as f:
                     group_path = f"{session_type}/{session_id}/rep_{r}"

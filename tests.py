@@ -51,30 +51,29 @@ def run_inference(beta, J, S, F, num_chunks=None, do_rev=False):
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = spin_model.get_g_observables(S, F, i)
         data = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples if do_rev else None)
-        obj = ep_estimators.EPEstimators(data=data)
 
         # Empirical estimate 
         J_without_i = np.hstack([J[i,:i], J[i,i+1:]])
         spin_emp = beta * float(utils.numpy_to_torch(J_without_i) @ utils.numpy_to_torch(data.g_mean))
         
-        spin_N1   = obj.get_EP_Newton(max_iter=1, num_chunks=num_chunks).objective # 1-step of Newton
+        spin_N1   = ep_estimators.get_EP_Newton(data, max_iter=1, num_chunks=num_chunks).objective # 1-step of Newton
         
         # Full optimization with trust-region Newton method and no holdout 
-        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=False, num_chunks=num_chunks).objective
+        spin_full = ep_estimators.get_EP_Newton(data, trust_radius=1/4, num_chunks=num_chunks).objective
 
         # Full optimization with trust-region Newton method and holdout
         np.random.seed(1) # Set seed for holdout reproducibility 
-        spin_fullH = obj.get_EP_Newton(trust_radius=1/4, holdout=True, num_chunks=num_chunks).objective
+        trn, tst = data.split_train_test()
+        spin_fullH = ep_estimators.get_EP_Newton(trn, trust_radius=1/4, holdout_data=tst, num_chunks=num_chunks).objective
 
         # Full optimization with gradient ascent method , no holdout
-        spin_grad = obj.get_EP_GradientAscent(holdout=False).objective
+        spin_grad = ep_estimators.get_EP_GradientAscent(data).objective
 
         # Full optimization with gradient ascent method 
-        np.random.seed(1) # Set seed for holdout reproducibility 
-        spin_gradH = obj.get_EP_GradientAscent(holdout=True).objective
+        spin_gradH = ep_estimators.get_EP_GradientAscent(trn, holdout_data=tst).objective
 
         # Multidimensional TUR
-        spin_MTUR = obj.get_EP_MTUR().objective
+        spin_MTUR = ep_estimators.get_EP_MTUR(data).objective
         
 
         sigma_emp  += p_i * spin_emp
@@ -133,18 +132,17 @@ def test_consistency():
     N = J.shape[0]
     g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
                             for i in range(N) for j in range(i+1, N) ]).T
-    data1         = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
-    estimator1    = ep_estimators.EPEstimators(data1)
-    sigma_g2_obs  = estimator1.get_EP_GradientAscent(holdout=True).objective
+    data1 = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
+    trn1, tst1 = data1.split_train_test()
+    sigma_g1   = ep_estimators.get_EP_GradientAscent(trn1, holdout_data=tst1).objective
 
-    data2          = ep_estimators.RawDataset(X0, X1)
-    estimator2     = ep_estimators.EPEstimators(data2)
-    sigma_g2_state = estimator2.get_EP_GradientAscent(holdout=True).objective
+    data2 = ep_estimators.Dataset(g_samples=g_samples)
+    trn2, tst2 = data2.split_train_test()
+    sigma_g2   = ep_estimators.get_EP_GradientAscent(trn2, holdout_data=tst2).objective
 
-    data3         = ep_estimators.Dataset(g_samples=g_samples)
-    estimator3    = ep_estimators.EPEstimators(data3)
-    sigma_g3_obs  = estimator3.get_EP_GradientAscent(holdout=True).objective
-
+    data3 = ep_estimators.RawDataset(X0, X1)
+    trn3, tst3 = data3.split_train_test()
+    sigma_g3   = ep_estimators.get_EP_GradientAscent(trn3, holdout_data=tst3).objective
 
     theta = np.random.rand(data1.nobservables)
     assert(torch.norm(data1.g_mean - data2.g_mean)<1e-5)
