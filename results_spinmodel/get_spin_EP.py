@@ -91,7 +91,7 @@ def calc_spin(i_args):
 
     num_chunks=5
 #    num_chunks=-1
-    data = ep_estimators.Dataset(g_samples)
+    data = ep_estimators.Dataset(les)
     est = ep_estimators.EPEstimators(data)
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
@@ -232,7 +232,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         mask = torch.ones(S_i.shape[1], dtype=bool)
         mask[i] = False
         g = (S_i[:, i][:, None] ^ S_i[:,mask])
-        g_samples = -2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
+        g_samples = 2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
         J_i_t = torch.from_numpy(J_i).to(device)
 
         del S_i, J_i  # Free memory
