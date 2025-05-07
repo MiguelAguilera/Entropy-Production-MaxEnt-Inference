@@ -231,6 +231,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
 #        S_i_t = torch.from_numpy(S_i).to(device).float() * 2 - 1  # {0,1} → {-1,1}
         mask = torch.ones(S_i.shape[1], dtype=bool)
         mask[i] = False
+        # g = - 2*S_i[:, i] * S_i[:,mask], with S_ij = +1/-1
         g = (S_i[:, i][:, None] ^ S_i[:,mask])
         g_samples = 2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
         J_i_t = torch.from_numpy(J_i).to(device)
