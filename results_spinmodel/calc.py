@@ -11,8 +11,8 @@ import utils
 import ep_estimators
 import spin_model
 
-#device = utils.set_default_torch_device()
-#torch.set_grad_enabled(False)
+device = utils.set_default_torch_device()
+torch.set_grad_enabled(False)
 
 
 def calc_spin2(beta, J, i, g_samples):
@@ -118,7 +118,24 @@ def calc_spin(beta, J, i, g_samples):
     return sigmas, times, thetas
 
 
+def get_g_observables_bin(S_bin, F, i):
+    # Given states S_i in which spin i flipped, calculate observables 
+    #        g(x) = g_{ij} = (x_i' - x_i) x_j 
+    # where x_i' and x_i indicate the state of spin i after and before the jump, 
+    # and x_j is the state of every other spin .
+    # Here S is given in boolean representation S_bin and F indicates which spin flipped
+    # Use S and F to select states in which spin i flipped
+    S_i          = torch.from_numpy(S_bin[F[:,i],:]).to(torch.get_default_device()).float()*2-1
+    twice_only_i = -2 * S_i[:, i]
+    S_i          = torch.hstack((S_i[:,:i], S_i[:,i+1:]))
+    g_samples    = torch.einsum('i,ij->ij', twice_only_i, S_i)
+    return g_samples.contiguous()
+    
+
 def calc(file_name):
+
+    utils.empty_torch_cache()
+
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     process = psutil.Process(os.getpid())
@@ -126,8 +143,8 @@ def calc(file_name):
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
-    S      = data['S_bin']*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
-    rep, N = S.shape
+    S_bin  = data['S_bin'] # .astype('float32')*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
+    rep, N = S_bin.shape
     F      = data['F'] # torch.from_numpy(data["F"]).to(device).bool()
 
     if False:
@@ -153,9 +170,9 @@ def calc(file_name):
     # Compute empirical EP
     stime = time.time()
 
+
     for i in pbar:
-        g_samples = spin_model.get_g_observables(S, F, i)
-        
+        g_samples = get_g_observables_bin(S_bin, F, i)
         res = calc_spin( beta, J, i, g_samples)
 
         epdata[i] = res 
@@ -173,6 +190,8 @@ def calc(file_name):
         memory_usage = process.memory_info().rss / 1024 / 1024
         ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
         pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
+
+    print(f'{time.time() - stime:3f}s')
 
     for k,v in ep_sums.items():
         epdata['ep'][k]=v
