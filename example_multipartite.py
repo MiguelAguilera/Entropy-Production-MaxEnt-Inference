@@ -14,7 +14,7 @@ utils.set_default_torch_device()
 
 N    = 10   # system size
 k    = 6    # avg number of neighbors in sparse coupling matrix
-beta = .5   # inverse temperature
+beta = 2.0   # inverse temperature
 
 
 np.random.seed(42) # Set seed for reproducibility

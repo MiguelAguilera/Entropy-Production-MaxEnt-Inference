@@ -177,6 +177,8 @@ def calc(sizes, session_type, session_id, r):
         
         S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.).to(device)
         S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.).to(device)
+
+
         if args.obs==1:
             data = ep_estimators.RawDataset(S_t, S1_t)
         elif args.obs==2:
@@ -186,8 +188,17 @@ def calc(sizes, session_type, session_id, r):
         ep_est = ep_estimators.EPEstimators(data)
 
         start_time = time.time()
+        lr=1e-2
+        max_iter = 5000
+        print(lr)
         
-        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, holdout=True, tol=tol, use_Adam=args.use_Adam, verbose=True,patience=args.patience, holdout_shuffle=True)
+        EP_maxent,theta,_ = ep_est.get_EP_GradientAscent(lr = lr, 
+                                                         holdout=True, 
+                                                         tol=tol, 
+                                                         use_Adam=args.use_Adam, 
+                                                         patience=args.patience, 
+                                                         verbose=2,
+                                                         max_iter=max_iter)
 #        print(f"Time for Gradient Ascent: {time.time() - start_time:.4f} seconds")
         
         if device.type == "cuda":

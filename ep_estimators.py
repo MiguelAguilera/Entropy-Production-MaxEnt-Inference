@@ -56,7 +56,6 @@ class DatasetBase(object):
             perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
             tst_indices = perm[trn_nsamples:]
-            print(trn_indices, tst_indices)
         else:
             trn_indices = np.arange(trn_nsamples)
             tst_indices = np.arange(trn_nsamples, nsamples)
@@ -288,10 +287,31 @@ class RawDataset(DatasetBase):
     
         
 class RawDataset2(RawDataset):
+    def __init__(self, X0, X1):
+        # Arguments:
+        # X0          : 2d tensor (nsamples x N) containing initial states of the system
+        # X1          : 2d tensor (nsamples x N) containing final states of the system
+        
+        assert(X0.shape == X1.shape)
+        
+        self.X0 = numpy_to_torch(X0)
+        self.X1 = numpy_to_torch(X1)
+        self.diffX = self.X1 - self.X0
+        
+        # self.N indicates dimensionality of the system
+        self.nsamples, self.N = self.X0.shape
+        self.nsamples = self.nsamples
+
+        self.device = self.X0.device
+    
+        self.nobservables = self.g_mean.shape[0]
+
+        # print(torch.any(self.diffX != 0, dim=1).to(torch.float32).mean())
+
     @functools.cached_property
     def g_mean(self): # Calculate mean of observables under forward process
         # Here we consider g_{ij} = (x_i' - x_i) x_j
-        return ((self.X1 - self.X0).T @ self.X0 / self.nsamples).flatten()
+        return (self.diffX.T @ self.X0 / self.nsamples).flatten()
     
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
@@ -308,22 +328,22 @@ class RawDataset2(RawDataset):
 
         # 1. θᵀg_k 
         theta2d = torch.reshape(theta, (self.N, self.N))
-#        theta2d[range(self.N),range(self.N)]=0
-        th_g    = torch.einsum('ij,ki,kj->k', theta2d, self.X0 - self.X1, self.X0)
+        th_g    = -torch.einsum('ij,ki,kj->k', theta2d, self.diffX, self.X1)
 
         th_g_max = torch.max(th_g)
         exp_tilt = torch.exp(th_g - th_g_max)
         norm_const = torch.mean(exp_tilt)
-        weights = exp_tilt / norm_const
         
         if return_objective:
             # To return 'true' normalization constant, we need to correct again for th_g_max
             log_Z = torch.log(norm_const) + th_g_max
             vals['objective'] = float(theta @ self.g_mean - log_Z)
 
+
         if return_mean:
-            g_mean = torch.einsum('k,ki,kj->ij', weights, self.X0-self.X1, self.X0)/self.nsamples
-            vals['tilted_mean'] = g_mean.flatten()
+            weights = exp_tilt / norm_const
+            tilted_g_mean = -torch.einsum('k,ki,kj->ij', weights, self.diffX, self.X1)  / self.nsamples
+            vals['tilted_mean'] = tilted_g_mean.flatten()
 
         return vals
 
@@ -579,7 +599,9 @@ class EPEstimators(object):
                     print(f'{funcname} : iteration {t:5d} | {(new_time - old_time)/report_every:3f}s/iter | f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
                     old_time = new_time
 
+
                 tilted_stats = trn.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
+                #continue 
                 f_new_trn    = tilted_stats['objective']
 
                 grad         = trn.g_mean - tilted_stats['tilted_mean']   # Gradient

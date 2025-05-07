@@ -1,4 +1,5 @@
-# Some unit testing
+# Some unit testing, can be run using 
+# > pytest tests.py
 
 import os, sys
 import numpy as np
@@ -7,7 +8,6 @@ from tqdm import tqdm
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS backend
 import torch
 
-sys.path.insert(0, '..')
 import spin_model
 import ep_estimators
 import utils

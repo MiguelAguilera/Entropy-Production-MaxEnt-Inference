@@ -14,7 +14,7 @@ utils.set_default_torch_device()
 
 N    = 10     # system size
 k    = 6      # avg number of neighbors in sparse coupling matrix
-beta = 3      # inverse temperature
+beta = 2      # inverse temperature
 
 
 np.random.seed(42) # Set seed for reproducibility
@@ -55,7 +55,7 @@ time_G_obs   = time.time() - stime
 
 # Estimate EP using gradient ascent method , from state samples
 stime = time.time()
-data2          = ep_estimators.RawDataset(X0, X1)
+data2          = ep_estimators.RawDataset2(X0, X1)
 estimatorS     = ep_estimators.EPEstimators(data2)
 sigma_S_state = estimatorS.get_EP_GradientAscent(holdout=True).objective
 time_S_state  = time.time() - stime
