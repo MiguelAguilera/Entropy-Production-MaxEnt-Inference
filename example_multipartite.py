@@ -16,12 +16,11 @@ N    = 10   # system size
 k    = 6    # avg number of neighbors in sparse coupling matrix
 beta = 2.0   # inverse temperature
 
-
 np.random.seed(42) # Set seed for reproducibility
 
 stime = time.time()
 J    = spin_model.get_couplings_random(N=N, k=k)
-S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
+S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=100000)
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin  # Total spin-flip attempts
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
@@ -38,7 +37,7 @@ sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 time_g  = time_g2 = time_N1 = time_MTUR = 0.0
 
 # Because system is multipartite, we can separately estimate EP for each spin
-for i in tqdm(range(N)):
+for i in tqdm(range(N), smoothing=0):
     p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
     # Calculate samples of g observables for states in which spin i changes state
@@ -46,32 +45,32 @@ for i in tqdm(range(N)):
     g_mean                  = g_samples.mean(axis=0)
 
     data = ep_estimators.Dataset(g_samples=g_samples)
-    estimator_obj = ep_estimators.EPEstimators(data)
 
     # 1 step of Newton
-    stime = time.time()
-    spin_N1   = estimator_obj.get_EP_Newton(max_iter=1).objective 
-    time_N1 += time.time() - stime
-    
-    # Full optimization with trust-region Newton method and holdout 
-    stime = time.time()
-    spin_full = estimator_obj.get_EP_Newton(trust_radius=1/4, holdout=True).objective
-    time_g  += time.time() - stime
-
-    # Full optimization with gradient ascent method 
-    stime = time.time()
-    spin_grad = estimator_obj.get_EP_GradientAscent(holdout=True).objective
-    time_g2 += time.time() - stime
+    stime       = time.time()
+    spin_N1     = ep_estimators.get_EP_Newton(data, max_iter=1).objective 
+    time_N1    += time.time() - stime
+    sigma_N1   += p_i * spin_N1
 
     # Multidimensional TUR
-    stime = time.time()
-    spin_MTUR = estimator_obj.get_EP_MTUR().objective
-    time_MTUR += time.time() - stime
-    
-    sigma_g    += p_i * spin_full
-    sigma_N1   += p_i * spin_N1
+    stime       = time.time()
+    spin_MTUR   = ep_estimators.get_EP_MTUR(data).objective
+    time_MTUR  += time.time() - stime
     sigma_MTUR += p_i * spin_MTUR
-    sigma_g2   += p_i * spin_grad
+    
+    # Create dataset with holdout data
+    train, test = data.split_train_test(holdout_shuffle=True)
+    # Full optimization with trust-region Newton method and holdout 
+    stime     = time.time()
+    spin_full = ep_estimators.get_EP_Newton(train, trust_radius=1/4, holdout_data=test).objective
+    time_g   += time.time() - stime
+    sigma_g  += p_i * spin_full
+
+    # Full optimization with gradient ascent method and holdout
+    stime     = time.time()
+    spin_grad = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
+    time_g2   += time.time() - stime
+    sigma_g2  += p_i * spin_grad
 
     utils.empty_torch_cache()
 

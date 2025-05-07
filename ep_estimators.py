@@ -47,13 +47,14 @@ class DatasetBase(object):
 
 
     @staticmethod
-    def _get_trn_indices(nsamples, holdout_fraction, holdout_shuffle=True):
+    def _get_trn_indices(nsamples, holdout_fraction=1/2, holdout_shuffle=True, with_replacement=False):
         # Get indices for training and testing data
         assert 0 <= holdout_fraction <= 1, "holdout_fraction must be between 0 and 1"
         trn_nsamples = nsamples - int(nsamples * holdout_fraction)
 
         if holdout_shuffle:
-            perm = np.random.permutation(nsamples)
+            perm = np.random.choice(nsamples, size=nsamples, replace=with_replacement)
+            #perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
             tst_indices = perm[trn_nsamples:]
         else:
@@ -61,7 +62,7 @@ class DatasetBase(object):
             tst_indices = np.arange(trn_nsamples, nsamples)
         return trn_indices, tst_indices
 
-    def split_train_test(self, holdout_fraction, holdout_shuffle=True):
+    def split_train_test(self, **holdout_options):
         raise NotImplementedError("split_train_test is not implemented")
 
 
@@ -115,13 +116,13 @@ class Dataset(DatasetBase):
             torch.cov(self.rev_g_samples.T, correction=0)    
     
 
-    def split_train_test(self, holdout_fraction, holdout_shuffle=True):
+    def split_train_test(self, **holdout_opts):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(self.forward_nsamples, holdout_fraction, holdout_shuffle)
+        trn_indices, tst_indices = self._get_trn_indices(nsamples=self.forward_nsamples, **holdout_opts)
 
         if self.rev_g_samples is not None:
             if self.nsamples != self.forward_nsamples:
-                trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+                trn_indices_rev, tst_indices_rev = self._get_trn_indices(nsamples=self.nsamples, **holdout_opts)
             else: # assume that forward and reverse samples are paired (there is the same number), 
                 trn_indices_rev = trn_indices
                 tst_indices_rev = tst_indices
@@ -148,7 +149,7 @@ class Dataset(DatasetBase):
 
         with torch.no_grad():
         
-            th_g = self.rev_g_samples @ theta if use_rev else -self.g_samples @ theta
+            th_g = self.rev_g_samples @ theta if use_rev else -(self.g_samples @ theta)
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
             # The same multiplicative corrections enters into the normalization constant and the tilted
@@ -163,7 +164,7 @@ class Dataset(DatasetBase):
                 vals['objective'] = float( theta @ self.g_mean - log_Z )
 
             if return_mean or return_covariance:
-                mean = exp_tilt @ self.rev_g_samples if use_rev else -exp_tilt @ self.g_samples
+                mean = exp_tilt @ self.rev_g_samples if use_rev else -(exp_tilt @ self.g_samples)
                 mean = mean / self.nsamples / norm_const
                 vals['tilted_mean'] = mean
 
@@ -241,9 +242,9 @@ class RawDataset(DatasetBase):
         return -self.g_mean  # Antisymmetric observables
 
 
-    def split_train_test(self, holdout_fraction, holdout_shuffle=True):
+    def split_train_test(self, **holdout_opts):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, **holdout_opts)
         trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
@@ -335,6 +336,7 @@ class RawDataset2(RawDataset):
 
         # 1. θᵀg_k 
         theta2d = torch.reshape(theta, (self.N, self.N))
+        #theta2d.fill_diagonal_(0)  # Set diagonal to 0
         th_g    = -torch.einsum('ij,ki,kj->k', theta2d, self.diffX, self.X1)
 
         th_g_max = torch.max(th_g)
@@ -363,399 +365,383 @@ class RawDataset2(RawDataset):
 #   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
 
+def _get_valid_solution(objective, theta, nsamples, tst_objective=None):
+    # This returns a Solution object, after doing some basic sanity checking of the values
+    # This checking is useful in the undersampled regime with many dimensions and few samles
+    if objective < 0:
+        # EP estimate should never be negative, as we can always achieve objective=0 with all 0s theta
+        objective = 0.0 
+        if theta is not None:
+            theta = 0*theta
+    elif objective >= np.log(nsamples):
+        # EP estimate should not be larger than log(# samples), because it is not possible
+        # to estimate KL divergence larger than log(m) from m samples
+        objective = np.log(nsamples)
+    return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
+
+
 # ==========================================
 # Entropy production (EP) estimation methods 
 # ==========================================
-class EPEstimators(object):
-    # EP estimators based on optimizing our variational principle
-    #  
-    def __init__(self, data, use_upper_only=False):
-        """
-        Parameters:
-            data              : data object
-            use_upper_only    : if True, interpret theta as flattened upper-triangle (i<j) of n x n
-        """
-        self.data = data
+def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
+                    max_iter=1000, tol=1e-4, linsolve_eps=1e-4, num_chunks=None,
+                    trust_radius=None, solve_constrained=True, adjust_radius=False,
+                    eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
+    # Estimate EP by optimizing objective using Newton's method. We support advanced
+    # features like Newton's method with trust region constraints
+    #
+    # Arguments (all optional):
+    #   data             : Dataset object providing statistics of observables   
+    #   theta_init       : torch tensor specifiying initial parameters (set to 0s if None)
+    #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
+    #   holdout_data     : if not None, we use this dataset for early stopping 
+    #   max_iter (int)   : maximum number of iterations
+    #   tol (float)      : early stopping once objective does not improve by more than tol
+    #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
+    #   num_chunks       : chunk size for memory-efficient covariance computation
+    #
+    # Trust-region-related arguments (all optional):
+    #   trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
+    #   solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
+    #                                  if False, we simply rescale usual Newton step to desired maximum norm 
+    #   adjust_radius (bool)         : change trust-region radius in an adaptive way
+    #   eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
+    #                                : hyperparameters for adjusting trust radius
 
+    funcname = 'get_EP_Newton_steps'
 
-    def get_valid_solution(self, objective, theta, tst_objective=None):
-        # This returns a Solution object, after doing some basic sanity checking of the values
-        # This checking is useful in the undersampled regime with many dimensions and few samles
-        if objective < 0:
-            # EP estimate should never be negative, as we can always achieve objective=0 with all 0s theta
-            objective = 0.0 
-            if theta is not None:
-                theta = 0*theta
-        elif objective >= np.log(self.data.nsamples):
-            # EP estimate should not be larger than log(# samples), because it is not possible
-            # to estimate KL divergence larger than log(m) from m samples
-            objective = np.log(self.data.nsamples)
-        return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
+    with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
+        if holdout_data:
+            f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
+        else:
+            f_cur_trn = f_new_trn = 0.0
+        
+        if theta_init is not None:
+            theta = theta_init.clone()
+        else:
+            theta = torch.zeros(data.nobservables, device=data.device)
+        I     = torch.eye(len(theta), device=theta.device)
 
+        for t in range(max_iter):
+            if verbose and verbose > 1: 
+                print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', 
+                                                    f'f_cur_tst={f_cur_tst: 3f}' if holdout_data is not None else '')
 
-    def get_EP_Newton(self, 
-                      holdout=False, holdout_fraction=1/2, holdout_shuffle=True, verbose=0,
-                      max_iter=1000, tol=1e-4, linsolve_eps=1e-4, num_chunks=None,
-                      trust_radius=None, solve_constrained=True, adjust_radius=False,
-                      eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
-        # Estimate EP by optimizing objective using Newton's method. We support advanced
-        # features like Newton's method with trust region constraints
-        #
-        # Arguments (all optional):
-        #   holdout (bool)   : if True, we split the data into training and testing sets
-        #   holdout_fraction : fraction of samples for test split
-        #   holdout_shuffle  : shuffle data before splitting
-        #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
-        #   max_iter (int)   : maximum number of iterations
-        #   tol (float)      : early stopping once objective does not improve by more than tol
-        #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
-        #   num_chunks       : chunk size for memory-efficient covariance computation
-        #
-        # Trust-region-related arguments (all optional):
-        #   trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
-        #   solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
-        #                                  if False, we simply rescale usual Newton step to desired maximum norm 
-        #   adjust_radius (bool)         : change trust-region radius in an adaptive way
-        #   eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
-        #                                : hyperparameters for adjusting trust radius
+            # Find Newton step direction. We first get gradient and Hessian
+            stats = data.get_tilted_statistics(theta, return_mean=True, return_covariance=True, num_chunks=num_chunks)
+            g_theta = stats['tilted_mean']
+            H_theta = stats['tilted_covariance']
 
-        funcname = 'get_EP_Newton_steps'
+            if is_infnan(H_theta.sum()): 
+                # Error occured, usually it means theta is too big
+                if verbose: print('{funcname} : [Stopping] Invalid Hessian')
+                break
 
-        with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
+            grad = data.g_mean - g_theta
+            H_theta += linsolve_eps * I  # regularize Hessian by adding a small I
 
-            if holdout:
-                trn, tst = self.data.split_train_test(holdout_fraction, holdout_shuffle)
-                f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
-            else:
-                trn = self.data
-                f_cur_trn = f_new_trn = 0.0
-            
-            theta = torch.zeros(trn.nobservables, device=trn.device)
-            I     = torch.eye(len(theta), device=theta.device)
+            if trust_radius is not None and solve_constrained:
+                # Solve the constrained trust region problem using the
+                # Steihaug-Toint Truncated Conjugate-Gradient Method
 
-            for t in range(max_iter):
-                if verbose and verbose > 1: 
-                    print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
+                for _ in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
+                    delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
+                    new_theta  = theta + delta_theta
+                    f_new_trn  = data.get_objective(new_theta)
 
-                # Find Newton step direction. We first get gradient and Hessian
-                stats = trn.get_tilted_statistics(theta, return_mean=True, return_covariance=True, num_chunks=num_chunks)
-                g_theta = stats['tilted_mean']
-                H_theta = stats['tilted_covariance']
+                    if not adjust_radius:    
+                        # We don't care about adjust trust_radius, so we just accept the current direction
+                        break
 
-                if is_infnan(H_theta.sum()): 
-                    # Error occured, usually it means theta is too big
-                    if verbose: print('{funcname} : [Stopping] Invalid Hessian')
-                    break
+                    else:
+                        pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
 
-                grad = trn.g_mean - g_theta
-                H_theta += linsolve_eps * I  # regularize Hessian by adding a small I
+                        act_red = f_new_trn - f_cur_trn
+                        rho = act_red / (pred_red + 1e-20)
 
-                if trust_radius is not None and solve_constrained:
-                    # Solve the constrained trust region problem using the
-                    # Steihaug-Toint Truncated Conjugate-Gradient Method
-
-                    for _ in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
-                        delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
-                        new_theta  = theta + delta_theta
-                        f_new_trn  = trn.get_objective(new_theta)
-
-                        if not adjust_radius:    
-                            # We don't care about adjust trust_radius, so we just accept the current direction
+                        assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
+                        if rho > eta0:      # accept new theta
+                            break
+                        if trust_radius < trust_radius_min:
+                            trust_radius = trust_radius_min
                             break
 
-                        else:
-                            pred_red = grad @ delta_theta + 0.5 * delta_theta @ (H_theta @ delta_theta)
-
-                            act_red = f_new_trn - f_cur_trn
-                            rho = act_red / (pred_red + 1e-20)
-
-                            assert not is_infnan(rho), "rho is not a valid number in adjust_radius code. Try disabling adjust_radius=False"
-                            if rho > eta0:      # accept new theta
-                                break
-                            if trust_radius < trust_radius_min:
-                                trust_radius = trust_radius_min
-                                break
-
-                            if rho < eta1:
-                                trust_radius *= 0.25
-                            elif rho > eta2 and delta_theta.norm() >= trust_radius:
-                                trust_radius = min(2.0 * trust_radius, trust_radius_max)
+                        if rho < eta1:
+                            trust_radius *= 0.25
+                        elif rho > eta2 and delta_theta.norm() >= trust_radius:
+                            trust_radius = min(2.0 * trust_radius, trust_radius_max)
 
 
-                    else: # for loop finished without breaking
-                        if verbose: print("{funcname} : max_iter reached in adjust_radius loop!")
+                else: # for loop finished without breaking
+                    if verbose: print("{funcname} : max_iter reached in adjust_radius loop!")
 
-                else:
-                    # Find regular Newton direction
-                    delta_theta = solve_linear_psd(A=H_theta, b=grad)
-                    if trust_radius is not None:
-                        # We do a quick-and-dirty approximation to trust-region constraint
-                        # by rescaling norm of Newton step if it is too large
-                        delta_theta *= trust_radius/max(trust_radius, delta_theta.norm())
-                    new_theta  = theta + delta_theta
-                    f_new_trn  = trn.get_objective(new_theta)
+            else:
+                # Find regular Newton direction
+                delta_theta = solve_linear_psd(A=H_theta, b=grad)
+                if trust_radius is not None:
+                    # We do a quick-and-dirty approximation to trust-region constraint
+                    # by rescaling norm of Newton step if it is too large
+                    delta_theta *= trust_radius/max(trust_radius, delta_theta.norm())
+                new_theta  = theta + delta_theta
+                f_new_trn  = data.get_objective(new_theta)
 
 
-                last_round = False # set to True if we want break after updating theta and objective values
+            last_round = False # set to True if we want break after updating theta and objective values
 
-                if is_infnan(f_new_trn):  
-                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
-                    break                  # Training value should be finite and increasing
-                elif f_new_trn <= f_cur_trn:
-                    if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+            if is_infnan(f_new_trn):  
+                if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
+                break                  # Training value should be finite and increasing
+            elif f_new_trn <= f_cur_trn:
+                if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+                break
+            elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
+                last_round = True      # Break when training objective stops improving by more than tol
+            elif f_new_trn > np.log(data.nsamples):  
+                # One cannot reliably estimate KL divergence larger than log(# samples).
+                # This is a signature of undersampling; when it happens, we clip our estimate of the 
+                # objective and exit
+                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                f_new_trn = np.log(data.nsamples)
+                last_round = True
+
+            if holdout_data is not None:                # Do the same checks but now on the heldout test data
+                f_new_tst = holdout_data.get_objective(new_theta) 
+                if is_infnan(f_new_tst):
+                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
                     break
-                elif np.abs(f_new_trn - f_cur_trn) <= tol: 
-                    if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
-                    last_round = True      # Break when training objective stops improving by more than tol
-                elif f_new_trn > np.log(trn.nsamples):  
-                    # One cannot reliably estimate KL divergence larger than log(# samples).
-                    # This is a signature of undersampling; when it happens, we clip our estimate of the 
-                    # objective and exit
-                    if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
-                    f_new_trn = np.log(trn.nsamples)
+                elif f_new_tst <= f_cur_tst:
+                    if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
+                    break
+                elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
+                    last_round = True
+                elif f_new_tst > np.log(holdout_data.nsamples):
+                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
+                    f_new_tst = np.log(holdout_data.nsamples)
                     last_round = True
 
-                if holdout:                # Do the same checks but now on the heldout test data
-                    f_new_tst = tst.get_objective(new_theta) 
-                    if is_infnan(f_new_tst):
-                        if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
-                        break
-                    elif f_new_tst <= f_cur_tst:
-                        if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
-                        break
-                    elif np.abs(f_new_tst - f_cur_tst) <= tol:
-                        if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
-                        last_round = True
-                    elif f_new_tst > np.log(tst.nsamples):
-                        if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
-                        f_new_tst = np.log(tst.nsamples)
-                        last_round = True
+            # Update our estimate of the paramters and objective value
+            f_cur_trn, theta = f_new_trn, new_theta
+            if holdout_data is not None:
+                f_cur_tst = f_new_tst
 
-                # Update our estimate of the paramters and objective value
-                f_cur_trn, theta = f_new_trn, new_theta
-                if holdout:
-                    f_cur_tst = f_new_tst
+            if last_round:
+                break
 
-                if last_round:
-                    break
+        else:   # for loop did not break
+            if max_iter > 10 and verbose:
+                # print warning about max iterations reached, but only if its a large number
+                print(f'max_iter {max_iter} reached in get_EP_Newton!')
+            pass
 
-            else:   # for loop did not break
-                if max_iter > 10 and verbose:
-                    # print warning about max iterations reached, but only if its a large number
-                    print(f'max_iter {max_iter} reached in get_EP_Newton!')
-                pass
-
-            if holdout:
-                objective = self.data.get_objective(theta)
-                return self.get_valid_solution(objective=objective, theta=theta, tst_objective=f_cur_tst)
-            else:
-                return self.get_valid_solution(objective=f_cur_trn, theta=theta)
+        if holdout_data is not None:
+            objective = data.get_objective(theta)
+            return _get_valid_solution(objective=objective, theta=theta, nsamples=data.nsamples, tst_objective=f_cur_tst)
+        else:
+            return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
 
 
-    def get_EP_GradientAscent(self, theta_init=None, 
-                              holdout=False, holdout_fraction=1/2, holdout_shuffle=True, 
-                              lr=0.01, max_iter=1000, patience = 10, tol=1e-4, verbose=0,
-                              use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
-        # Estimate EP using gradient ascent algorithm
+def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
+                            max_iter=10000, lr=0.01, patience = 10, tol=1e-4, 
+                            use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False):
+    # Estimate EP using gradient ascent algorithm
 
-        # Arguments:
-        #   theta_init       : torch tensor (of length (nspins-1)), specifiying initial parameters (set to 0s if None)
-        #   holdout (bool)   : if True, we split the data into training and testing sets
-        #   holdout_fraction : fraction of samples for test split
-        #   holdout_shuffle  : shuffle data before splitting
-        #   lr               : learning rate
-        #   max_iter (int)   : maximum number of iterations
-        #   tol (float)      : early stopping once objective does not improve by more than tol
-        #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
-        #
-        # Adam-related arguments:
-        #   use_Adam       : whether to use use_Adam algorithm w/ momentum or just regular grad. ascent
-        #   beta1, beta2   : Adam moment decay parameters
-        #   skip_warm_up   : Adam option
-        #
-        # Returns:
-        #   Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
+    # Arguments:
+    #   data             : Dataset object providing statistics of observables   
+    #   theta_init       : torch tensor specifiying initial parameters (set to 0s if None)
+    #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
+    #   holdout_data     : if not None, we use this dataset for early stopping 
+    #   max_iter (int)   : maximum number of iterations
+    #   lr               : learning rate
+    #   tol (float)      : early stopping once objective does not improve by more than tol
+    #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
+    #   report_every (int) : if verbose > 1, we report every report_every iterations
+    #
+    # Adam-related arguments:
+    #   use_Adam       : whether to use use_Adam algorithm w/ momentum or just regular grad. ascent
+    #   beta1, beta2   : Adam moment decay parameters
+    #   skip_warm_up   : Adam option
+    #
+    # Returns:
+    #   Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
 
-        funcname = 'get_EP_GradientAscent'
-        report_every = 10  # if verbose > 1, we report every report_every iterations
+    funcname = 'get_EP_GradientAscent'
 
-        with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
+    with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
-            if holdout:
-                trn, tst = self.data.split_train_test(holdout_fraction, holdout_shuffle)
-                f_cur_trn, f_cur_tst = np.nan, np.nan
-            else:
-                trn = self.data
-                f_cur_trn = np.nan
-            
-            if theta_init is not None:
-                new_theta = theta_init
-            else:
-                new_theta = torch.zeros(trn.nobservables, device=trn.device)
+        if holdout_data is not None:
+            f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
+        else:
+            f_cur_trn = f_new_tst = np.nan
+        
+        if theta_init is not None:
+            new_theta = theta_init
+        else:
+            new_theta = torch.zeros(data.nobservables, device=data.device)
 
-            m = torch.zeros_like(new_theta)
-            v = torch.zeros_like(new_theta)
-            
-            best_tst_score   = -float('inf')  # for maximization
-            patience_counter = 0
-            old_time         = time.time()
-            for t in range(max_iter):
-                if verbose and verbose > 1 and t % report_every == 0:
-                    new_time = time.time()
-                    print(f'{funcname} : iteration {t:5d} | {(new_time - old_time)/report_every:3f}s/iter | f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
-                    old_time = new_time
+        m = torch.zeros_like(new_theta)
+        v = torch.zeros_like(new_theta)
+        
+        best_tst_score   = -float('inf')  # for maximization
+        patience_counter = 0
+        old_time         = time.time()
+        for t in range(max_iter):
+            if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
+                new_time = time.time()
+                print(f'{funcname} : iteration {t:5d} | {(new_time - old_time)/report_every:3f}s/iter | f_cur_trn={f_cur_trn: 3f}', 
+                      f'f_cur_tst={f_cur_tst: 3f}' if holdout_data is not None else '')
+                old_time = new_time
 
 
-                tilted_stats = trn.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
-                #continue 
-                f_new_trn    = tilted_stats['objective']
+            tilted_stats = data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
+            #continue 
+            f_new_trn    = tilted_stats['objective']
 
-                grad         = trn.g_mean - tilted_stats['tilted_mean']   # Gradient
+            grad         = data.g_mean - tilted_stats['tilted_mean']   # Gradient
 
-                # Different conditions that will stop optimization. See get_EP_Newton above
-                # for a description of different branches
-                last_round = False # flag that indicates whether to break after updating values
-                if is_infnan(f_new_trn):
-                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
-                    break
+            # Different conditions that will stop optimization. See get_EP_Newton above
+            # for a description of different branches
+            last_round = False # flag that indicates whether to break after updating values
+            if is_infnan(f_new_trn):
+                if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
+                break
 #                elif f_new_trn <= f_cur_trn and t > min_iter:
 #                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
 #                    break
-                elif f_new_trn > np.log(trn.nsamples):
-                    if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
-                    f_new_trn = np.log(trn.nsamples)
-                    last_round = True
-                elif np.abs(f_new_trn - f_cur_trn) <= tol:
-                    if verbose: print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
-                    last_round = True
+            elif f_new_trn > np.log(data.nsamples):
+                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                f_new_trn = np.log(data.nsamples)
+                last_round = True
+            elif np.abs(f_new_trn - f_cur_trn) <= tol:
+                if verbose: print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
+                last_round = True
 
-                if holdout:
-                    f_new_tst = tst.get_objective(new_theta) 
-                    train_gain = f_new_trn - f_cur_trn
-                    test_drop = f_cur_tst - f_new_tst
-                    if is_infnan(f_new_tst):
-                        if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
-                        break
+            if holdout_data is not None: #  and t > 150:
+                f_new_tst = holdout_data.get_objective(new_theta) 
+                train_gain = f_new_trn - f_cur_trn
+                test_drop = f_cur_tst - f_new_tst
+                if is_infnan(f_new_tst):
+                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
+                    break
 #                    elif test_drop > 0 and train_gain > tol :
 #                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
 #                        break
-                    elif f_new_tst > np.log(tst.nsamples):
-                        if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
-                        f_new_tst = np.log(tst.nsamples)
-                        last_round = True
-                    elif np.abs(f_new_tst - f_cur_tst) <= tol:
-                        if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
-                        last_round = True
-                    
-                    if f_new_tst > best_tst_score:
-                        best_tst_score = f_new_tst
-                        best_theta = new_theta.clone()  # Save the best model
-                        patience_counter = 0
-                    else:
-                        patience_counter += 1
-                    if patience_counter >= patience:
-                        if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
-                        theta     = best_theta.clone()
-                        f_cur_tst = best_tst_score
-                        break
-                        
-                f_cur_trn, theta = f_new_trn, new_theta
-                if holdout:
-                    f_cur_tst = f_new_tst
-
-                if last_round:
-                    break
-
-
-                if use_Adam:
-                    # Adam moment updates
-                    m = beta1 * m + (1 - beta1) * grad
-                    v = beta2 * v + (1 - beta2) * (grad**2)
-                    if skip_warm_up:
-                        m_hat = m
-                        v_hat = v
-                    else:
-                        m_hat = m / (1 - beta1 ** (t+1))
-                        v_hat = v / (1 - beta2 ** (t+1))
-
-                    # Compute parameter update
-                    delta_theta = lr * m_hat / (v_hat.sqrt() + 1e-8)
-
-                    new_theta += delta_theta
-
+                elif f_new_tst > np.log(holdout_data.nsamples):
+                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
+                    f_new_tst = np.log(holdout_data.nsamples)
+                    last_round = True
+                #elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
+                #    last_round = True
+                
+                if f_new_tst > best_tst_score:
+                    best_tst_score = f_new_tst
+                    best_theta = new_theta.clone()  # Save the best model
+                    patience_counter = 0
                 else:
-                    # regular gradient ascent
-                    delta_theta = lr * grad
-
-                new_theta = theta + delta_theta
-
-            else:   # for loop did not break
-                if verbose:
-                    # print warning about max iterations reached, but only if its a large number
-                    print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
-                pass
-
-            if holdout:
-                objective = self.data.get_objective(theta)
-                return self.get_valid_solution(objective=objective, theta=theta, tst_objective=f_cur_tst)
-            else:
-                return self.get_valid_solution(objective=f_cur_trn, theta=theta)
-
-
-
-    # Estimate EP using the multidimensional TUR method
-    def get_EP_MTUR(self, num_chunks=None, linsolve_eps=1e-4):
-        # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
-        # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
-        # and K^-1 is covariance matrix of g under (p + ~p)/2.
-        # 
-        # Optional arguments
-        #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
-        #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
-        #                               numerical stability of linear solvers
-
-        obj = self.data
-        mean_diff    = obj.g_mean - obj.rev_g_mean
-
-        combined_mean    = (obj.g_mean + obj.rev_g_mean)/2
-
-        # now compute covariance of (p + ~p)/2
-        if num_chunks == -1:
-            second_moment_forward = obj.g_cov() + torch.outer(obj.g_mean, obj.g_mean)
-            second_moment_reverse = obj.rev_g_cov() + torch.outer(obj.rev_g_mean, obj.rev_g_mean)
-            combined_cov = (second_moment_forward + second_moment_reverse)/2 - torch.outer(combined_mean, combined_mean)
-        
-        else:
-            if obj.rev_g_samples is None:
-                combined_samples = obj.g_samples
-                num_total        = combined_samples.shape[0]
-                weights          = torch.empty(num_total, device=obj.device)
-                weights[:obj.nsamples] = 1.0/obj.nsamples
-            else:
-                combined_samples = torch.concatenate([obj.g_samples, obj.rev_g_samples], dim=0)
-                num_total        = combined_samples.shape[0]
-                weights          = torch.empty(num_total, device=obj.device)
-                weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
-                weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
-
-
-            if num_chunks is None:
-                combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
-
-            else:
-                # Chunked computation
-                combined_cov = torch.zeros((obj.nobservables, obj.nobservables), device=obj.device)
-                chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
-
-                for r in range(num_chunks):
-                    start = r * chunk_size
-                    end = min((r + 1) * chunk_size, num_total)
-                    chunk = combined_samples[start:end]
+                    patience_counter += 1
+                if patience_counter >= patience:
+                    if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
+                    theta     = best_theta.clone()
+                    f_cur_tst = best_tst_score
+                    break
                     
-                    combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+            f_cur_trn, theta = f_new_trn, new_theta
+            if holdout_data is not None:
+                f_cur_tst = f_new_tst
 
-        x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
-        objective = float(x @ mean_diff)/2
+            if last_round:
+                break
 
-        return self.get_valid_solution(objective=objective, theta=None)
+
+            if use_Adam:
+                # Adam moment updates
+                m = beta1 * m + (1 - beta1) * grad
+                v = beta2 * v + (1 - beta2) * (grad**2)
+                if skip_warm_up:
+                    m_hat = m
+                    v_hat = v
+                else:
+                    m_hat = m / (1 - beta1 ** (t+1))
+                    v_hat = v / (1 - beta2 ** (t+1))
+
+                # Compute parameter update
+                delta_theta = lr * m_hat / (v_hat.sqrt() + 1e-8)
+                new_theta += delta_theta
+
+            else:
+                # regular gradient ascent
+                delta_theta = lr * grad
+
+            new_theta = theta + delta_theta
+
+        else:   # for loop did not break
+            if verbose:
+                # print warning about max iterations reached, but only if its a large number
+                print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
+            pass
+
+        if holdout_data is not None:
+            objective = data.get_objective(theta)
+            return _get_valid_solution(objective=objective, theta=theta, nsamples=data.nsamples, tst_objective=f_cur_tst)
+        else:
+            return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples,)
+
+
+
+# Estimate EP using the multidimensional TUR method
+def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
+    # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
+    # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
+    # and K^-1 is covariance matrix of g under (p + ~p)/2.
+    # 
+    # Optional arguments
+    #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
+    #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
+    #                               numerical stability of linear solvers
+
+    mean_diff      = data.g_mean - data.rev_g_mean
+
+    combined_mean  = (data.g_mean + data.rev_g_mean)/2
+
+    # now compute covariance of (p + ~p)/2
+    if num_chunks == -1:
+        second_moment_forward = data.g_cov() + torch.outer(data.g_mean, data.g_mean)
+        second_moment_reverse = data.rev_g_cov() + torch.outer(data.rev_g_mean, data.rev_g_mean)
+        combined_cov = (second_moment_forward + second_moment_reverse)/2 - torch.outer(combined_mean, combined_mean)
+    
+    else:
+        if data.rev_g_samples is None:
+            combined_samples = data.g_samples
+            num_total        = combined_samples.shape[0]
+            weights          = torch.empty(num_total, device=data.device)
+            weights[:data.nsamples] = 1.0/data.nsamples
+        else:
+            combined_samples = torch.concatenate([data.g_samples, data.rev_g_samples], dim=0)
+            num_total        = combined_samples.shape[0]
+            weights          = torch.empty(num_total, device=data.device)
+            weights[:data.nsamples] = 1.0/data.nsamples/2.0
+            weights[data.nsamples:] = 1.0/data.nsamples/2.0
+
+
+        if num_chunks is None:
+            combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+
+        else:
+            # Chunked computation
+            combined_cov = torch.zeros((data.nobservables, data.nobservables), device=data.device)
+            chunk_size = (num_total + num_chunks - 1) // num_chunks  # Ceiling division
+
+            for r in range(num_chunks):
+                start = r * chunk_size
+                end = min((r + 1) * chunk_size, num_total)
+                chunk = combined_samples[start:end]
+                
+                combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+
+    x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
+    objective = float(x @ mean_diff)/2
+
+    return _get_valid_solution(objective=objective, theta=None, nsamples=data.nsamples)
