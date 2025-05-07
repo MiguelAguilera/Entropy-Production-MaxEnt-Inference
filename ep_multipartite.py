@@ -30,7 +30,7 @@ Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defau
 
 
 class EPEstimators(object):
-    def __init__(self, g_samples, holdout_fraction=0.5, holdout_shuffle=False, num_chunks=None, linsolve_eps=1e-4):
+    def __init__(self, g_samples, holdout_fraction=0.5, holdout_shuffle=True, num_chunks=None, linsolve_eps=1e-4):
         # Arguments:
         #   S (torch tensor)         : 2d tensor (nflips x nspins) containing samples of 
         #                              states of the system in which spin i changed state
