@@ -91,7 +91,7 @@ def calc_spin(i_args):
 
     num_chunks=5
 #    num_chunks=-1
-    data = ep_estimators.Dataset(les)
+    data = ep_estimators.Dataset(g_samples)
     est = ep_estimators.EPEstimators(data)
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
 
