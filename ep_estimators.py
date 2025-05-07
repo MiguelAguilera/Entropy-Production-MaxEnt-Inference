@@ -723,12 +723,12 @@ class EPEstimators(object):
             if obj.rev_g_samples is None:
                 combined_samples = obj.g_samples
                 num_total        = combined_samples.shape[0]
-                weights          = torch.empty(num_total)
+                weights          = torch.empty(num_total, device=obj.device)
                 weights[:obj.nsamples] = 1.0/obj.nsamples
             else:
                 combined_samples = torch.concatenate([obj.g_samples, obj.rev_g_samples], dim=0)
                 num_total        = combined_samples.shape[0]
-                weights          = torch.empty(num_total)
+                weights          = torch.empty(num_total, device=obj.device)
                 weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
                 weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
 
