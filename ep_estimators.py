@@ -56,6 +56,7 @@ class DatasetBase(object):
             perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
             tst_indices = perm[trn_nsamples:]
+            print(trn_indices, tst_indices)
         else:
             trn_indices = np.arange(trn_nsamples)
             tst_indices = np.arange(trn_nsamples, nsamples)
@@ -99,15 +100,7 @@ class Dataset(DatasetBase):
         if self.rev_g_samples is None: # antisymmetric observables
             return -self.g_mean
         else:
-            return self.get_rev_g_samples().mean(axis=0)
-
-
-    def get_rev_g_samples(self):
-        # Return reverse samples. If not provided, we assume antisymmetric observables
-        if self.rev_g_samples is not None:
-            return self.rev_g_samples
-        else:
-            return -self.g_samples
+            return self.rev_g_samples.mean(axis=0)
 
 
     def g_cov(self):
@@ -120,7 +113,7 @@ class Dataset(DatasetBase):
         if self.rev_g_samples is None: # antisymmetric observables, they have the same covariance matrix
             return self.g_cov()
         else:
-            torch.cov(self.get_rev_g_samples().T, correction=0)    
+            torch.cov(self.rev_g_samples.T, correction=0)    
     
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=True):
@@ -128,7 +121,11 @@ class Dataset(DatasetBase):
         trn_indices, tst_indices = self._get_trn_indices(self.forward_nsamples, holdout_fraction, holdout_shuffle)
 
         if self.rev_g_samples is not None:
-            trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+            if self.nsamples != self.forward_nsamples:
+                trn_indices_rev, tst_indices_rev = self._get_trn_indices(self.nsamples, holdout_fraction, holdout_shuffle)
+            else: # assume that forward and reverse samples are paired (there is the same number), 
+                trn_indices_rev = trn_indices
+                tst_indices_rev = tst_indices
             rev_trn = self.rev_g_samples[trn_indices_rev]
             rev_tst = self.rev_g_samples[tst_indices_rev]
         else:
@@ -148,9 +145,11 @@ class Dataset(DatasetBase):
         vals  = {}
         theta = numpy_to_torch(theta)
 
+        use_rev = self.rev_g_samples is not None  # antisymmetric observables or not
+
         with torch.no_grad():
         
-            th_g = self.get_rev_g_samples() @ theta
+            th_g = (self.rev_g_samples if use_rev else -self.g_samples) @ theta
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
             # The same multiplicative corrections enters into the normalization constant and the tilted
@@ -165,17 +164,19 @@ class Dataset(DatasetBase):
                 vals['objective'] = float( theta @ self.g_mean - log_Z )
 
             if return_mean or return_covariance:
-                mean = exp_tilt @ self.get_rev_g_samples()
+                mean = exp_tilt @ (self.rev_g_samples if use_rev else -self.g_samples)
                 mean = mean / self.nsamples / norm_const
                 vals['tilted_mean'] = mean
 
                 if return_covariance:
                     if num_chunks is None:
-                        K = torch.einsum('k,ki,kj->ij', exp_tilt, self.get_rev_g_samples() , self.get_rev_g_samples() )
+                        K = torch.einsum('k,ki,kj->ij', exp_tilt, (self.rev_g_samples if use_rev else -self.g_samples), 
+                                                                  (self.rev_g_samples if use_rev else -self.g_samples))
                         vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
 
                     elif num_chunks == -1:
-                        vals['tilted_covariance'] = torch.cov(self.get_rev_g_samples().T, correction=0, aweights=exp_tilt)
+                        vals['tilted_covariance'] = torch.cov((self.rev_g_samples.T if use_rev else -self.g_samples.T), 
+                                                              correction=0, aweights=exp_tilt)
 
                     else:
                         # Chunked computation
@@ -185,13 +186,14 @@ class Dataset(DatasetBase):
                         for r in range(num_chunks):
                             start = r * chunk_size
                             end = min((r + 1) * chunk_size, self.nsamples)
-                            g_chunk = self.get_rev_g_samples()[start:end]
+                            g_chunk = (self.rev_g_samples if use_rev else -self.g_samples)[start:end]
                             
                             K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
                         vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
 
-                        K = torch.einsum('k,ki,kj->ij', exp_tilt, self.get_rev_g_samples() , self.get_rev_g_samples() )
+                        K = torch.einsum('k,ki,kj->ij', exp_tilt, (self.rev_g_samples if use_rev else -self.g_samples), 
+                                                                  (self.rev_g_samples if use_rev else -self.g_samples))
 
         return vals
 
@@ -696,11 +698,18 @@ class EPEstimators(object):
             combined_cov = (second_moment_forward + second_moment_reverse)/2 - torch.outer(combined_mean, combined_mean)
         
         else:
-            combined_samples = torch.concatenate([obj.g_samples, obj.get_rev_g_samples()], dim=0)
-            num_total        = obj.nsamples + obj.nsamples
-            weights          = torch.empty(num_total)
-            weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
-            weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
+            if obj.rev_g_samples is None:
+                combined_samples = obj.g_samples
+                num_total        = combined_samples.shape[0]
+                weights          = torch.empty(num_total)
+                weights[:obj.nsamples] = 1.0/obj.nsamples
+            else:
+                combined_samples = torch.concatenate([obj.g_samples, obj.rev_g_samples], dim=0)
+                num_total        = combined_samples.shape[0]
+                weights          = torch.empty(num_total)
+                weights[:obj.nsamples] = 1.0/obj.nsamples/2.0
+                weights[obj.nsamples:] = 1.0/obj.nsamples/2.0
+
 
             if num_chunks is None:
                 combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
