@@ -90,7 +90,7 @@ def calc_spin(i_args):
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
     num_chunks=5
-    num_chunks=-1
+#    num_chunks=-1
     data = ep_estimators.Dataset(g_samples)
     est = ep_estimators.EPEstimators(data)
 #    ep_estimator = EPEstimators(g_mean=g_mean, rev_g_samples=-g_samples, num_chunks=5)
@@ -110,7 +110,7 @@ def calc_spin(i_args):
     
     # Compute 1-step Newton
     t0 = time.time()
-    sig_Gaussian, theta_Gaussian, _ = est.get_EP_Newton(max_iter=1, holdout=True, adjust_radius=True, num_chunks=num_chunks)
+    sig_Gaussian, theta_Gaussian, _ = est.get_EP_Newton(max_iter=1, holdout=False, adjust_radius=True, num_chunks=num_chunks)
     N1 = Pi * sig_Gaussian
     theta_Gaussian_np = theta_Gaussian.detach().cpu().numpy()
     time_Gaussian = time.time() - t0
@@ -119,7 +119,7 @@ def calc_spin(i_args):
 #    gc.collect()
 
     # Compute Newton estimation
-    sig_MaxEnt, theta_MaxEnt, _ = est.get_EP_Newton(trust_radius=0.25, holdout=True, adjust_radius=False, num_chunks=num_chunks)
+    sig_MaxEnt, theta_MaxEnt, _ = est.get_EP_Newton(trust_radius=0.25, holdout=False, adjust_radius=False, num_chunks=num_chunks)
     N2 = Pi * sig_MaxEnt
     theta_MaxEnt_np = theta_MaxEnt.detach().cpu().numpy()
     time_MaxEnt = time.time() - t0
@@ -231,9 +231,8 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
 #        S_i_t = torch.from_numpy(S_i).to(device).float() * 2 - 1  # {0,1} → {-1,1}
         mask = torch.ones(S_i.shape[1], dtype=bool)
         mask[i] = False
-        g = S_i[:, i][:, None] ^ S_i[:,mask]
-        g_samples = torch.from_numpy(g).to(device).float() * 2 - 1  # {0,1} → {-1,1}
-        
+        g = (S_i[:, i][:, None] ^ S_i[:,mask])
+        g_samples = -2*(torch.from_numpy(g).to(device).float() * 2 - 1)  # {0,1} → {-1,1}
         J_i_t = torch.from_numpy(J_i).to(device)
 
         del S_i, J_i  # Free memory
