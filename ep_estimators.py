@@ -27,36 +27,24 @@ from utils import *
 # to compute the objective function and tilted statistics for the EP estimation methods
 # ================================================================================
 
-class Dataset(object):
-    def __init__(self, g_samples, rev_g_samples=None):
-        # Arguments:
-        #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process 
-        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
-        #                              under reverse process . If None, we assume antisymmetric observables
-        #                              where rev_g_samples = -g_samples
-        self.g_samples     = numpy_to_torch(g_samples)
-        self.forward_nsamples, self.nobservables = self.g_samples.shape
+import functools
 
-        if rev_g_samples is not None:
-            self.rev_g_samples = numpy_to_torch(rev_g_samples)
-            self.nsamples, self.rev_nobservables = self.g_samples.shape
-            assert(self.nobservables == self.rev_nobservables)
-        else:
-            self.rev_g_samples = None
-            self.nsamples = self.forward_nsamples
+class DatasetBase(object):
+    @functools.cached_property
+    def g_mean(self)     : raise NotImplementedError("g_mean is not implemented")
 
-        self.g_mean = self.g_samples.mean(axis=0)
-        self.device = self.g_samples.device
+    @functools.cached_property
+    def rev_g_mean(self): raise NotImplementedError("g_rev_mean is not implemented")
+    def g_cov(self)     : raise NotImplementedError("g_cov is not implemented")
+    def rev_g_cov(self) : raise NotImplementedError("g_rev_cov is not implemented")
+    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, **kwargs):
+        raise NotImplementedError("get_tilted_statistics is not implemented")
 
+    def get_objective(self, theta):
+        # Return objective value for parameters theta
+        v = self.get_tilted_statistics(numpy_to_torch(theta), return_objective=True)
+        return v['objective']
 
-    def get_rev_g_samples(self):
-        # Return reverse samples. If not provided, we assume antisymmetric observables
-        if self.rev_g_samples is not None:
-            return self.rev_g_samples
-        else:
-            return -self.g_samples
-        
 
     @staticmethod
     def _get_trn_indices(nsamples, holdout_fraction, holdout_shuffle=True):
@@ -72,6 +60,67 @@ class Dataset(object):
             trn_indices = np.arange(trn_nsamples)
             tst_indices = np.arange(trn_nsamples, nsamples)
         return trn_indices, tst_indices
+
+    def split_train_test(self, holdout_fraction, holdout_shuffle=True):
+        raise NotImplementedError("split_train_test is not implemented")
+
+
+
+class Dataset(DatasetBase):
+    def __init__(self, g_samples, rev_g_samples=None):
+        # Arguments:
+        #   g_samples                : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process 
+        #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
+        #                              under reverse process . If None, we assume antisymmetric observables
+        #                              where rev_g_samples = -g_samples
+        self.g_samples        = numpy_to_torch(g_samples)
+        self.forward_nsamples = self.g_samples.shape[0]
+        self.nobservables     = self.g_samples.shape[1]
+
+        if rev_g_samples is not None:
+            self.rev_g_samples = numpy_to_torch(rev_g_samples)
+            self.nsamples = self.rev_g_samples.shape[0]
+            assert(self.nobservables == self.g_samples.shape[1])
+        else:
+            self.rev_g_samples = None
+            self.nsamples = self.forward_nsamples
+
+        self.device = self.g_samples.device
+
+
+    @functools.cached_property
+    def g_mean(self):
+        return self.g_samples.mean(axis=0)
+
+
+    @functools.cached_property
+    def rev_g_mean(self):
+        if self.rev_g_samples is None: # antisymmetric observables
+            return -self.g_mean
+        else:
+            return self.get_rev_g_samples().mean(axis=0)
+
+
+    def get_rev_g_samples(self):
+        # Return reverse samples. If not provided, we assume antisymmetric observables
+        if self.rev_g_samples is not None:
+            return self.rev_g_samples
+        else:
+            return -self.g_samples
+
+
+    def g_cov(self):
+        # Covariance of g_samples
+        return torch.cov(self.g_samples.T, correction=0)
+    
+    
+    def rev_g_cov(self):
+        # Covariance of reverse samples
+        if self.rev_g_samples is None: # antisymmetric observables, they have the same covariance matrix
+            return self.g_cov()
+        else:
+            torch.cov(self.get_rev_g_samples().T, correction=0)    
     
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=True):
@@ -123,10 +172,14 @@ class Dataset(object):
                 if return_covariance:
                     if num_chunks is None:
                         K = torch.einsum('k,ki,kj->ij', exp_tilt, self.get_rev_g_samples() , self.get_rev_g_samples() )
+                        vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
+
+                    elif num_chunks == -1:
+                        vals['tilted_covariance'] = torch.cov(self.get_rev_g_samples().T, correction=0, aweights=exp_tilt)
 
                     else:
                         # Chunked computation
-                        K = torch.zeros((self.nobservables, self.nobservables), device=self.device)
+                        K = torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=self.device)
                         chunk_size = (self.nsamples + num_chunks - 1) // num_chunks  # Ceiling division
 
                         for r in range(num_chunks):
@@ -136,25 +189,19 @@ class Dataset(object):
                             
                             K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
-                    vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
+                        vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
+
+                        K = torch.einsum('k,ki,kj->ij', exp_tilt, self.get_rev_g_samples() , self.get_rev_g_samples() )
 
         return vals
-
-
-    def get_objective(self, theta):
-        # Return objective value for parameters theta
-        v = self.get_tilted_statistics(numpy_to_torch(theta), return_objective=True)
-        return v['objective']
-
-
 
 
     
 
 
 # TODO : Explain what this does, i.e., calculate statistics directly from state samples
-# from forward process. It depends on antisymmetric observables
-class RawDataset(Dataset):
+# from forward process. It assumes on antisymmetric observables
+class RawDataset(DatasetBase):
     def __init__(self, X0, X1):
         # Arguments:
         # X0          : 2d tensor (nsamples x N) containing initial states of the system
@@ -171,14 +218,19 @@ class RawDataset(Dataset):
 
         self.device = self.X0.device
     
-        self.g_mean = self._get_g_mean()
         self.nobservables = self.g_mean.shape[0]
 
 
-    def _get_g_mean(self): # Calculate mean of observables under forward process
+    @functools.cached_property
+    def g_mean(self): # Calculate mean of observables under forward process
         triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
         g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 )/ self.nsamples  # shape (N, N)
         return g_mean_raw[triu_indices[0], triu_indices[1]]
+
+
+    @functools.cached_property
+    def rev_g_mean(self): # Calculate mean of observables under reverse process
+        return -self.g_mean  # Antisymmetric observables
 
 
     def split_train_test(self, holdout_fraction, holdout_shuffle=True):
@@ -234,10 +286,12 @@ class RawDataset(Dataset):
     
         
 class RawDataset2(RawDataset):
-    def _get_g_mean(self): # Calculate mean of observables under forward process
+    @functools.cached_property
+    def g_mean(self): # Calculate mean of observables under forward process
         # Here we consider g_{ij} = (x_i' - x_i) x_j
         return ((self.X1 - self.X0).T @ self.X0 / self.nsamples).flatten()
     
+
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
         # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
@@ -351,6 +405,9 @@ class EPEstimators(object):
             I     = torch.eye(len(theta), device=theta.device)
 
             for t in range(max_iter):
+                if verbose and verbose > 1: 
+                    print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', f'f_cur_tst={f_cur_tst: 3f}' if holdout else '')
+
                 # Find Newton step direction. We first get gradient and Hessian
                 stats = trn.get_tilted_statistics(theta, return_mean=True, return_covariance=True, num_chunks=num_chunks)
                 g_theta = stats['tilted_mean']
@@ -624,12 +681,11 @@ class EPEstimators(object):
         #                               numerical stability of linear solvers
 
         obj = self.data
-        rev_g_mean   = obj.get_rev_g_samples().mean(axis=0)
-        mean_diff    = obj.g_mean - rev_g_mean
+        mean_diff    = obj.g_mean - obj.rev_g_mean
 
         # now compute covariance of (p + ~p)/2
         combined_samples = torch.concatenate([obj.g_samples, obj.get_rev_g_samples()], dim=0)
-        combined_mean    = (obj.g_mean + rev_g_mean)/2
+        combined_mean    = (obj.g_mean + obj.rev_g_mean)/2
 
         num_total        = obj.nsamples + obj.nsamples
         weights          = torch.empty(num_total)
@@ -638,6 +694,11 @@ class EPEstimators(object):
 
         if num_chunks is None:
             combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+
+        elif num_chunks == -1:
+            second_moment_forward = obj.g_cov() + torch.outer(obj.g_mean, obj.g_mean)
+            second_moment_reverse = obj.rev_g_cov() + torch.outer(obj.rev_g_mean, obj.rev_g_mean)
+            combined_cov = (second_moment_forward + second_moment_reverse)/2 - torch.outer(combined_mean, combined_mean)
 
         else:
             # Chunked computation
@@ -651,8 +712,7 @@ class EPEstimators(object):
                 
                 combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
 
-        combined_cov += linsolve_eps*eye_like(combined_cov)
-        x  = solve_linear_psd(combined_cov, mean_diff)
+        x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
+        objective = float(x @ mean_diff)/2
 
-        obj = float(x @ mean_diff)/2
-        return self.get_valid_solution(objective=obj, theta=None)
+        return self.get_valid_solution(objective=objective, theta=None)

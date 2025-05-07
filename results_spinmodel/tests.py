@@ -42,7 +42,7 @@ def run_inference(beta, J, S, F, num_chunks=None):
     total_flips = N * num_samples_per_spin  # Total spin-flip attempts
 
     # Running sums to keep track of EP estimates
-    sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
+    sigma_emp = sigma_g = sigma_gH = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
     # Because system is multipartite, we can separately estimate EP for each spin
     for i in tqdm(range(N)):
@@ -62,13 +62,15 @@ def run_inference(beta, J, S, F, num_chunks=None):
         # Full optimization with trust-region Newton method and no holdout 
         spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=False, num_chunks=num_chunks).objective
 
-        # Full optimization with trust-region Newton method and holdout 
-        spin_full = obj.get_EP_Newton(trust_radius=1/4, holdout=True, num_chunks=num_chunks).objective
+        # Full optimization with trust-region Newton method and holdout
+        np.random.seed(1) # Set seed for holdout reproducibility 
+        spin_fullH = obj.get_EP_Newton(trust_radius=1/4, holdout=True, num_chunks=num_chunks).objective
 
         # Full optimization with gradient ascent method , no holdout
         spin_grad = obj.get_EP_GradientAscent(holdout=False).objective
 
         # Full optimization with gradient ascent method 
+        np.random.seed(1) # Set seed for holdout reproducibility 
         spin_grad = obj.get_EP_GradientAscent(holdout=True).objective
 
         # Multidimensional TUR
@@ -77,13 +79,14 @@ def run_inference(beta, J, S, F, num_chunks=None):
 
         sigma_emp  += p_i * spin_emp
         sigma_g    += p_i * spin_full
+        sigma_gH   += p_i * spin_fullH
         sigma_N1   += p_i * spin_N1
         sigma_MTUR += p_i * spin_MTUR
         sigma_g2   += p_i * spin_grad
 
         utils.empty_torch_cache()
 
-        return sigma_emp, sigma_g, sigma_g2, sigma_N1, sigma_MTUR
+        return sigma_emp, sigma_g, sigma_gH, sigma_g2, sigma_N1, sigma_MTUR
     
 def test_inference():
     beta, J, S, F = get_simulation_results()
@@ -93,11 +96,12 @@ def test_inference():
 def test_inference_chunks():
     beta, J, S, F = get_simulation_results()
     
-    sigma_empA, sigma_gA, sigma_g2A, sigma_N1A, sigma_MTURA = run_inference(beta, J, S, F)
-    sigma_empB, sigma_gB, sigma_g2B, sigma_N1B, sigma_MTURB = run_inference(beta, J, S, F, num_chunks=10)
+    sigma_empA, sigma_gA, sigma_gAH, sigma_g2A, sigma_N1A, sigma_MTURA = run_inference(beta, J, S, F)
+    sigma_empB, sigma_gB, sigma_gBH, sigma_g2B, sigma_N1B, sigma_MTURB = run_inference(beta, J, S, F, num_chunks=2)
 
     assert(np.isclose(sigma_empA , sigma_empB ))
     assert(np.isclose(sigma_gA   , sigma_gB   ))
+    assert(np.isclose(sigma_gAH  , sigma_gBH  ))
     assert(np.isclose(sigma_g2A  , sigma_g2B  ))
     assert(np.isclose(sigma_N1A  , sigma_N1B  ))
     assert(np.isclose(sigma_MTURA, sigma_MTURB))

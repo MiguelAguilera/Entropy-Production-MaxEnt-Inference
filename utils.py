@@ -6,6 +6,7 @@ import warnings
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable fallback for MPS backend
 import torch
 
+DTYPE = 'float32'  # Default data type for torch tensors
 
 # Helpful tensor processing functions
 
@@ -24,7 +25,7 @@ def remove_i(x, i):  # Helpful function to remove the i-th element from a 1d ten
 def numpy_to_torch(X):  # Convert numpy array to torch tensor if needed
     if not isinstance(X, torch.Tensor): 
         if isinstance(X, np.ndarray):
-            return torch.from_numpy(X.astype('float32')).to(torch.get_default_device()).contiguous()
+            return torch.from_numpy(X.astype(DTYPE)).to(torch.get_default_device()).contiguous()
         else:
             raise Exception("Argument must be a torch tensor or numpy array")
     return X
