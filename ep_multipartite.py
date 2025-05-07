@@ -61,7 +61,7 @@ class EPEstimators(object):
         self.linsolve_eps = linsolve_eps
             
         # Used for copying of object
-        self._init_args = ['i', 'holdout_fraction', 'holdout_shuffle', 'num_chunks', 'linsolve_eps']
+        self._init_args = ['holdout_fraction', 'holdout_shuffle', 'num_chunks', 'linsolve_eps']
 
         
     def split_train_test(self):
