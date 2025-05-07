@@ -79,18 +79,14 @@ def calc_spin(i_args):
     Performs entropy production estimation for a single spin using multiple methods.
     Saves results in the specified HDF5 file.
     """
-    i, N, beta, rep, T, file_name, file_name_out, S_i_t, J_i_t, nflips = i_args
+    i, N, beta, rep, T, file_name, file_name_out, g_samples, J_i_t, nflips = i_args
 
-    if S_i_t.shape[0] <= 100:
+    if g_samples.shape[0] <= 100:
         print(f"[Warning] Skipping spin {i}: insufficient spin flips")
         return None
 
     Pi = nflips / T
     
-    mask = torch.ones(S_i_t.shape[1], dtype=bool)
-    mask[i] = False
-    g_samples = -2 * S_i_t[:, i][:, None] * S_i_t[:,mask]
-
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
     data = ep_estimators.Dataset(g_samples)
@@ -124,7 +120,7 @@ def calc_spin(i_args):
     time_MaxEnt = time.time() - t0
 
     # Free memory
-    del S_i_t, J_i_t
+    del g_samples, J_i_t
     torch.cuda.empty_cache()
     gc.collect()
 
@@ -221,13 +217,21 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
 
         # Convert to torch tensors on appropriate device
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        S_i_t = torch.from_numpy(S_i).to(device).float() * 2 - 1  # {0,1} → {-1,1}
+        
+
+        
+#        S_i_t = torch.from_numpy(S_i).to(device).float() * 2 - 1  # {0,1} → {-1,1}
+        mask = torch.ones(S_i.shape[1], dtype=bool)
+        mask[i] = False
+        g = S_i[:, i][:, None] ^ S_i[:,mask]
+        g_samples = torch.from_numpy(g).to(device).float() * 2 - 1  # {0,1} → {-1,1}
+        
         J_i_t = torch.from_numpy(J_i).to(device)
 
         del S_i, J_i  # Free memory
 
         # Perform estimation
-        calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, S_i_t, J_i_t, nflips))
+        calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, g_samples, J_i_t, nflips))
         progress.value += 1
 
         # Preload next spin in background
