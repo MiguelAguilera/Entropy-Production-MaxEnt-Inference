@@ -148,7 +148,7 @@ class Dataset(DatasetBase):
 
         with torch.no_grad():
         
-            th_g = (self.rev_g_samples if use_rev else -self.g_samples) @ theta
+            th_g = self.rev_g_samples @ theta if use_rev else -self.g_samples @ theta
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
             # The same multiplicative corrections enters into the normalization constant and the tilted
@@ -163,19 +163,24 @@ class Dataset(DatasetBase):
                 vals['objective'] = float( theta @ self.g_mean - log_Z )
 
             if return_mean or return_covariance:
-                mean = exp_tilt @ (self.rev_g_samples if use_rev else -self.g_samples)
+                mean = exp_tilt @ self.rev_g_samples if use_rev else -exp_tilt @ self.g_samples
                 mean = mean / self.nsamples / norm_const
                 vals['tilted_mean'] = mean
 
                 if return_covariance:
                     if num_chunks is None:
-                        K = torch.einsum('k,ki,kj->ij', exp_tilt, (self.rev_g_samples if use_rev else -self.g_samples), 
-                                                                  (self.rev_g_samples if use_rev else -self.g_samples))
+                        if use_rev:
+                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+                        else:
+                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
+
                         vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
 
                     elif num_chunks == -1:
-                        vals['tilted_covariance'] = torch.cov((self.rev_g_samples.T if use_rev else -self.g_samples.T), 
-                                                              correction=0, aweights=exp_tilt)
+                        if use_rev:
+                            vals['tilted_covariance'] = torch.cov(self.rev_g_samples.T, correction=0, aweights=exp_tilt)
+                        else:
+                            vals['tilted_covariance'] = torch.cov(self.g_samples.T, correction=0, aweights=exp_tilt)
 
                     else:
                         # Chunked computation
@@ -185,14 +190,16 @@ class Dataset(DatasetBase):
                         for r in range(num_chunks):
                             start = r * chunk_size
                             end = min((r + 1) * chunk_size, self.nsamples)
-                            g_chunk = (self.rev_g_samples if use_rev else -self.g_samples)[start:end]
+                            g_chunk = self.rev_g_samples[start:end] if use_rev else -self.g_samples[start:end]
                             
                             K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
                         vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
 
-                        K = torch.einsum('k,ki,kj->ij', exp_tilt, (self.rev_g_samples if use_rev else -self.g_samples), 
-                                                                  (self.rev_g_samples if use_rev else -self.g_samples))
+                        if use_rev:
+                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+                        else:
+                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
 
         return vals
 
