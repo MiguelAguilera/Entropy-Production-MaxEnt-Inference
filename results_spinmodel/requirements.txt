@@ -1,0 +1,5 @@
+# Additional requirements
+allensdk>=2.16.2  # only needed to download and process
+h5py>=3.13.0
+matplotlib>=3.10.1
+seaborn==0.13.2
