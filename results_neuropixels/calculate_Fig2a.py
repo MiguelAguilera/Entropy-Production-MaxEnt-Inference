@@ -45,8 +45,8 @@ parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
 parser.add_argument("--patience", type=int, default=10,
                     help="Early stopping patience for the optimizer (default: 10).")
-parser.add_argument("--lr", type=float, default=0.01,
-                    help="Base learning rate (default: 0.01).")
+parser.add_argument("--lr", type=float, default=0.001,
+                    help="Base learning rate (default: 0.001).")
 parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
 parser.add_argument("--tol", type=float, default=1e-6,
@@ -56,7 +56,7 @@ parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], def
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
-parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.8, 0.99, 1e-6],
+parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.9, 0.999, 1e-8],
                     help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.9 0.999 1e-8)")
 
 parser.add_argument("--min_session", default=0, type=int,

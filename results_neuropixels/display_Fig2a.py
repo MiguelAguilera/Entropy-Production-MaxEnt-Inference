@@ -30,7 +30,7 @@ parser.add_argument("--R", type=int, default=1,
                     help="Number of repetitions per session and size (default: 10).")
 
 parser.add_argument("--sizes", nargs="+", type=int,
-                    default=[50, 100, 150, 200, 250, 300],
+                    default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to analyze.")
 
 parser.add_argument("--no_normalize", action="store_true", default=False, 
@@ -45,12 +45,13 @@ parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
-parser.add_argument("--lr", type=float, default=0.01,
-                    help="Base learning rate (default: 0.01).")
+parser.set_defaults(args=True)
+parser.add_argument("--lr", type=float, default=0.001,
+                    help="Base learning rate (default: 0.001).")
 parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
-parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.6, 0.95, 1e-6],
-                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.6 0.95 1e-6)")
+parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.9, 0.999, 1e-8],
+                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.9 0.999 1e-8)")
 
 
 args = parser.parse_args()
@@ -102,9 +103,9 @@ if __name__ == "__main__":
         if key not in _loaded_sessions:
             if args.use_Adam:
                 adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
-                save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+                filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
             else:
-                save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+                filename = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
             try:
                 with h5py.File(filename, 'r') as f:
                     group_path = f"{session_type}/{session_id}/rep_{r}"
@@ -224,8 +225,19 @@ if __name__ == "__main__":
             color=color, alpha=0.3
         )
 
+    # Find the largest size with non-empty data across all types
+    nonempty_sizes = [
+        size for size in reversed(sizes)
+        if any(len(EP[stype][size]) > 0 for stype in types)
+    ]
+
+    if nonempty_sizes:
+        max_size_to_plot = nonempty_sizes[0]
+    else:
+        max_size_to_plot = max(sizes)  # fallback
+    
     upper_y = max([max(mean_EP[t]) + 0*max(std_EP[t]) for t in types])
-    plt.axis([0, max(sizes), 0, 1.3 * upper_y])
+    plt.axis([0, max_size_to_plot, 0, 1.3 * upper_y])
 
     plt.xlabel(r'$N$')
     ylabel = r'$\dfrac{\Sigma_{\bm g}}{R}$' if normalize else r'$\dfrac{\Sigma_{\bm g}}{N}$'
