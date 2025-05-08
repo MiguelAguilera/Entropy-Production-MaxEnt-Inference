@@ -57,7 +57,7 @@ parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
 parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.8, 0.99, 1e-6],
-                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.8 0.99 1e-6)")
+                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.9 0.999 1e-8)")
 
 parser.add_argument("--min_session", default=0, type=int,
                     help="First sessions to compute (default: 0).")
@@ -216,7 +216,7 @@ def calc(sizes, session_type, session_id, r):
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
         start_time = time.time()
-        EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
+        EP_maxent_tst,theta,EP_maxent_full = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
                                                 verbose=1,#,report_every=10, 
                                                 beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[2]
