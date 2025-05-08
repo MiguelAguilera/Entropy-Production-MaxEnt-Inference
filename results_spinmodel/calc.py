@@ -200,7 +200,7 @@ def calc(file_name):
     for k,v in time_sums.items():
         epdata['times'][k]=v
 
-    del S, F, J, data
+    del S_bin, F, J, data
 
     return epdata
 
