@@ -247,6 +247,7 @@ if __name__ == "__main__":
         ncol=1, framealpha=1,
         columnspacing=0.5,
         handlelength=1., handletextpad=0.5,
+        loc="lower right"
 #        bbox_to_anchor=(0.03, 0.55)
     )
     IMG_DIR='img'
