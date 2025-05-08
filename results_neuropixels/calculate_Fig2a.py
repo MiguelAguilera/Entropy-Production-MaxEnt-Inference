@@ -60,7 +60,7 @@ parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
 parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.8, 0.99, 1e-6],
-                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.6 0.95 1e-6)")
+                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.8 0.99 1e-6)")
 
 parser.add_argument("--min_session", default=0, type=int,
                     help="First sessions to compute (default: 0).")
