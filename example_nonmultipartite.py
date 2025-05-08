@@ -45,7 +45,7 @@ data1         = ep_estimators.Dataset(g_samples=g_samples)
 train, test   = data1.split_train_test() 
 
 stime = time.time()
-sigma_N_obs  = ep_estimators.get_EP_Newton(train, holdout_data=test).objective
+sigma_N_obs  = ep_estimators.get_EP_Newton(train, holdout_data=test, trust_radius=1).objective
 time_N_obs   = time.time() - stime
 
 
