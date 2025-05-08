@@ -220,7 +220,7 @@ def get_g_observables(S, F, i):
 
 
 def get_g_observables_bin(S_bin, F, i):
-    # Same as get_g_observables, but we take binary states S_bin ∈ {0,1} and first convert {0,1}→{−1,1}
+    # Same as get_g_observables, but we take binary states S_bin ∈ {0,1} and convert {0,1}→{−1,1}
     S_bin_i  = S_bin[F[:,i],:]
     X        = utils.numpy_to_torch(np.delete(S_bin_i, i, axis=1))*2-1
     y        = utils.numpy_to_torch(S_bin_i[:,i])*2-1
