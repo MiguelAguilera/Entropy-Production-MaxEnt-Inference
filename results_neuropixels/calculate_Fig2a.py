@@ -59,11 +59,13 @@ parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], def
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
-parser.add_argument("--max_sessions", default=103, type=int,
-                    help="Number of sessions to compute (default: 103).")
 parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.6, 0.95, 1e-6],
                     help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.6 0.95 1e-6)")
 
+parser.add_argument("--min_session", default=0, type=int,
+                    help="First sessions to compute (default: 0).")
+parser.add_argument("--max_session", default=103, type=int,
+                    help="Max sessions to compute (default: 103).")
 
 args = parser.parse_args()
 
@@ -240,7 +242,7 @@ def calc(sizes, session_type, session_id, r):
 # Run the pipeline
 print(f'Doing {rep} repetitions')
 for r in range(rep):
-    for session_id in range(args.max_sessions):
+    for session_id in range(args.min_session, args.max_session):
         for session_type in types:
             print(f"\n--- Running estimation for session {session_id} | Type: {session_type} | Repetition {r} ---")
             calc(sizes, session_type, session_id, r)

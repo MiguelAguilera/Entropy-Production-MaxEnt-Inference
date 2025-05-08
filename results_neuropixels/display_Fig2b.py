@@ -1,34 +1,26 @@
 import argparse, sys, os
 import numpy as np
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
-import torch
-from matplotlib import pyplot as plt
 from pathlib import Path
+from matplotlib import pyplot as plt
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import squareform
 import matplotlib.colors as mcolors
-import h5py
-import hdf5plugin
 
 
-sys.path.insert(0, '..')
-from methods_EP_parallel import *
-
-parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for a neuropixels dataset.")
-parser.add_argument("--BASE_DIR", type=str, default="~/Neuropixels",
-                    help="Base directory to store the data (default: '~/Neuropixels').")
+parser = argparse.ArgumentParser(description='Load coupling coefficients from a NumPy file')
+parser.add_argument('filename', type=str, help='Path to the .npz file containing the coupling coefficients')
+parser.add_argument("--fancy_color_scale", dest="fancy_color_scale", action="store_true",
+                    help="Fancy color rescaling.")
 args = parser.parse_args()
 
+data = np.load(args.filename)
 
-# --- Constants and Configuration ---
-BASE_DIR = Path(args.BASE_DIR).expanduser()
-DTYPE = 'float32'
-tol_per_param = 1e-6
-bin_size = 0.01
-session_id = 8
-session_type = 'active'
-N = 200  # Number of neurons
+# Extract the arrays
+areas = data['areas']
+th = data['th']
+sigma = data['sigma']
+
 
 # Configure LaTeX rendering in matplotlib
 plt.rc('text', usetex=True)
@@ -36,66 +28,16 @@ plt.rc('font', size=18, family='serif', serif=['latin modern roman'])
 plt.rc('legend', fontsize=18)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-print(f"** DOING SYSTEM SIZE {N} of type {session_type} with session ID {session_id} **", flush=True)
-
-# --- Load and preprocess data ---
-filename = BASE_DIR / f"data_binsize_{bin_size}_session_{session_id}.h5"
-
-with h5py.File(filename, 'r') as f:
-    if session_type == 'active':
-        S = f['S_active'][:]
-    elif session_type == 'passive':
-        S = f['S_passive'][:]
-    elif session_type == 'gabor':
-        S = f['S_gabor'][:]
-    areas = f['areas'][:].astype(str)  # decode bytes to UTF-8
-
-# Select only visual areas (e.g., V1, V2, etc.)
-indices = np.where(np.char.startswith(areas, 'V'))[0]
-S = S[indices, :]
-areas = areas[indices]
-
-# Sort neurons by overall activity
-inds = np.argsort(-np.sum(S, axis=1))
-S = S[inds[:N], :].astype(DTYPE) * 2. - 1.
-areas = areas[inds[:N]]
-
-# Sort neurons by area name
-inds2 = np.argsort(areas)
-S = S[inds2, :]
-areas = areas[inds2]
-
-# --- Fit MaxEnt model ---
-S_t = torch.from_numpy(S[:, 1:])
-S1_t = torch.from_numpy(S[:, :-1])
-f = lambda theta: -obj_fn(theta, S_t, S1_t)
-
-args = get_torchmin_args(S_t, tol_per_param)
-#args['x0'] = torch.zeros((N * (N - 1)) // 2)  # Upper-triangular vector
-#args['lambda_'] = 0
-res = minimize2(f, **args)
-
-# Extract coupling matrix θ
-theta = res.x.numpy()
-th = np.zeros((N, N), dtype=theta.dtype)
-triu_indices = np.triu_indices(N, k=1)
-th[triu_indices[0], triu_indices[1]] = theta
-th=th-th.T
-sigma = -res.fun
-print("EP:", sigma)
 
 # --- Area names ---
 area_names, area_start_indices = np.unique(areas, return_index=True)
 area_end_indices = np.r_[area_start_indices[1:], [len(areas)]]
 area_centers = (area_start_indices + area_end_indices) / 2
 
-print(th)
 # --- Cluster neurons based on θ ---
-th_abs = np.abs(th)
-
-th_sign = np.sign(th)
-
-condensed_dist = squareform(th_abs)
+dist_matrix = np.abs(th) + np.abs(th.T)
+np.fill_diagonal(dist_matrix, 0)
+condensed_dist = squareform(dist_matrix)
 linkage_matrix = linkage(condensed_dist, method='average')
 sorted_indices = leaves_list(linkage_matrix)
 
@@ -113,12 +55,17 @@ area_centers = (area_start_indices + area_end_indices) / 2
 
 # Define symmetric logarithmic normalization for better contrast,
 # especially helpful when θ values vary widely around zero.
-norm = mcolors.SymLogNorm(
-    linthresh=0.012,    # Linear range around zero
-    linscale=0.05,     # Controls the size of the linear region
-    vmin=-np.max(np.abs(th)),  # Symmetric color scale limits
-    vmax=np.max(np.abs(th))
-)
+
+vmax = np.percentile(np.abs(th), 99.5)  # Use 95th percentile instead of max
+if args.fancy_color_scale:
+    norm = mcolors.SymLogNorm(
+        linthresh=0.012,    # Linear range around zero
+        linscale=0.05,     # Controls the size of the linear region
+        vmin=-vmax,  # Symmetric color scale limits
+        vmax=vmax
+    )
+else:
+    norm = mcolors.Normalize(vmin=-vmax, vmax=vmax)
 
 # Create a new figure with specified size
 plt.figure(figsize=(5, 4))

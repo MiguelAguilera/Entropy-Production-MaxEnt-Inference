@@ -249,6 +249,9 @@ class RawDataset(DatasetBase):
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
 
+    def get_random_batch(self, batch_size):
+        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
+        return self.__class__(X0=self.X0[indices], X1=self.X1[indices])
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
@@ -362,10 +365,10 @@ class RawDataset2(RawDataset):
 # EPEstimators return Solution namedtuples such as the following
 #   objective (float) : estimate of EP
 #   theta (torch tensor of length nobservables) : optimal conjugate parameters
-#   tst_objective (float) : estimate of EP on heldout test data (if holdout is used)
-Solution = namedtuple('Solution', ['objective', 'theta', 'tst_objective'], defaults=[None])
+#   trn_objective (float) : estimate of EP on training data (if holdout is used)
+Solution = namedtuple('Solution', ['objective', 'theta', 'trn_objective'], defaults=[None])
 
-def _get_valid_solution(objective, theta, nsamples, tst_objective=None):
+def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
     # This returns a Solution object, after doing some basic sanity checking of the values
     # This checking is useful in the undersampled regime with many dimensions and few samles
     if objective < 0:
@@ -377,14 +380,14 @@ def _get_valid_solution(objective, theta, nsamples, tst_objective=None):
         # EP estimate should not be larger than log(# samples), because it is not possible
         # to estimate KL divergence larger than log(m) from m samples
         objective = np.log(nsamples)
-    return Solution(objective=objective, theta=theta, tst_objective=tst_objective)
+    return Solution(objective=objective, theta=theta, trn_objective=trn_objective)
 
 
 # ==========================================
 # Entropy production (EP) estimation methods 
 # ==========================================
 def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
-                    max_iter=1000, tol=1e-4, linsolve_eps=1e-4, num_chunks=None,
+                    max_iter=1000, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
     # Estimate EP by optimizing objective using Newton's method. We support advanced
@@ -536,8 +539,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
             pass
 
         if holdout_data is not None:
-            objective = data.get_objective(theta)
-            return _get_valid_solution(objective=objective, theta=theta, nsamples=data.nsamples, tst_objective=f_cur_tst)
+            return _get_valid_solution(objective=f_cur_tst, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
@@ -545,7 +547,12 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
                             max_iter=10000, lr=0.01, patience = 10, tol=1e-4, 
+<<<<<<< HEAD
                             use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False):
+=======
+                            use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False,
+                            batch_size=None):
+>>>>>>> 9617b1d92472ee54920e66f1b28738ff9dc2106e
     # Estimate EP using gradient ascent algorithm
 
     # Arguments:
@@ -565,7 +572,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
     #   skip_warm_up   : Adam option
     #
     # Returns:
-    #   Solution object with objective (EP estimate), theta, and tst_objective (if holdout)
+    #   Solution object with objective (EP estimate), theta, and trn_objective (if holdout)
 
     funcname = 'get_EP_GradientAscent'
 
@@ -595,11 +602,15 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 old_time = new_time
 
 
-            tilted_stats = data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
+            if batch_size is not None:
+                c_data = data.get_random_batch(batch_size)
+            else:
+                c_data = data
+            tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
             #continue 
             f_new_trn    = tilted_stats['objective']
 
-            grad         = data.g_mean - tilted_stats['tilted_mean']   # Gradient
+            grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
@@ -684,10 +695,9 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
             pass
 
         if holdout_data is not None:
-            objective = data.get_objective(theta)
-            return _get_valid_solution(objective=objective, theta=theta, nsamples=data.nsamples, tst_objective=f_cur_tst)
+            return _get_valid_solution(objective=f_cur_tst, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
-            return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples,)
+            return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
 
 

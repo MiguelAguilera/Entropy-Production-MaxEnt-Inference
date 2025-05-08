@@ -61,10 +61,11 @@ for i in tqdm(range(N), smoothing=0):
     # Create dataset with holdout data
     train, test = data.split_train_test(holdout_shuffle=True)
     # Full optimization with trust-region Newton method and holdout 
-    stime     = time.time()
-    spin_full = ep_estimators.get_EP_Newton(train, trust_radius=1/4, holdout_data=test).objective
-    time_g   += time.time() - stime
-    sigma_g  += p_i * spin_full
+    stime      = time.time()
+    # sol_newton = ep_estimators.get_EP_Newton(train, trust_radius=1/4, holdout_data=test)
+    sigma_g   += p_i * sol_newton.objective 
+    sigma_g   += p_i * data.get_objective(sol_newton.theta)
+    time_g    += time.time() - stime
 
     # Full optimization with gradient ascent method and holdout
     stime     = time.time()

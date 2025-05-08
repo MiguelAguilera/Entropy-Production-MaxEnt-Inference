@@ -11,43 +11,43 @@ import utils
 import ep_estimators
 import spin_model
 
-#device = utils.set_default_torch_device()
-#torch.set_grad_enabled(False)
+device = utils.set_default_torch_device()
+torch.set_grad_enabled(False)
 
 
-def calc_spin2(beta, J, i, g_samples):
-    verbose=False
-    import ep_multipartite
+# def calc_spin2(beta, J, i, g_samples):
+#     verbose=False
+#     import ep_multipartite
 
-    sigmas, times, thetas = {}, {}, {}
-    obj = ep_multipartite.EPEstimators(g_samples=g_samples) 
+#     sigmas, times, thetas = {}, {}, {}
+#     obj = ep_multipartite.EPEstimators(g_samples=g_samples) 
 
-    stime = time.time()
-    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=obj.g_mean().cpu().numpy())
-    times['Emp'] = time.time() - stime
+#     stime = time.time()
+#     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=obj.g_mean().cpu().numpy())
+#     times['Emp'] = time.time() - stime
 
 
-    to_run = [ ('NR h a', obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, adjust_radius=True) ),]
+#     to_run = [ ('NR h a', obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, adjust_radius=True) ),]
 
-    stime = time.time()
+#     stime = time.time()
 
-    for k, f, kwargs in to_run:
-        stime = time.time()
-        res = f(**kwargs)
-        utils.torch_synchronize()
-        sigmas[k] = res.objective
+#     for k, f, kwargs in to_run:
+#         stime = time.time()
+#         res = f(**kwargs)
+#         utils.torch_synchronize()
+#         sigmas[k] = res.objective
 
-        times[k] = time.time() - stime
-        if res.theta is not None:
-            thetas[k] = res.theta.cpu().numpy()
-            #sigmas[k] = data.get_objective(res.theta)
-        if res.tst_objective is not None:
-            sigmas[k+' tst'] = res.tst_objective
+#         times[k] = time.time() - stime
+#         if res.theta is not None:
+#             thetas[k] = res.theta.cpu().numpy()
+#             #sigmas[k] = data.get_objective(res.theta)
+#         if res.tst_objective is not None:
+#             sigmas[k+' tst'] = res.tst_objective
 
-    del obj # , trn, tst 
-    #utils.empty_torch_cache()
+#     del obj # , trn, tst 
+#     #utils.empty_torch_cache()
 
-    return sigmas, times, thetas
+#     return sigmas, times, thetas
 
 
 def calc_spin(beta, J, i, g_samples):
@@ -66,14 +66,15 @@ def calc_spin(beta, J, i, g_samples):
 
     to_run = [
 #        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
-#        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 
         ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=True) ),
 
         
-#          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True) ),
-#          ('G h'    ,      obj.get_EP_GradientAscent  , dict(holdout=True, max_iter=5000, lr=1e-2, tol=1e-8, use_Adam=False) ),
-#          ('G'    ,      obj.get_EP_GradientAscent  , dict() ),
+#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
+          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
+    #      ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, tol=1e-8, use_Adam=False) ),
+#          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     #utils.empty_torch_cache()
 
@@ -86,11 +87,12 @@ def calc_spin(beta, J, i, g_samples):
         times[k] = time.time() - stime
         if res.theta is not None:
             thetas[k] = res.theta.cpu().numpy()
+        if res.trn_objective is None:  
+            sigmas[k] = res.objective
+        else: # holdout was used
             sigmas[k] = data.get_objective(res.theta)
-        else:
-            sigmas[k] = res
-        if res.tst_objective is not None:
-            sigmas[k+' tst'] = res.tst_objective
+            sigmas[k+' tst'] = res.objective
+            #print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
 
         
     if False:  # histogram of g outcomes
@@ -118,7 +120,24 @@ def calc_spin(beta, J, i, g_samples):
     return sigmas, times, thetas
 
 
+def get_g_observables_bin(S_bin, F, i):
+    # Given states S_i in which spin i flipped, calculate observables 
+    #        g(x) = g_{ij} = (x_i' - x_i) x_j 
+    # where x_i' and x_i indicate the state of spin i after and before the jump, 
+    # and x_j is the state of every other spin .
+    # Here S is given in boolean representation S_bin and F indicates which spin flipped
+    # Use S and F to select states in which spin i flipped
+    S_i          = torch.from_numpy(S_bin[F[:,i],:]).to(torch.get_default_device()).float()*2-1
+    twice_only_i = -2 * S_i[:, i]
+    S_i          = torch.hstack((S_i[:,:i], S_i[:,i+1:]))
+    g_samples    = torch.einsum('i,ij->ij', twice_only_i, S_i)
+    return g_samples.contiguous()
+    
+
 def calc(file_name):
+
+    utils.empty_torch_cache()
+
     ep_sums   = defaultdict(float)
     time_sums = defaultdict(float)
     process = psutil.Process(os.getpid())
@@ -126,8 +145,8 @@ def calc(file_name):
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
     data = np.load(file_name)
-    S      = data['S_bin']*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
-    rep, N = S.shape
+    S_bin  = data['S_bin'] # .astype('float32')*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
+    rep, N = S_bin.shape
     F      = data['F'] # torch.from_numpy(data["F"]).to(device).bool()
 
     if False:
@@ -153,9 +172,9 @@ def calc(file_name):
     # Compute empirical EP
     stime = time.time()
 
+
     for i in pbar:
-        g_samples = spin_model.get_g_observables(S, F, i)
-        
+        g_samples = get_g_observables_bin(S_bin, F, i)
         res = calc_spin( beta, J, i, g_samples)
 
         epdata[i] = res 
@@ -174,12 +193,14 @@ def calc(file_name):
         ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
         pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
+    print(f'{time.time() - stime:3f}s')
+
     for k,v in ep_sums.items():
         epdata['ep'][k]=v
     for k,v in time_sums.items():
         epdata['times'][k]=v
 
-    del S, F, J, data
+    del S_bin, F, J, data
 
     return epdata
 

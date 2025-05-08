@@ -1,10 +1,6 @@
 import os, argparse, time, gc, multiprocessing, pickle, psutil
 import numpy as np
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
-
-import torch
-
 R2_LABELS = {'N1':r'$\hat{\theta}$',
 'Nhld':r'$\theta^*_{hld}$' ,
 'Nhld2':r'$\theta^*_{hld2}$' ,
