@@ -64,6 +64,9 @@ parser.add_argument("--min_session", default=0, type=int,
 parser.add_argument("--max_session", default=103, type=int,
                     help="Max sessions to compute (default: 103).")
 
+parser.add_argument("--overwrite", action="store_true", default=False,
+                    help="Overwrite existing results (default: False).")
+                    
 args = parser.parse_args()
 
 # --- Constants and Configuration ---
@@ -113,8 +116,21 @@ def calc(sizes, session_type, session_id, r):
     R = np.zeros(len(sizes))
     
     
-    theta_prev=None
-    N_prev=None
+    SAVE_DATA_DIR = 'ep_data'
+    if args.use_Adam:
+        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    else:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+
+    group_path = f"{session_type}/{session_id}/rep_{r}"
+
+    if os.path.exists(save_path):
+        with h5py.File(save_path, 'r') as f:
+            if group_path in f and not args.overwrite:
+                print(f"[Skipping] All sizes for {group_path} already exist in {save_path}. Use --overwrite to recompute.")
+                return
+                
     for n, N in enumerate(sizes):
         print(f"\n> Processing system size {N} neurons")
         stime = time.time()
@@ -199,10 +215,6 @@ def calc(sizes, session_type, session_id, r):
         trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
-        theta_init=torch.zeros(N*(N-1)//2).to(torch.get_default_device())
-        if theta_prev is not None and order != 'sorted':
-            theta_init[:N_prev]=theta_prev
-            N_prev=N
         start_time = time.time()
         EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
@@ -217,12 +229,7 @@ def calc(sizes, session_type, session_id, r):
         R[n] = spike_avg
         print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
 
-    SAVE_DATA_DIR = 'ep_data'
-    if args.use_Adam:
-        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
-        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
-    else:
-        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+
 
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(save_path, 'a') as f:
