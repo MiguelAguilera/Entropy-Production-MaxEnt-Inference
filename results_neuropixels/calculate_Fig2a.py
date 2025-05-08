@@ -38,6 +38,9 @@ parser.add_argument("--bin_size", type=float, default="0.01",
 parser.add_argument("--order", type=str, default="random",
                     choices=["random", "sorted","sorted_desc"],
                     help="Ordering of neurons: random or sorted by activity (default: random).")
+parser.add_argument("--algorithm", type=str, default="GD",
+                    choices=["GD", "LBFGS"],
+                    help="Inference algorithm: GD or LBFGS (default: GD).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
 parser.add_argument("--obs", type=int, default=1,
@@ -58,6 +61,9 @@ parser.add_argument("--sizes", nargs="+", type=int,
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
 parser.add_argument("--max_sessions", default=103, type=int,
                     help="Number of sessions to compute (default: 103).")
+parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.6, 0.95, 1e-6],
+                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.6 0.95 1e-6)")
+
 
 args = parser.parse_args()
 
@@ -108,7 +114,8 @@ def calc(sizes, session_type, session_id, r):
     R = np.zeros(len(sizes))
     
     
-
+    theta_prev=None
+    N_prev=None
     for n, N in enumerate(sizes):
         print(f"\n> Processing system size {N} neurons")
         stime = time.time()
@@ -193,10 +200,14 @@ def calc(sizes, session_type, session_id, r):
         trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
+        theta_init=torch.zeros(N*(N-1)//2).to(torch.get_default_device())
+        if theta_prev is not None and order != 'sorted':
+            theta_init[:N_prev]=theta_prev
+            N_prev=N
         start_time = time.time()
         EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
-                                                # verbose=2,report_every=10, 
+                                                verbose=1, eps=1e-6,beta1=0.6, beta2=0.95#,report_every=10, 
                                                 )
         
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
@@ -207,7 +218,12 @@ def calc(sizes, session_type, session_id, r):
         print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
 
     SAVE_DATA_DIR = 'ep_data'
-    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+    if args.use_Adam:
+        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    else:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(save_path, 'a') as f:
         group_path = f"{session_type}/{session_id}/rep_{r}"
