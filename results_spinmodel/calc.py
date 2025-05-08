@@ -15,41 +15,6 @@ device = utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
 
-# def calc_spin2(beta, J, i, g_samples):
-#     verbose=False
-#     import ep_multipartite
-
-#     sigmas, times, thetas = {}, {}, {}
-#     obj = ep_multipartite.EPEstimators(g_samples=g_samples) 
-
-#     stime = time.time()
-#     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=obj.g_mean().cpu().numpy())
-#     times['Emp'] = time.time() - stime
-
-
-#     to_run = [ ('NR h a', obj.get_EP_Newton, dict(holdout=True, trust_radius=1/4, adjust_radius=True) ),]
-
-#     stime = time.time()
-
-#     for k, f, kwargs in to_run:
-#         stime = time.time()
-#         res = f(**kwargs)
-#         utils.torch_synchronize()
-#         sigmas[k] = res.objective
-
-#         times[k] = time.time() - stime
-#         if res.theta is not None:
-#             thetas[k] = res.theta.cpu().numpy()
-#             #sigmas[k] = data.get_objective(res.theta)
-#         if res.tst_objective is not None:
-#             sigmas[k+' tst'] = res.tst_objective
-
-#     del obj # , trn, tst 
-#     #utils.empty_torch_cache()
-
-#     return sigmas, times, thetas
-
-
 def calc_spin(beta, J, i, g_samples):
     verbose=False
 
@@ -59,7 +24,7 @@ def calc_spin(beta, J, i, g_samples):
     data = ep_estimators.Dataset(g_samples=g_samples)
 
     stime = time.time()
-    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean.cpu().numpy())
+    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
     times['Emp'] = time.time() - stime
 
     trn, tst = data.split_train_test()
@@ -83,10 +48,10 @@ def calc_spin(beta, J, i, g_samples):
     for k, f, kwargs in to_run:
         stime = time.time()
         res = f(**kwargs)
-        utils.torch_synchronize()
+        # utils.torch_synchronize()
         times[k] = time.time() - stime
         if res.theta is not None:
-            thetas[k] = res.theta.cpu().numpy()
+            thetas[k] = utils.torch_to_numpy(res.theta)
         if res.trn_objective is None:  
             sigmas[k] = res.objective
         else: # holdout was used
@@ -99,7 +64,7 @@ def calc_spin(beta, J, i, g_samples):
         import matplotlib.pyplot as plt 
         import seaborn as sns
         ctheta2 = torch.concatenate([ctheta[:i], torch.zeros(1), ctheta[i:]]) 
-        stats = (ctheta2@S_i.T).cpu().numpy()
+        stats = utils.torch_to_numpy(ctheta2@S_i.T)
         stats -= stats.mean()
         sns.kdeplot( stats, label='Original')# , bins=20, color='red', alpha=0.3, label='Original') 
         
@@ -119,20 +84,6 @@ def calc_spin(beta, J, i, g_samples):
 
     return sigmas, times, thetas
 
-
-def get_g_observables_bin(S_bin, F, i):
-    # Given states S_i in which spin i flipped, calculate observables 
-    #        g(x) = g_{ij} = (x_i' - x_i) x_j 
-    # where x_i' and x_i indicate the state of spin i after and before the jump, 
-    # and x_j is the state of every other spin .
-    # Here S is given in boolean representation S_bin and F indicates which spin flipped
-    # Use S and F to select states in which spin i flipped
-    S_i          = torch.from_numpy(S_bin[F[:,i],:]).to(torch.get_default_device()).float()*2-1
-    twice_only_i = -2 * S_i[:, i]
-    S_i          = torch.hstack((S_i[:,:i], S_i[:,i+1:]))
-    g_samples    = torch.einsum('i,ij->ij', twice_only_i, S_i)
-    return g_samples.contiguous()
-    
 
 def calc(file_name):
 
@@ -159,7 +110,7 @@ def calc(file_name):
     J    = data['J']
     beta = data['beta']
 
-    frequencies = F.sum(axis=0)/(N*rep) # F.float().sum(axis=0).cpu().numpy()/(N*rep)
+    frequencies = F.sum(axis=0)/(N*rep)
     epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': beta, 
                 'thetas':{}, 'ep':{}, 'times':{}}
 
@@ -174,7 +125,10 @@ def calc(file_name):
 
 
     for i in pbar:
-        g_samples = get_g_observables_bin(S_bin, F, i)
+        if i % 40 == 0:
+            utils.empty_torch_cache()
+        g_samples = spin_model.get_g_observables_bin(S_bin, F, i)
+
         res = calc_spin( beta, J, i, g_samples)
 
         epdata[i] = res 
@@ -193,6 +147,7 @@ def calc(file_name):
         ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
         pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
 
+    utils.empty_torch_cache()
     print(f'{time.time() - stime:3f}s')
 
     for k,v in ep_sums.items():

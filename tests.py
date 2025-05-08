@@ -36,6 +36,18 @@ def test_coupling_matrix_generator():
 def test_simulation():
     get_simulation_results()
 
+def test_EP():
+    beta, J, S, F = get_simulation_results()
+    spin_model.get_empirical_EP(beta, J, S, F)
+
+def test_numpy_to_torch():
+    x = np.random.randn(100, 10)
+    utils.numpy_to_torch(x)
+    utils.numpy_to_torch(x > 0)  # bool conversion
+    for t in ['float16','int32','int32','float64']:
+        utils.numpy_to_torch(x.astype(t))
+
+
 def test_constructor():
     beta, J, S, F = get_simulation_results()
     i = 2

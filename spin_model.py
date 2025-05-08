@@ -204,22 +204,35 @@ def convert_to_nonmultipartite(S, F):
 
 
 
-
-
+import utils  # we use torch for faster computations
 def get_g_observables(S, F, i):
-    # Use S and F to select states in which spin i flipped
-    S_i = S[F[:,i],:]
+    # Given states S ∈ {-1,1} in which spin i flipped, we calculate the observables 
+    #        g_{ij}(x) = (x_i' - x_i) x_j 
+    # for all j, where x_i' and x_i indicate the state of spin i after and before the jump, 
+    # and x_j is the state of every other spin.
+    # Here F indicates which spins flipped. We try to use GPU and in-place operations
+    # where possible, to increase speed while reducing GPU memory requirements
+    S_i      = S[F[:,i],:]
+    X        = utils.numpy_to_torch(np.delete(S_i, i, axis=1))
+    y        = utils.numpy_to_torch(S_i[:,i])
+    X.mul_( (-2 * y).unsqueeze(1) )  # in place multiplication
+    return X.contiguous()
 
-    # Given states S_i in which spin i flipped, calculate observables 
-    #        g(x) = g_{ij} = (x_i' - x_i) x_j 
-    # where x_i' and x_i indicate the state of spin i after and before the jump, 
-    # and x_j is the state of every other spin .
-    g_samples = -2 * np.einsum('i,ij->ij', S_i[:, i], S_i)
-    
-    # We remove the i-th observable because its always -2
-    g_samples = np.hstack([g_samples [:,:i], g_samples [:,i+1:]])
 
-    return g_samples
+def get_g_observables_bin(S_bin, F, i):
+    # Same as get_g_observables, but we take binary states S_bin ∈ {0,1} and convert {0,1}→{−1,1}
+    S_bin_i  = S_bin[F[:,i],:]
+    X        = utils.numpy_to_torch(np.delete(S_bin_i, i, axis=1))*2-1
+    y        = utils.numpy_to_torch(S_bin_i[:,i])*2-1
+    X.mul_( (-2 * y).unsqueeze(1) )  # in place multiplication
+    return X.contiguous()
+
+    # The following can be a bit faster, but may use doulbe the memory on the GPU
+    # S_i  = utils.numpy_to_torch(S_bin[F[:,i],:])*2-1
+    # y    = -2 * S_i[:, i]
+    # S_i  = torch.hstack((S_i[:,:i], S_i[:,i+1:]))
+    # S_i.mul_( y.unsqueeze(1) )
+    # return S_i.contiguous()
 
 
 def get_empirical_EP(beta, J, S, F):
@@ -231,14 +244,14 @@ def get_empirical_EP(beta, J, S, F):
     sigma_emp = 0.0
 
     # Because system is multipartite, we can separately estimate EP for each spin
-    for i in range(N):
-        p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
+    frequencies = F.sum(axis=0)/total_flips      # frequency of spin i flips
+    for i in range(N):
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = get_g_observables(S, F, i)
         g_mean     = g_samples.mean(axis=0)
 
-        sigma_emp   += p_i * get_spin_empirical_EP(beta, J, i, g_mean)
+        sigma_emp += frequencies[i] * get_spin_empirical_EP(beta, J, i, g_mean)
 
     return sigma_emp
 
@@ -249,8 +262,8 @@ def get_spin_empirical_EP(beta, J, i, g_mean):
     #       g_mean = get_g_observables(S, F, i).mean(axis=0) 
 
     # Calculate contributions to empirical EP from observables of spin i
-    J_i         = J[i,:]
+    J_i         = utils.torch_to_numpy(J[i,:])
     J_i_no_i    = np.hstack([J_i[:i], J_i[i+1:]])   # remove i'th entry, due to our convention
-    spin_emp    = float(beta) * float(J_i_no_i @ g_mean)
+    spin_emp    = float(beta) * J_i_no_i @ utils.torch_to_numpy(g_mean)
 
     return spin_emp

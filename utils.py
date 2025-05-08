@@ -25,10 +25,28 @@ def remove_i(x, i):  # Helpful function to remove the i-th element from a 1d ten
 def numpy_to_torch(X):  # Convert numpy array to torch tensor if needed
     if not isinstance(X, torch.Tensor): 
         if isinstance(X, np.ndarray):
-            return torch.from_numpy(X.astype(DTYPE)).to(torch.get_default_device()).contiguous()
+            dtype  = X.dtype
+            device = torch.get_default_device()
+            if dtype == np.dtype(DTYPE):
+                return torch.from_numpy(X              ).to(device).contiguous()
+            elif (np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.bool_)):
+                # Convert on GPU if possible, its a bit faster
+                return torch.from_numpy(X              ).to(device).to(getattr(torch, DTYPE)).contiguous()
+            else:
+                return torch.from_numpy(X.astype(DTYPE)).to(device).contiguous()
         else:
             raise Exception("Argument must be a torch tensor or numpy array")
     return X
+
+
+def torch_to_numpy(X):  # Convert torch tensor to numpy array if needed
+    if isinstance(X, torch.Tensor):
+        return X.numpy(force=True)
+    elif isinstance(X, np.ndarray):
+        return X
+    else:
+        raise Exception("Argument must be a torch tensor or numpy array")
+
 
 
 # Torch stuff
@@ -54,11 +72,13 @@ def empty_torch_cache():  # Empty torch cache
     elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
         torch.mps.empty_cache()
 
+
 def torch_synchronize():  # Empty torch cache
     if torch.cuda.is_available() and torch.cuda.current_device() >= 0:
         torch.cuda.synchronize()
     elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
         torch.mps.synchronize()
+
 
 # =========================================================================================
 # Linear algebra stuff: solving linear systems and Steihaug-Toint Conjugate Gradient method
