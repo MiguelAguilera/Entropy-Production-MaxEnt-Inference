@@ -165,7 +165,7 @@ class Dataset(DatasetBase):
 
             if return_mean or return_covariance:
                 mean = exp_tilt @ self.rev_g_samples if use_rev else -(exp_tilt @ self.g_samples)
-                mean = mean / self.nsamples / norm_const
+                mean = mean / (self.nsamples * norm_const)
                 vals['tilted_mean'] = mean
 
                 if return_covariance:
@@ -175,7 +175,7 @@ class Dataset(DatasetBase):
                         else:
                             K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
 
-                        vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
+                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
 
                     elif num_chunks == -1:
                         if use_rev:
@@ -195,7 +195,7 @@ class Dataset(DatasetBase):
                             
                             K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
 
-                        vals['tilted_covariance'] = K / self.nsamples / norm_const - torch.outer(mean, mean)
+                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
 
                         if use_rev:
                             K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)

@@ -36,6 +36,25 @@ def test_coupling_matrix_generator():
 def test_simulation():
     get_simulation_results()
 
+def test_constructor():
+    beta, J, S, F = get_simulation_results()
+    i = 2
+    g_samples  = spin_model.get_g_observables(S, F, i)
+    rev        = -g_samples
+    
+    data = ep_estimators.Dataset(g_samples=g_samples)
+
+    theta = np.random.rand(data.nobservables)
+
+    data.get_objective(theta)
+    data.get_tilted_statistics(theta, return_mean=True)
+    data.get_tilted_statistics(theta, return_objective=True)
+    data.get_tilted_statistics(theta, return_covariance=True)
+
+    ep_estimators.Dataset(g_samples=utils.numpy_to_torch(g_samples))
+    ep_estimators.Dataset(g_samples=utils.numpy_to_torch(g_samples), rev_g_samples=rev)
+    ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-utils.numpy_to_torch(rev))
+    ep_estimators.Dataset(g_samples=utils.numpy_to_torch(g_samples), rev_g_samples=-utils.numpy_to_torch(rev))
 
 def run_inference(beta, J, S, F, num_chunks=None, do_rev=False):
     num_samples_per_spin, N = S.shape
