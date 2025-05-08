@@ -547,7 +547,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
                             max_iter=10000, lr=0.01, patience = 10, tol=1e-4, 
-                            use_Adam=True, beta1=0.9, beta2=0.999, skip_warm_up=False,
+                            use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
 
@@ -675,8 +675,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     v_hat = v / (1 - beta2 ** (t+1))
 
                 # Compute parameter update
-                delta_theta = lr * m_hat / (v_hat.sqrt() + 1e-8)
-
+                delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
                 new_theta += delta_theta
 
             else:
@@ -752,3 +751,4 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
     objective = float(x @ mean_diff)/2
 
     return _get_valid_solution(objective=objective, theta=None, nsamples=data.nsamples)
+

@@ -40,9 +40,9 @@ parser.add_argument("--order", type=str, default="random",
                     help="Ordering of neurons: random or sorted by activity (default: random).")
 parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
                     help="Disable Adam optimizer (enabled by default).")
+parser.set_defaults(args=True)
 parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
-parser.set_defaults(args=True)
 parser.add_argument("--patience", type=int, default=10,
                     help="Early stopping patience for the optimizer (default: 10).")
 parser.add_argument("--lr", type=float, default=0.01,
@@ -56,11 +56,17 @@ parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], def
 parser.add_argument("--sizes", nargs="+", type=int,
                     default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
+parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.8, 0.99, 1e-6],
+                    help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.8 0.99 1e-6)")
+
 parser.add_argument("--min_session", default=0, type=int,
                     help="First sessions to compute (default: 0).")
 parser.add_argument("--max_session", default=103, type=int,
                     help="Max sessions to compute (default: 103).")
 
+parser.add_argument("--overwrite", action="store_true", default=False,
+                    help="Overwrite existing results (default: False).")
+                    
 args = parser.parse_args()
 
 # --- Constants and Configuration ---
@@ -110,7 +116,21 @@ def calc(sizes, session_type, session_id, r):
     R = np.zeros(len(sizes))
     
     
+    SAVE_DATA_DIR = 'ep_data'
+    if args.use_Adam:
+        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    else:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 
+    group_path = f"{session_type}/{session_id}/rep_{r}"
+
+    if os.path.exists(save_path):
+        with h5py.File(save_path, 'r') as f:
+            if group_path in f and not args.overwrite:
+                print(f"[Skipping] All sizes for {group_path} already exist in {save_path}. Use --overwrite to recompute.")
+                return
+                
     for n, N in enumerate(sizes):
         print(f"\n> Processing system size {N} neurons")
         stime = time.time()
@@ -198,7 +218,8 @@ def calc(sizes, session_type, session_id, r):
         start_time = time.time()
         EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
-                                                verbose=2,report_every=10, 
+                                                verbose=1,#,report_every=10, 
+                                                beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[2]
                                                 )
         
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
@@ -208,8 +229,8 @@ def calc(sizes, session_type, session_id, r):
         R[n] = spike_avg
         print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
 
-    SAVE_DATA_DIR = 'ep_data'
-    save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_{args.use_Adam}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+
+
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(save_path, 'a') as f:
         group_path = f"{session_type}/{session_id}/rep_{r}"
