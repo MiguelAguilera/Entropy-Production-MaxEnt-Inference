@@ -207,7 +207,7 @@ def calc(sizes, session_type, session_id, r):
         EP_maxent_full,theta,EP_maxent_tst = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
                                                 verbose=1,#,report_every=10, 
-                                                beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[3]
+                                                beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[2]
                                                 )
         
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
