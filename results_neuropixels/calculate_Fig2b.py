@@ -12,8 +12,8 @@ import h5py
 import hdf5plugin
 
 
-sys.path.insert(0, '..')
-from methods_EP_parallel import *
+#sys.path.insert(0, '..')
+#from methods_EP_parallel import *
 
 parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for a neuropixels dataset.")
 parser.add_argument("--BASE_DIR", type=str, default="~/Neuropixels",

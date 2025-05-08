@@ -81,6 +81,27 @@ areas = areas[inds2]
 #   [Info] Estimating EP (nsamples: 360322, lr: 0.000500, patience: 30, % with transition: 0.998449)...
 #   [Result took 22.283140] EP tst/full: 0.24623 0.48643 | R: 18.40379 | EP tst/R: 0.01338
 
+
+
+patience =100
+tol=0
+batch_size=None
+theta_init = None
+max_iter = None 
+if True:
+    use_Adam=True
+    lr=0.00001
+
+else:
+    # lr=0.002
+    patience =100
+    use_Adam = False
+    lr=0.25/N
+    #lr=0.1/N
+    # batch_size=5000
+    patience=100
+    max_iter = 200
+
 if args.obs == 1:
     cls = ep_estimators.RawDataset
 elif args.obs == 2:
@@ -89,34 +110,39 @@ else:
     raise ValueError(f"Invalid observable type {args.obs}. Use 1 or 2.")
 
 data = cls(X0=S[:, 1:].T, X1=S[:, :-1].T)
-
-if False:
-    use_Adam=True
-    lr=0.0001
-    patience =100
-
-else:
-    # lr=0.002
-    patience =100
-    use_Adam = False
-    lr=0.25/N
-
 trn, tst = data.split_train_test()
+
+#theta_init = np.random.randn(data.nobservables)/np.sqrt(data.nobservables)
+
 res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, # skip_warm_up=True,
-                                         verbose=2, report_every=10, patience=patience)
+                                         tol=tol, verbose=2, report_every=10, patience=patience, batch_size=batch_size,
+                                         max_iter=max_iter, theta_init=theta_init)
 sigma = res.objective
 print("EP:", sigma)
 
 # Extract coupling matrix θ
-theta = res.theta.cpu().numpy()
+theta = utils.torch_to_numpy(res.theta)
+
+triu_indices = np.triu_indices(N, k=1)
 if args.obs == 2:
     th = theta.reshape(N, N)
 else:
     # Upper triangular matrix
     th = np.zeros((N, N), dtype=theta.dtype)
-    triu_indices = np.triu_indices(N, k=1)
     th[triu_indices[0], triu_indices[1]] = theta
     th=th-th.T
+
+if False and args.obs == 1:
+    #asymm = th - th.T
+
+    #data1 = ep_estimators.RawDataset(X0=tst.X0, X1=tst.X1)
+
+    data2 = ep_estimators.RawDataset2(X0=tst.X0, X1=tst.X1)
+    print(data2.get_objective(np.reshape(th, [1,-1])))
+    
+    
+
+
 
 
 filename = f"coupling_coefficients_N{N}_obs{args.obs}.npz"
