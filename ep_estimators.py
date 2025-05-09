@@ -171,10 +171,13 @@ class Dataset(DatasetBase):
                 if return_covariance:
                     if num_chunks is None:
                         if use_rev:
-                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+                            weighted_rev_g = exp_tilt[:, None] * self.rev_g_samples  # shape: (k, i)
+                            K = weighted_rev_g.T @ self.rev_g_samples
                         else:
-                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
-
+#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
+                            weighted_rev_g = exp_tilt[:, None] * self.g_samples
+                            K = weighted_rev_g.T @ self.g_samples
                         vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
 
                     elif num_chunks == -1:
@@ -193,14 +196,16 @@ class Dataset(DatasetBase):
                             end = min((r + 1) * chunk_size, self.nsamples)
                             g_chunk = self.rev_g_samples[start:end] if use_rev else -self.g_samples[start:end]
                             
-                            K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
+#                            K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
+                            weighted_g = exp_tilt[start:end][:, None] * g_chunk
+                            K += weighted_g.T @ g_chunk
 
                         vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
 
-                        if use_rev:
-                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
-                        else:
-                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
+#                        if use_rev:
+#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
+#                        else:
+#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
 
         return vals
 
@@ -739,8 +744,9 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
 
 
         if num_chunks is None:
-            combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
-
+#            combined_cov = torch.einsum('k,ki,kj->ij', weights, combined_samples, combined_samples)
+            weighted_samples = weights[:, None] * combined_samples
+            combined_cov = weighted_samples.T @ combined_samples 
         else:
             # Chunked computation
             combined_cov = torch.zeros((data.nobservables, data.nobservables), device=data.device)
@@ -750,8 +756,9 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
                 start = r * chunk_size
                 end = min((r + 1) * chunk_size, num_total)
                 chunk = combined_samples[start:end]
-                
-                combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
+                weighted_samples = weights[start:end,None] * chunk
+                combined_cov +=  weighted_samples.T @ chunk 
+#                combined_cov += torch.einsum('k,ki,kj->ij', weights[start:end], chunk, chunk)
 
     x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
     objective = float(x @ mean_diff)/2
