@@ -102,7 +102,7 @@ def ParallelGlauberStep(J, s, T=1):
 
 @njit(parallel=True, fastmath=True, cache=True)
 def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, 
-                   num_restarts=1, sequential=True, progressbar=True):
+                   num_restarts=1000, sequential=True, progressbar=True):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
     By default, we use a thinning factor of N between samples
