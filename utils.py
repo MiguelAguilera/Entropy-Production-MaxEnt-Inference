@@ -87,7 +87,7 @@ def torch_synchronize():  # Empty torch cache
 def steihaug_toint_cg(A, b, trust_radius, tol=1e-10, max_iter=None):
     """
     Steihaug-Toint Conjugate Gradient method for approximately solving
-    min_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
+    argmin_x 0.5 x^T A x - b^T x  subject to ||x|| <= trust_radius
     where A is symmetric (not necessarily positive definite).
     
     Args:
