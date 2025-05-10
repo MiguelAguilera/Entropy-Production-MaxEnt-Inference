@@ -139,7 +139,7 @@ def calc_spin(i_args):
 #    gc.collect()
 
     # Compute Newton estimation
-    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=0.25, adjust_radius=False, num_chunks=num_chunks, verbose=1)
+    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=0.25, adjust_radius=False, num_chunks=num_chunks)
 #    
     EP_g = Pi * sig_g
     EP_g_trn = Pi * sig_g_trn
@@ -239,7 +239,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         os.remove(temp_file_name_out)
 
     # Main loop over all spins
-    for i in tqdm(range(N//20), desc="Sequential spin progress"):
+    for i in tqdm(range(N), desc="Sequential spin progress"):
         if i in preload_threads:
             preload_threads[i].join()
             X_i, J_i, nflips = preload_results.pop(i)
