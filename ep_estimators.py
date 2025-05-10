@@ -404,7 +404,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # Entropy production (EP) estimation methods 
 # ==========================================
 def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
-                    max_iter=None, tol=1e-10, linsolve_eps=1e-4, num_chunks=None,
+                    max_iter=None, tol=1e-6, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
                     trust_radius_adjust_max_iter=100, patience=10):
@@ -560,9 +560,6 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
             if is_infnan(f_new_trn):  
                 if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
                 break                  # Training value should be finite and increasing
-            elif f_new_trn <= f_cur_trn:
-                if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
-                break
             elif np.abs(f_new_trn - f_cur_trn) < tol: 
                 if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
                 last_round = True      # Break when training objective stops improving by more than tol
@@ -570,7 +567,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 # One cannot reliably estimate KL divergence larger than log(# samples).
                 # This is a signature of undersampling; when it happens, we clip our estimate of the 
                 # objective and exit
-                print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
 
