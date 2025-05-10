@@ -445,7 +445,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
             if is_infnan(H_theta.sum()): 
                 # Error occured, usually it means theta is too big
-                if verbose: print('{funcname} : [Stopping] Invalid Hessian')
+                if verbose: print(f'{funcname} : [Stopping] Invalid Hessian')
                 break
 
             grad = data.g_mean - g_theta
@@ -455,7 +455,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 # Solve the constrained trust region problem using the
                 # Steihaug-Toint Truncated Conjugate-Gradient Method
 
-                for _ in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
+                for tr_iter in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
                     delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
                     new_theta  = theta + delta_theta
                     f_new_trn  = data.get_objective(new_theta)
@@ -474,17 +474,20 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                         if rho > eta0:      # accept new theta
                             break
                         if trust_radius < trust_radius_min:
+                            if verbose: print(f"{funcname} : trust_radius_min={trust_radius_min} reached!")
                             trust_radius = trust_radius_min
                             break
 
                         if rho < eta1:
                             trust_radius *= 0.25
+                            if verbose > 1: print(f"{funcname} : reducing trust_radius to {trust_radius} in trust radius iteration={tr_iter}")
                         elif rho > eta2 and delta_theta.norm() >= trust_radius:
                             trust_radius = min(2.0 * trust_radius, trust_radius_max)
+                            if verbose > 1: print(f"{funcname} : increasing trust_radius to {trust_radius} in trust radius iteration={tr_iter}")
 
 
                 else: # for loop finished without breaking
-                    if verbose: print("{funcname} : max_iter reached in adjust_radius loop!")
+                    if verbose: print(f"{funcname} : max_iter reached in adjust_radius loop!")
 
             else:
                 # Find regular Newton direction

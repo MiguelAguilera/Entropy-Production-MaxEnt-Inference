@@ -27,18 +27,20 @@ def calc_spin(beta, J, i, g_samples):
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
     times['Emp'] = time.time() - stime
 
-    trn, tst = data.split_train_test()
+    trn, tst = data.split_train_test(holdout_fraction=0.2)
+# Emp=0.02383  TUR=0.00623  NR h a=0.02243  NR h a tst=0.02110  mem=4126.4mb:   2%|██                                                                                               | 21/1000 [00:37<29:15,  1.79s/it]^C^CTraceback (most recent call last):
 
+# iteration 20, tst=0.020
     to_run = [
 #        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
         ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 
-        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=True) ),
+        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=10, adjust_radius=False, verbose=0) ),
 
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
-          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-3, tol=0, use_Adam=False) ),
+#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-3, tol=0, use_Adam=False) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     #utils.empty_torch_cache()
