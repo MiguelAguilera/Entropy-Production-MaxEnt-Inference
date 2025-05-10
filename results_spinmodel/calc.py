@@ -23,27 +23,36 @@ def calc_spin(beta, J, i, g_samples):
 
     data = ep_estimators.Dataset(g_samples=g_samples)
 
+    trn, tst = data.split_train_test()
+    #trn, tst = data.split_train_test(holdout_fraction=0.2)
+
+
     stime = time.time()
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
     times['Emp'] = time.time() - stime
 
-    trn, tst = data.split_train_test(holdout_fraction=0.2)
+
+    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean))
+    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=trn.g_mean))
+    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=tst.g_mean))
+    # print()
+
 # Emp=0.02383  TUR=0.00623  NR h a=0.02243  NR h a tst=0.02110  mem=4126.4mb:   2%|██                                                                                               | 21/1000 [00:37<29:15,  1.79s/it]^C^CTraceback (most recent call last):
 
 # iteration 20, tst=0.020
     to_run = [
 #        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
-        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+#        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 
-        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=10, adjust_radius=False, verbose=0) ),
+#        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False, verbose=0) ),
 
         
+#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
-#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
-#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-3, tol=0, use_Adam=False) ),
+         ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, tol=0, use_Adam=False) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
-    #utils.empty_torch_cache()
+    utils.empty_torch_cache()
 
     stime = time.time()
 
@@ -82,12 +91,11 @@ def calc_spin(beta, J, i, g_samples):
             #asdf
 
     del data, trn, tst 
-    #utils.empty_torch_cache()
 
     return sigmas, times, thetas
 
 
-def calc(file_name):
+def calc(file_name, max_spins=None):
 
     utils.empty_torch_cache()
 
@@ -116,7 +124,13 @@ def calc(file_name):
     epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': beta, 
                 'thetas':{}, 'ep':{}, 'times':{}}
 
-    pbar = tqdm(range(N), smoothing=0)
+    if max_spins is None:
+        spin_ids = np.arange(N)
+    else:
+        np.random.seed(123)
+        spin_ids = np.random.choice(N, size=max_spins, replace=False)
+
+    pbar = tqdm(spin_ids, smoothing=0)
 
     print("=" * 70)
     print(f"  Starting EP estimation | System size: {N}")
@@ -146,10 +160,11 @@ def calc(file_name):
         del g_samples, sigmas, times, thetas, res
         
         memory_usage = process.memory_info().rss / 1024 / 1024
-        ll = [f'{k}={ep_sums[k]:3.5f} ' for k in ep_sums]
-        pbar.set_description(" ".join(ll) + f' mem={memory_usage:.1f}mb')
+        # in next lne, also print percentage of ep_sums['Emp'] with 2 digits of precision
+        ll = [f'{k}={ep_sums[k]:3.5f} ' + (f'({int(100*ep_sums[k]/ep_sums['Emp']):3d}%)' if k != 'Emp' else '') for k in ep_sums]
+        pbar.set_description("  ".join(ll) + f' mem={memory_usage:.1f}mb')
 
-    utils.empty_torch_cache()
+    #utils.empty_torch_cache()
     print(f'{time.time() - stime:3f}s')
 
     for k,v in ep_sums.items():

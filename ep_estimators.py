@@ -131,10 +131,22 @@ class Dataset(DatasetBase):
         else:
             rev_trn, rev_tst = None, None 
 
-        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
-        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
+        trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
         return trn, tst
     
+
+    def get_random_batch(self, batch_size):
+        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
+        if self.rev_g_samples is not None:
+            if self.nsamples != self.forward_nsamples:
+                rev_indices = np.random.choice(self.forward_nsamples, size=batch_size, replace=True)
+            else: # assume that forward and reverse samples are paired (there is the same number), 
+                rev_indices = indices
+            return self.__class__(g_samples=self.g_samples[indices], rev_g_samples=self.rev_g_samples[rev_indices])
+        else:
+            return self.__class__(g_samples=self.g_samples[indices])
+
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
