@@ -500,7 +500,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
             elif f_new_trn <= f_cur_trn:
                 if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
                 break
-            elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+            elif np.abs(f_new_trn - f_cur_trn) < tol: 
                 if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
                 last_round = True      # Break when training objective stops improving by more than tol
             elif f_new_trn > np.log(data.nsamples):  
@@ -519,7 +519,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 elif f_new_tst <= f_cur_tst:
                     if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
                     break
-                elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                elif np.abs(f_new_tst - f_cur_tst) < tol:
                     if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                     last_round = True
                 elif f_new_tst > np.log(holdout_data.nsamples):
@@ -549,7 +549,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=0.01, patience = 10, tol=1e-4, 
+                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
                             use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -577,14 +577,16 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
     if max_iter is None:
         max_iter = 10000
+    if lr is None:
+        lr = 0.01
+    
+    if holdout_data is not None:
+        f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
+    else:
+        f_cur_trn = f_new_tst = np.nan
 
     with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
-        if holdout_data is not None:
-            f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
-        else:
-            f_cur_trn = f_new_tst = np.nan
-        
         if theta_init is not None:
             new_theta = numpy_to_torch(theta_init)
         else:
@@ -608,11 +610,12 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 c_data = data.get_random_batch(batch_size)
             else:
                 c_data = data
+
             tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
-            #continue 
-            f_new_trn    = tilted_stats['objective']
 
             grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
+
+            f_new_trn    = tilted_stats['objective']
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
@@ -627,14 +630,14 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
-            elif np.abs(f_new_trn - f_cur_trn) <= tol:
+            elif np.abs(f_new_trn - f_cur_trn) < tol:
                 if verbose: print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
                 last_round = True
 
             if holdout_data is not None: #  and t > 150:
                 f_new_tst = holdout_data.get_objective(new_theta) 
-                train_gain = f_new_trn - f_cur_trn
-                test_drop = f_cur_tst - f_new_tst
+                #train_gain = f_new_trn - f_cur_trn
+                #test_drop = f_cur_tst - f_new_tst
                 if is_infnan(f_new_tst):
                     if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
                     break
@@ -645,7 +648,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                     f_new_tst = np.log(holdout_data.nsamples)
                     last_round = True
-                #elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                #elif np.abs(f_new_tst - f_cur_tst) < tol:
                 #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                 #    last_round = True
                 
@@ -655,6 +658,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     patience_counter = 0
                 else:
                     patience_counter += 1
+                    
                 if patience_counter >= patience:
                     if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
                     theta     = best_theta.clone()
