@@ -131,10 +131,22 @@ class Dataset(DatasetBase):
         else:
             rev_trn, rev_tst = None, None 
 
-        trn = type(self)(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
-        tst = type(self)(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
+        trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
         return trn, tst
     
+
+    def get_random_batch(self, batch_size):
+        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
+        if self.rev_g_samples is not None:
+            if self.nsamples != self.forward_nsamples:
+                rev_indices = np.random.choice(self.forward_nsamples, size=batch_size, replace=True)
+            else: # assume that forward and reverse samples are paired (there is the same number), 
+                rev_indices = indices
+            return self.__class__(g_samples=self.g_samples[indices], rev_g_samples=self.rev_g_samples[rev_indices])
+        else:
+            return self.__class__(g_samples=self.g_samples[indices])
+
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
@@ -392,7 +404,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # Entropy production (EP) estimation methods 
 # ==========================================
 def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
-                    max_iter=None, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
+                    max_iter=None, tol=1e-10, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
                     trust_radius_adjust_max_iter=100, patience=10):
@@ -454,7 +466,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
             if is_infnan(H_theta.sum()): 
                 # Error occured, usually it means theta is too big
-                if verbose: print('{funcname} : [Stopping] Invalid Hessian')
+                if verbose: print(f'{funcname} : [Stopping] Invalid Hessian')
                 break
 
             grad = data.g_mean - g_theta
@@ -464,7 +476,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 # Solve the constrained trust region problem using the
                 # Steihaug-Toint Truncated Conjugate-Gradient Method
 
-                for _ in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
+                for tr_iter in range(trust_radius_adjust_max_iter): # loop until trust_radius is adjusted properly
                     delta_theta = steihaug_toint_cg(A=H_theta, b=grad, trust_radius=trust_radius)
                     new_theta  = theta + delta_theta
                     f_new_trn  = data.get_objective(new_theta)
@@ -483,17 +495,20 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                         if rho > eta0:      # accept new theta
                             break
                         if trust_radius < trust_radius_min:
+                            if verbose: print(f"{funcname} : trust_radius_min={trust_radius_min} reached!")
                             trust_radius = trust_radius_min
                             break
 
                         if rho < eta1:
                             trust_radius *= 0.25
+                            if verbose > 1: print(f"{funcname} : reducing trust_radius to {trust_radius} in trust radius iteration={tr_iter}")
                         elif rho > eta2 and delta_theta.norm() >= trust_radius:
                             trust_radius = min(2.0 * trust_radius, trust_radius_max)
+                            if verbose > 1: print(f"{funcname} : increasing trust_radius to {trust_radius} in trust radius iteration={tr_iter}")
 
 
                 else: # for loop finished without breaking
-                    if verbose: print("{funcname} : max_iter reached in adjust_radius loop!")
+                    if verbose: print(f"{funcname} : max_iter reached in adjust_radius loop!")
 
             else:
                 # Find regular Newton direction
@@ -544,8 +559,11 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
             if is_infnan(f_new_trn):  
                 if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
-                break   
-            elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+                break                  # Training value should be finite and increasing
+            elif f_new_trn <= f_cur_trn:
+                if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+                break
+            elif np.abs(f_new_trn - f_cur_trn) < tol: 
                 if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
                 last_round = True      # Break when training objective stops improving by more than tol
             elif f_new_trn > np.log(data.nsamples):  
@@ -604,7 +622,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=0.01, patience = 10, tol=1e-4, 
+                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
                             use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -632,14 +650,16 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
     if max_iter is None:
         max_iter = 10000
+    if lr is None:
+        lr = 0.01
+    
+    if holdout_data is not None:
+        f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
+    else:
+        f_cur_trn = f_new_tst = np.nan
 
     with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
-        if holdout_data is not None:
-            f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
-        else:
-            f_cur_trn = f_new_tst = np.nan
-        
         if theta_init is not None:
             new_theta = numpy_to_torch(theta_init)
         else:
@@ -663,11 +683,12 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 c_data = data.get_random_batch(batch_size)
             else:
                 c_data = data
+
             tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
-            #continue 
-            f_new_trn    = tilted_stats['objective']
 
             grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
+
+            f_new_trn    = tilted_stats['objective']
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
@@ -682,14 +703,14 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
-            elif np.abs(f_new_trn - f_cur_trn) <= tol:
+            elif np.abs(f_new_trn - f_cur_trn) < tol:
                 if verbose: print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
                 last_round = True
 
             if holdout_data is not None: #  and t > 150:
                 f_new_tst = holdout_data.get_objective(new_theta) 
-                train_gain = f_new_trn - f_cur_trn
-                test_drop = f_cur_tst - f_new_tst
+                #train_gain = f_new_trn - f_cur_trn
+                #test_drop = f_cur_tst - f_new_tst
                 if is_infnan(f_new_tst):
                     if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
                     break
@@ -700,7 +721,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                     f_new_tst = np.log(holdout_data.nsamples)
                     last_round = True
-                #elif np.abs(f_new_tst - f_cur_tst) <= tol:
+                #elif np.abs(f_new_tst - f_cur_tst) < tol:
                 #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                 #    last_round = True
                 
@@ -710,6 +731,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     patience_counter = 0
                 else:
                     patience_counter += 1
+                    
                 if patience_counter >= patience:
                     if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
                     theta     = best_theta.clone()

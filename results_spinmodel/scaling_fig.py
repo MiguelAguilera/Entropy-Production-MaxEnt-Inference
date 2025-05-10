@@ -53,6 +53,8 @@ if __name__ == "__main__":
     #                     help="Variance of the quenched disorder (default: 0.5)")
     parser.add_argument('--noplot', action='store_true', default=False,
                          help='Disable plotting if specified')
+    parser.add_argument("--max_spins", type=int, default=None,
+                        help="Number of spins to caculate (default: all))")
     # parser.add_argument("--patterns", type=int, default=None,
     #                     help="Hopfield pattern density (default: None).")
     parser.add_argument("--overwrite", action="store_true",  default=False, help="Overwrite existing files.")
@@ -94,7 +96,7 @@ if __name__ == "__main__":
                     
         if res is None:
             import calc
-            f, f_kwargs = calc.calc, dict(file_name = BASE_DIR+file_name,)
+            f, f_kwargs = calc.calc, dict(file_name = BASE_DIR+file_name, max_spins=args.max_spins,)
             if True:
                 with multiprocessing.Pool(processes=1) as pool:
                     res = pool.apply(f, kwds=f_kwargs)
@@ -252,6 +254,9 @@ if __name__ == "__main__":
         )
 
         # Save and show figure
+
+        if not os.path.exists('img'):
+            os.makedirs('img')
         plt.savefig('img/Fig_1a.pdf', bbox_inches='tight')
         plt.show()
 

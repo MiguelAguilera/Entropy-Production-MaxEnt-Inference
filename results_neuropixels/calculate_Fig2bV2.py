@@ -88,19 +88,22 @@ tol=0
 batch_size=None
 theta_init = None
 max_iter = None 
-if True:
+lr=None
+if False:
     use_Adam=True
-    lr=0.00001
+    lr=0.000001
 
 else:
     # lr=0.002
-    patience =100
+    patience =1000
     use_Adam = False
     lr=0.25/N
+    lr=.7/N
+  #  lr=0.1/N
     #lr=0.1/N
     # batch_size=5000
-    patience=100
-    max_iter = 200
+    patience=500
+   # max_iter = 200
 
 if args.obs == 1:
     cls = ep_estimators.RawDataset
