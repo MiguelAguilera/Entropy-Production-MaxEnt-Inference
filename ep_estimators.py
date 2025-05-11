@@ -404,9 +404,10 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # Entropy production (EP) estimation methods 
 # ==========================================
 def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
-                    max_iter=None, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
+                    max_iter=None, tol=1e-6, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
-                    eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0, trust_radius_adjust_max_iter=100):
+                    eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
+                    trust_radius_adjust_max_iter=100, patience=10):
     # Estimate EP by optimizing objective using Newton's method. We support advanced
     # features like Newton's method with trust region constraints
     #
@@ -434,6 +435,9 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
         max_iter = 1000
 
     with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
+    
+
+            
         if holdout_data:
             f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
         else:
@@ -444,6 +448,11 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
         else:
             theta = torch.zeros(data.nobservables, device=data.device)
         I     = torch.eye(len(theta), device=theta.device)
+        
+        if holdout_data:
+            best_theta = theta.clone()
+            best_val = -float('inf')
+            no_improve_count = 0
 
         for t in range(max_iter):
             if verbose and verbose > 1: 
@@ -515,12 +524,43 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
             last_round = False # set to True if we want break after updating theta and objective values
 
+#            if holdout_data is None:
+#                if is_infnan(f_new_trn):  
+#                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
+#                    break                  # Training value should be finite and increasing
+#                elif f_new_trn <= f_cur_trn:
+#                    if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+#                    break
+#                elif np.abs(f_new_trn - f_cur_trn) <= tol: 
+#                    if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
+#                    last_round = True      # Break when training objective stops improving by more than tol
+#                elif f_new_trn > np.log(data.nsamples):  
+#                    # One cannot reliably estimate KL divergence larger than log(# samples).
+#                    # This is a signature of undersampling; when it happens, we clip our estimate of the 
+#                    # objective and exit
+#                    print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+#                    f_new_trn = np.log(data.nsamples)
+#                    last_round = True
+
+#            else                # Do the same checks but now on the heldout test data
+#                f_new_tst = holdout_data.get_objective(new_theta) 
+#                if is_infnan(f_new_tst):
+#                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
+#                    break
+#                elif f_new_tst <= f_cur_tst:
+#                    if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
+#                    break
+#                elif np.abs(f_new_tst - f_cur_tst) <= tol:
+#                    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
+#                    last_round = True
+#                elif f_new_tst > np.log(holdout_data.nsamples):
+#                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
+#                    f_new_tst = np.log(holdout_data.nsamples)
+#                    last_round = True
+
             if is_infnan(f_new_trn):  
                 if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
                 break                  # Training value should be finite and increasing
-            elif f_new_trn <= f_cur_trn:
-                if verbose: print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
-                break
             elif np.abs(f_new_trn - f_cur_trn) < tol: 
                 if verbose: print(f"{funcname} : [Converged] Train objective change below tol={tol} at iter {t}")
                 last_round = True      # Break when training objective stops improving by more than tol
@@ -532,28 +572,38 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
 
-            if holdout_data is not None:                # Do the same checks but now on the heldout test data
-                f_new_tst = holdout_data.get_objective(new_theta) 
+            if holdout_data is not None:
+                f_new_tst = holdout_data.get_objective(new_theta)
                 if is_infnan(f_new_tst):
                     if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
                     break
-                elif f_new_tst <= f_cur_tst:
-                    if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
-                    break
-                elif np.abs(f_new_tst - f_cur_tst) < tol:
-                    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
-                    last_round = True
                 elif f_new_tst > np.log(holdout_data.nsamples):
                     if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                     f_new_tst = np.log(holdout_data.nsamples)
                     last_round = True
-
+                
+                if f_new_tst > best_val:
+                    best_val = f_new_tst
+                    best_val_trn = f_new_trn
+                    best_theta = new_theta.clone()
+                    no_improve_count = 0
+                else:
+                    no_improve_count += 1
+                    if no_improve_count >= patience:
+                        last_round=True
+                        if verbose: print(f"{funcname} : [Early stopping] No improvement for {patience} steps at iter {t}.")
+                f_cur_tst = f_new_tst
+                
             # Update our estimate of the paramters and objective value
             f_cur_trn, theta = f_new_trn, new_theta
             if holdout_data is not None:
                 f_cur_tst = f_new_tst
 
             if last_round:
+                if holdout_data is not None:
+                    f_cur_tst = best_val
+                    f_cur_trn = best_val_trn
+                    theta = best_theta.clone()
                 break
 
         else:   # for loop did not break
