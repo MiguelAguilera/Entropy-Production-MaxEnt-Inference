@@ -23,14 +23,19 @@ def calc_spin(beta, J, i, g_samples):
 
     data = ep_estimators.Dataset(g_samples=g_samples)
 
-    trn, tst = data.split_train_test()
-    #trn, tst = data.split_train_test(holdout_fraction=0.2)
+    #trn, tst = data.split_train_test()
+    trn, tst = data.split_train_test(holdout_fraction=0.1)
 
 
     stime = time.time()
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
     times['Emp'] = time.time() - stime
 
+    if False:
+        stime = time.time()
+        tur_sol = ep_estimators.get_EP_MTUR(data=trn)
+        sigmas['TUR'] = tur_sol.objective
+        times['TUR'] = time.time() - stime
 
     # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean))
     # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=trn.g_mean))
@@ -44,12 +49,15 @@ def calc_spin(beta, J, i, g_samples):
 #        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
 #        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 
-#        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False, verbose=0) ),
+        ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, 
+                                                               # linsolve_eps=1e-2, tol=0,
+                                                               adjust_radius=False, verbose=0) ),
 
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
-         ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, tol=0, use_Adam=False) ),
+         ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-3, tol=0, use_Adam=False) ),
+#         ('Ga'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, theta_init=tur_sol.theta, holdout_data=tst) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     utils.empty_torch_cache()

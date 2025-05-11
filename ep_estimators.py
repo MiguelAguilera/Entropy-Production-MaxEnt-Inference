@@ -461,6 +461,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 break
 
             grad = data.g_mean - g_theta
+
             H_theta += linsolve_eps * I  # regularize Hessian by adding a small I
 
             if trust_radius is not None and solve_constrained:
@@ -782,5 +783,5 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
     x  = solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
     objective = float(x @ mean_diff)/2
 
-    return _get_valid_solution(objective=objective, theta=None, nsamples=data.nsamples)
+    return _get_valid_solution(objective=objective, theta=x, nsamples=data.nsamples)
 
