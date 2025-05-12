@@ -618,8 +618,8 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=None, patience = 20, tol=1e-4, 
-                            use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
+                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
+                            use_Adam=True, use_BB=False, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
 
@@ -667,6 +667,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
         best_tst_score   = -float('inf')  # for maximization
         patience_counter = 0
         old_time         = time.time()
+
+        old_grad = delta_theta = None
         for t in range(max_iter):
             if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
                 new_time = time.time()
@@ -683,6 +685,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
             tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
 
             grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
+
 
             f_new_trn    = tilted_stats['objective']
 
@@ -742,7 +745,17 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 break
 
 
-            if use_Adam:
+            if use_BB and delta_theta is not None and old_grad is not None:
+                # Barzilai-Borwein method
+                d_grad  = grad - old_grad
+                c_alpha = -(delta_theta @ d_grad) / (d_grad @ d_grad)
+                # print(t, 'here', c_alpha, grad)
+
+                delta_theta = c_alpha * grad 
+
+
+
+            elif not use_BB and use_Adam:
                 # Adam moment updates
                 m = beta1 * m + (1 - beta1) * grad
                 v = beta2 * v + (1 - beta2) * (grad**2)
@@ -755,13 +768,15 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
                 # Compute parameter update
                 delta_theta = lr * m_hat / (v_hat.sqrt() + eps)
-                new_theta += delta_theta
 
             else:
                 # regular gradient ascent
                 delta_theta = lr * grad
 
+            old_grad = grad
+
             new_theta = theta + delta_theta
+
 
         else:   # for loop did not break
             if verbose:
