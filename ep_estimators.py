@@ -619,7 +619,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
+                            max_iter=None, lr=None, patience=10, tol=1e-4, 
                             use_Adam=True, use_BB=False, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -747,7 +747,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
 
             if use_BB and delta_theta is not None and old_grad is not None:
-                # Barzilai-Borwein method
+                # Barzilai-Borwein method, short-step version
                 d_grad  = grad - old_grad
                 c_alpha = -(delta_theta @ d_grad) / (d_grad @ d_grad)
                 # print(t, 'here', c_alpha, grad)
