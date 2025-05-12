@@ -404,7 +404,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # Entropy production (EP) estimation methods 
 # ==========================================
 def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
-                    max_iter=None, tol=1e-6, linsolve_eps=1e-4, num_chunks=None,
+                    max_iter=None, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
                     trust_radius_adjust_max_iter=100, patience=10):
@@ -436,7 +436,6 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
     with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
     
-
             
         if holdout_data:
             f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
@@ -619,7 +618,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
+                            max_iter=None, lr=None, patience = 20, tol=1e-4, 
                             use_Adam=True, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -697,7 +696,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 #                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
 #                    break
             elif f_new_trn > np.log(data.nsamples):
-                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(#samples), clipping to log(nsamples) at iter {t}")
+                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(samples), clipping to log(nsamples) at iter {t}")
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
             elif np.abs(f_new_trn - f_cur_trn) < tol:
