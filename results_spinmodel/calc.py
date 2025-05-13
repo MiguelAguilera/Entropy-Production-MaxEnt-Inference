@@ -23,8 +23,8 @@ def calc_spin(beta, J, i, g_samples):
 
     data = ep_estimators.Dataset(g_samples=g_samples)
 
-    #trn, tst = data.split_train_test()
-    trn, tst = data.split_train_test(holdout_fraction=0.1)
+    # trn, tst = data.split_train_test()
+    trn, tst = data.split_train_test(holdout_fraction=0.2)
 
 
     stime = time.time()
@@ -46,8 +46,9 @@ def calc_spin(beta, J, i, g_samples):
 
 # iteration 20, tst=0.020
     to_run = [
-#        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
-#        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
+        ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+#        ('NR'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False)),
 
         ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, 
                                                                # linsolve_eps=1e-2, tol=0,
@@ -55,9 +56,8 @@ def calc_spin(beta, J, i, g_samples):
 
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
-#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst) ),
-         ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-3, tol=0, use_Adam=False) ),
-#         ('Ga'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, theta_init=tur_sol.theta, holdout_data=tst) ),
+#          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0) ),
+         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, tol=0, use_BB=True, verbose=0, patience=5) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     utils.empty_torch_cache()
@@ -117,6 +117,9 @@ def calc(file_name, max_spins=None):
     S_bin  = data['S_bin'] # .astype('float32')*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
     rep, N = S_bin.shape
     F      = data['F'] # torch.from_numpy(data["F"]).to(device).bool()
+
+    # if data['beta'] >= 3:
+    #     return None
 
     if False:
         vvv=data['J'].reshape([1,-1])[0,:]

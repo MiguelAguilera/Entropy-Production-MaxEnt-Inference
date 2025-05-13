@@ -107,6 +107,9 @@ if __name__ == "__main__":
                 pickle.dump(res, file)
                 print(f'Saved to {out_filename}')
 
+        if res is None:
+            continue 
+        
         N = res['J'].shape[0]
 
         memory_usage = process.memory_info().rss / 1024 / 1024
@@ -123,6 +126,7 @@ if __name__ == "__main__":
 
 
         beta = res['beta']
+        
         for k, v in res['ep'].items():
             #if k.endswith(' tst'):
             #    continue

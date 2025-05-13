@@ -89,20 +89,22 @@ batch_size=None
 theta_init = None
 max_iter = None 
 lr=None
+use_BB = False
+use_Adam = False
 if False:
     use_Adam=True
     lr=0.000001
 
 else:
+    use_BB = True
     # lr=0.002
     patience =1000
-    use_Adam = False
     lr=0.25/N
-    lr=.7/N
+   # lr=.7/N
   #  lr=0.1/N
     #lr=0.1/N
     # batch_size=5000
-    patience=500
+    patience=50
    # max_iter = 200
 
 if args.obs == 1:
@@ -117,7 +119,7 @@ trn, tst = data.split_train_test()
 
 #theta_init = np.random.randn(data.nobservables)/np.sqrt(data.nobservables)
 
-res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, # skip_warm_up=True,
+res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, use_BB=use_BB, # skip_warm_up=True,
                                          tol=tol, verbose=2, report_every=10, patience=patience, batch_size=batch_size,
                                          max_iter=max_iter, theta_init=theta_init)
 sigma = res.objective
