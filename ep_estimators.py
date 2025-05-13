@@ -135,7 +135,44 @@ class Dataset(DatasetBase):
         tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
         return trn, tst
     
+    def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
+        # Split dataset into train/val/test sets with default 80/10/10 split
+        assert val_fraction + test_fraction < 1.0
+        nsamples = self.forward_nsamples
 
+        if shuffle:
+            perm = np.random.permutation(nsamples)
+        else:
+            perm = np.arange(nsamples)
+
+        n_val = int(nsamples * val_fraction)
+        n_test = int(nsamples * test_fraction)
+        n_train = nsamples - n_val - n_test
+
+        trn_indices = perm[:n_train]
+        val_indices = perm[n_train:n_train + n_val]
+        tst_indices = perm[n_train + n_val:]
+
+        if self.rev_g_samples is not None:
+            if self.nsamples != self.forward_nsamples:
+                trn_rev, val_rev, tst_rev = np.random.permutation(self.nsamples).split([n_train, n_val, n_test])
+            else:
+                trn_rev = trn_indices
+                val_rev = val_indices
+                tst_rev = tst_indices
+
+            rev_trn = self.rev_g_samples[trn_rev]
+            rev_val = self.rev_g_samples[val_rev]
+            rev_tst = self.rev_g_samples[tst_rev]
+        else:
+            rev_trn = rev_val = rev_tst = None
+
+        trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        val = self.__class__(g_samples=self.g_samples[val_indices], rev_g_samples=rev_val)
+        tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
+
+        return trn, val, tst
+        
     def get_random_batch(self, batch_size):
         indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
         if self.rev_g_samples is not None:
@@ -403,7 +440,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # ==========================================
 # Entropy production (EP) estimation methods 
 # ==========================================
-def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, 
+def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validation_data=None,
                     max_iter=None, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
@@ -615,15 +652,15 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 print(f'max_iter {max_iter} reached in get_EP_Newton!')
             pass
 
-        if holdout_data is not None:
-            return _get_valid_solution(objective=f_cur_tst, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        if validation_data is not None:
+            return _get_valid_solution(objective=validation_data.get_objective(theta), theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
 
 
-def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr = 0.01, patience = 10, tol=1e-8, 
+def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, validation_data=None, report_every=10,
+                            max_iter=None, lr = 0.001, patience = 10, tol=1e-8, 
                             use_Adam=True, use_BB=False, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -790,8 +827,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 print(f'get_EP_GradientAscent : max_iter {max_iter} reached!')
             pass
 
-        if holdout_data is not None:
-            return _get_valid_solution(objective=best_tst_score, theta=best_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        if validation_data is not None:
+            return _get_valid_solution(objective=validation_data.get_objective(best_theta), theta=best_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
