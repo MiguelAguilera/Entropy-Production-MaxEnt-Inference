@@ -102,6 +102,7 @@ def calc_spin(i_args):
         return None
 
     Pi = nflips / T
+#    print(nflips)
     
     J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
 
@@ -110,9 +111,9 @@ def calc_spin(i_args):
 #    data = ep_estimators.Dataset(g_samples)
 #    est = ep_estimators.EPEstimators(data)
 
-#   
+#    torch.cuda.manual_seed(3)
     data = ep_estimators.Dataset(g_samples=g_samples)
-    trn, tst = data.split_train_test(holdout_fraction=1/5)
+    trn, val, tst = data.split_train_val_test()
         
     # Calculate empirical estimate of true EP
     
@@ -129,7 +130,8 @@ def calc_spin(i_args):
     
     # Compute 1-step Newton
     t0 = time.time()
-    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, max_iter=1, adjust_radius=True, num_chunks=num_chunks)
+    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, validation_data=val, max_iter=1, adjust_radius=True, num_chunks=num_chunks)
+#    theta_init=theta_hat_g.clone() # save theta for later initialization
     EP_hat_g = Pi * sig_hat_g
     EP_hat_g_trn = Pi * sig_hat_g_trn
     theta_hat_g_np = theta_hat_g.detach().cpu().numpy()
@@ -139,7 +141,8 @@ def calc_spin(i_args):
 #    gc.collect()
 
     # Compute Newton estimation
-    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=0.25, adjust_radius=False, num_chunks=num_chunks, verbose=2, tol=1e-8)
+    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=val,  use_BB=True, verbose=1)
+#    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=1.0, adjust_radius=False, num_chunks=num_chunks, verbose=1, tol=1e-8, patience=1)
 #    
     EP_g = Pi * sig_g
     EP_g_trn = Pi * sig_g_trn
@@ -239,7 +242,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         os.remove(temp_file_name_out)
 
     # Main loop over all spins
-    for i in tqdm(range(N), desc="Sequential spin progress"):
+    for i in tqdm(range(N//1), desc="Sequential spin progress"):
         if i in preload_threads:
             preload_threads[i].join()
             X_i, J_i, nflips = preload_results.pop(i)
