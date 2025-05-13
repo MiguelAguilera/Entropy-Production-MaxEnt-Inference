@@ -471,6 +471,10 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
             grad = data.g_mean - g_theta
             H_theta += linsolve_eps * I  # regularize Hessian by adding a small I
 
+
+
+            last_round = False # set to True if we want break after updating theta and objective values
+            
             if trust_radius is not None and solve_constrained:
                 # Solve the constrained trust region problem using the
                 # Steihaug-Toint Truncated Conjugate-Gradient Method
@@ -496,6 +500,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                         if trust_radius < trust_radius_min:
                             if verbose: print(f"{funcname} : trust_radius_min={trust_radius_min} reached!")
                             trust_radius = trust_radius_min
+                            last_round = True
                             break
 
                         if rho < eta1:
@@ -520,7 +525,6 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
                 f_new_trn  = data.get_objective(new_theta)
 
 
-            last_round = False # set to True if we want break after updating theta and objective values
 
 #            if holdout_data is None:
 #                if is_infnan(f_new_trn):  
@@ -618,7 +622,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, report_every=10,
-                            max_iter=None, lr=None, patience = 10, tol=1e-4, 
+                            max_iter=None, lr = 0.01, patience = 10, tol=1e-8, 
                             use_Adam=True, use_BB=False, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
     # Estimate EP using gradient ascent algorithm
@@ -646,8 +650,6 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
     if max_iter is None:
         max_iter = 10000
-    if lr is None:
-        lr = 0.01
     
     if holdout_data is not None:
         f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
