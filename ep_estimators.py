@@ -671,7 +671,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
         patience_counter = 0
         old_time         = time.time()
 
-        old_grad = delta_theta = None
+        old_grad = delta_theta = best_theta = None
         for t in range(max_iter):
             if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
                 new_time = time.time()
@@ -719,25 +719,27 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 #                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
 #                        break
                 elif f_new_tst > np.log(holdout_data.nsamples):
-                    f_new_tst = np.log(holdout_data.nsamples)
-                    last_round = True
+                    best_tst_score = np.log(holdout_data.nsamples)
+                    best_theta = new_theta
                     if verbose: msg(f"[Clipping] f_new_tst >= log(nsamples)")
+                    last_round = True 
+
                 #elif np.abs(f_new_tst - f_cur_tst) < tol:
                 #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                 #    last_round = True
                 
-                if f_new_tst > best_tst_score:
+                elif f_new_tst > best_tst_score:
                     best_tst_score = f_new_tst
                     best_theta = new_theta.clone()  # Save the best model
                     patience_counter = 0
+
+                elif patience_counter >= patience:
+                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps")
+                    last_round = True
+                
                 else:
                     patience_counter += 1
                     
-                if patience_counter >= patience:
-                    theta     = best_theta.clone()
-                    f_cur_tst = best_tst_score
-                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps")
-                    break
                     
             f_cur_trn, theta = f_new_trn, new_theta
             if holdout_data is not None:
@@ -787,7 +789,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
             pass
 
         if holdout_data is not None:
-            return _get_valid_solution(objective=f_cur_tst, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+            return _get_valid_solution(objective=best_tst_score, theta=best_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
