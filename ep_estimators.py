@@ -455,7 +455,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None,
 
         for t in range(max_iter):
             if verbose and verbose > 1: 
-                print(f'{funcname} : iteration {t:5d} f_cur_trn={f_cur_trn: 3f}', 
+                print(f'{funcname} : iter {t:5d} f_cur_trn={f_cur_trn: 3f}', 
                                                     f'f_cur_tst={f_cur_tst: 3f}' if holdout_data is not None else '')
 
             # Find Newton step direction. We first get gradient and Hessian
@@ -644,6 +644,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
     #   Solution object with objective (EP estimate), theta, and trn_objective (if holdout)
 
     funcname = 'get_EP_GradientAscent'
+    def msg(s):
+        print(f"get_EP_GradientAscent : iter={t:4d} | ‖θ‖∞={torch.abs(theta).max():3.2f}: {s}")
 
     if max_iter is None:
         max_iter = 10000
@@ -673,8 +675,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
         for t in range(max_iter):
             if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
                 new_time = time.time()
-                print(f'{funcname} : iteration {t:5d} | {(new_time - old_time)/report_every:3f}s/iter | f_cur_trn={f_cur_trn: 3f}', 
-                      f'f_cur_tst={f_cur_tst: 3f}' if holdout_data is not None else '')
+                print(f'{funcname} : iter {t:4d} | {(new_time - old_time)/report_every:4.2f}s/iter | f_cur_trn={f_cur_trn: 5.3f}', 
+                      f'f_cur_tst={f_cur_tst: 5.3f}' if holdout_data is not None else '')
                 old_time = new_time
 
 
@@ -687,24 +689,23 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
 
             grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
 
-
             f_new_trn    = tilted_stats['objective']
 
             # Different conditions that will stop optimization. See get_EP_Newton above
             # for a description of different branches
             last_round = False # flag that indicates whether to break after updating values
             if is_infnan(f_new_trn):
-                if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
+                if verbose: msg(f"[Stopping] Invalid value {f_new_trn} in training objective")
                 break
 #                elif f_new_trn <= f_cur_trn and t > min_iter:
-#                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn) at iter {t}")
+#                    print(f"[Stopping] Training objective did not improve (f_new_trn <= f_cur_trn)")
 #                    break
             elif f_new_trn > np.log(data.nsamples):
-                if verbose: print(f"{funcname} : [Clipping] Training objective exceeded log(samples), clipping to log(nsamples) at iter {t}")
                 f_new_trn = np.log(data.nsamples)
+                if verbose: msg(f"[Clipping] f_new_trn >= log(nsamples)")
                 last_round = True
             elif np.abs(f_new_trn - f_cur_trn) < tol:
-                if verbose: print(f"{funcname} : [Converged] Training objective change below tol={tol} at iter {t}")
+                if verbose: msg(f"[Converged] Training objective change below tol={tol}")
                 last_round = True
 
             if holdout_data is not None: #  and t > 150:
@@ -712,15 +713,15 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 #train_gain = f_new_trn - f_cur_trn
                 #test_drop = f_cur_tst - f_new_tst
                 if is_infnan(f_new_tst):
-                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
+                    if verbose: msg(f"[Stopping] Invalid value {f_new_tst} in test objective")
                     break
 #                    elif test_drop > 0 and train_gain > tol :
 #                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
 #                        break
                 elif f_new_tst > np.log(holdout_data.nsamples):
-                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
                     f_new_tst = np.log(holdout_data.nsamples)
                     last_round = True
+                    if verbose: msg(f"[Clipping] f_new_tst >= log(nsamples)")
                 #elif np.abs(f_new_tst - f_cur_tst) < tol:
                 #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
                 #    last_round = True
@@ -733,9 +734,9 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                     patience_counter += 1
                     
                 if patience_counter >= patience:
-                    if verbose: print(f"{funcname} : [Stopping] Test objective did not improve  (f_new_tst <= f_cur_tst and)  for {patience} steps iter {t}")
                     theta     = best_theta.clone()
                     f_cur_tst = best_tst_score
+                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps")
                     break
                     
             f_cur_trn, theta = f_new_trn, new_theta
@@ -750,7 +751,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
                 # Barzilai-Borwein method, short-step version
                 d_grad  = grad - old_grad
                 c_alpha = -(delta_theta @ d_grad) / (d_grad @ d_grad)
-                # print(t, 'here', c_alpha, grad)
+                # msg(f'BB step size {c_alpha:5.3f}, cutoff {.1/grad.norm():5.3f} || {delta_theta.norm():5.3f} || {grad.norm():5.3f}')
 
                 delta_theta = c_alpha * grad 
 
@@ -782,7 +783,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, r
         else:   # for loop did not break
             if verbose:
                 # print warning about max iterations reached, but only if its a large number
-                print(f'max_iter {max_iter} reached in get_EP_GradientAscent!')
+                print(f'get_EP_GradientAscent : max_iter {max_iter} reached!')
             pass
 
         if holdout_data is not None:
