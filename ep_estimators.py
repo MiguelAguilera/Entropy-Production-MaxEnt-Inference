@@ -707,6 +707,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
         v = torch.zeros_like(new_theta)
         
         best_tst_score   = -float('inf')  # for maximization
+        best_iter        = 0
         patience_counter = 0
         old_time         = time.time()
 
@@ -768,12 +769,13 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
                 #    last_round = True
                 
                 elif f_new_tst > best_tst_score:
-                    best_tst_score = f_new_tst
-                    best_theta = new_theta.clone()  # Save the best model
+                    best_tst_score   = f_new_tst
+                    best_theta       = new_theta.clone()  # Save the best model
                     patience_counter = 0
+                    best_iter        = t
 
                 elif patience_counter >= patience:
-                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps")
+                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps (last improvement {t-best_iter} steps ago)")
                     last_round = True
                 
                 else:
