@@ -819,10 +819,10 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
             if use_BB and delta_theta is not None and old_grad is not None:
                 # Barzilai-Borwein method, short-step version
                 d_grad  = grad - old_grad
-                c_alpha = -(delta_theta @ d_grad) / (d_grad @ d_grad)
-                # msg(f'BB step size {c_alpha:5.3f}, cutoff {.1/grad.norm():5.3f} || {delta_theta.norm():5.3f} || {grad.norm():5.3f}')
+                alpha = (delta_theta @ d_grad) / (d_grad @ d_grad)
+                # msg(f'BB step size {alpha:5.3f}, cutoff {.1/grad.norm():5.3f} || {delta_theta.norm():5.3f} || {grad.norm():5.3f}')
 
-                delta_theta = c_alpha * grad 
+                delta_theta = - alpha * grad 
 
 
 
