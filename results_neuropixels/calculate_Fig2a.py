@@ -43,6 +43,8 @@ parser.add_argument("--use_BB", action="store_true", default=False,
                     help="Use Adam optimizer (disabled by default).")
 parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
+parser.add_argument("--seed", type=int, default=0,
+                    help="Observable (default: 0).")
 parser.add_argument("--patience", type=int, default=100,
                     help="Early stopping patience for the optimizer (default: 100).")
 parser.add_argument("--lr", type=float, default=1,
@@ -215,7 +217,10 @@ def calc(sizes, session_type, session_id, r):
         else:
             exit()
 
-#        trn, tst = data.split_train_test(holdout_fraction=1/5, holdout_shuffle=True)
+        print("→ Torch seed {args.seed}  set for CPU.")
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
+            print("→ Torch seed {args.seed} set for CUDA.")
         trn, val, tst = data.split_train_val_test()
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 

@@ -24,6 +24,8 @@ parser.add_argument("--session_type", type=str, choices=["active", "passive", "g
 parser.add_argument("--N", type=int, default=200)
 parser.add_argument("--bin_size", type=float, default=0.01)
 parser.add_argument("--obs", type=int, default=1)
+parser.add_argument("--seed", type=int, default=0,
+                    help="Observable (default: 0).")
 parser.add_argument("--tol", type=float, default=1e-6)
 parser.add_argument("--use_Adam", action="store_true", default=False,
                     help="Use Barzilai-Borwein optimizer (disabled by default).")
@@ -100,7 +102,12 @@ if result_fname.exists() and not args.overwrite:
 else:
     # --- Fit MaxEnt model ---
     data = ep_estimators.RawDataset(S_t, S1_t) if args.obs == 1 else ep_estimators.RawDataset2(S_t, S1_t)
-#    trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
+
+    torch.manual_seed(args.seed)
+    print("→ Torch seed {args.seed}  set for CPU.")
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        print("→ Torch seed {args.seed} set for CUDA.")
     trn, val, tst = data.split_train_val_test()
 
     if args.lr_scale == "none":

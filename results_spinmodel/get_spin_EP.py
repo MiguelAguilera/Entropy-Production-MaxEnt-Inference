@@ -112,6 +112,10 @@ def calc_spin(i_args):
 #    est = ep_estimators.EPEstimators(data)
 
 #    torch.cuda.manual_seed(3)
+    print("→ Torch seed {args.seed}  set for CPU.")
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        print("→ Torch seed {args.seed} set for CUDA.")    
     data = ep_estimators.Dataset(g_samples=g_samples)
     trn, val, tst = data.split_train_val_test()
         
