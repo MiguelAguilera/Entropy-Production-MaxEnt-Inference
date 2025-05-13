@@ -150,8 +150,10 @@ if False and args.obs == 1:
 
 
 
-filename = f"coupling_coefficients_N{N}_obs{args.obs}.npz"
+filename = f"ep_data/coupling_coefficients_N{N}_obs{args.obs}.npz"
 
+if not os.path.exists(os.path.dirname(filename)):
+    os.makedirs(os.path.dirname(filename))
 np.savez(
     filename,
     areas=areas,
