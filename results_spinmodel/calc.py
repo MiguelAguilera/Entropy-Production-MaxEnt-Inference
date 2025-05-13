@@ -57,8 +57,8 @@ def calc_spin(beta, J, i, g_samples):
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0) ),
-         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, # tol=2, 
-                                                                      use_BB=True, verbose=2, report_every=1, patience=10) ),
+         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, lr=1e-2, 
+                                                                      use_BB=True, verbose=1, report_every=1, patience=20) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     utils.empty_torch_cache()
@@ -142,7 +142,7 @@ def calc(file_name, max_spins=None):
         np.random.seed(123)
         spin_ids = np.random.choice(N, size=max_spins, replace=False)
 
-    spin_ids = [7,]
+    #spin_ids = [7,]
     pbar = tqdm(spin_ids, smoothing=0)
 
     print("=" * 70)
@@ -156,7 +156,10 @@ def calc(file_name, max_spins=None):
     for i in pbar:
         if i % 40 == 0:
             utils.empty_torch_cache()
+
         g_samples = spin_model.get_g_observables_bin(S_bin, F, i)
+
+        # g_samples = torch.concat([g_samples, torch.randn(1000, g_samples.shape[1])], dim=0)
 
         res = calc_spin( beta, J, i, g_samples)
 

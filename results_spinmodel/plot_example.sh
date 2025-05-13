@@ -88,7 +88,7 @@ ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR
 ## ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000"
 
 python generate_data_spin_model.py --seed 42   --num_neighbors 6  $ARGS 
-python scaling_fig.py                    $ARGS  $ARGSEP --overwrite # --max_spins 100   --overwrite #--nograd --overwrite  #--nograd   --overwrite 
+python scaling_fig.py                    $ARGS  $ARGSEP --overwrite  --max_spins 1000  #  --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 
