@@ -302,6 +302,28 @@ class RawDataset(DatasetBase):
         trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
+        
+    def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
+        # Split current data set into training, validation, and test parts
+        assert val_fraction + test_fraction < 1.0
+
+        if shuffle:
+            perm = np.random.permutation(self.nsamples)
+        else:
+            perm = np.arange(self.nsamples)
+
+        n_val = int(self.nsamples * val_fraction)
+        n_test = int(self.nsamples * test_fraction)
+        n_train = self.nsamples - n_val - n_test
+
+        trn_indices = perm[:n_train]
+        val_indices = perm[n_train:n_train + n_val]
+        tst_indices = perm[n_train + n_val:]
+
+        trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
+        val = type(self)(X0=self.X0[val_indices], X1=self.X1[val_indices])
+        tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
+        return trn, val, tst
 
     def get_random_batch(self, batch_size):
         indices = np.random.choice(self.nsamples, size=batch_size, replace=True)

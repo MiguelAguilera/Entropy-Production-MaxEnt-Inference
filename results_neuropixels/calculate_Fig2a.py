@@ -10,7 +10,6 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 import torch
 
 sys.path.insert(0, '..')
-from methods_EP_parallel import *
 import ep_estimators
 import utils
 utils.set_default_torch_device()
@@ -31,30 +30,31 @@ parser.add_argument("--L2", type=str, default="0",
                     help="L2 regularization type: 0, lin1, lin.1 (default: 0).")
 parser.add_argument("--seed", type=int, default=None,
                     help="Random number seed.")
-parser.add_argument("--rep", type=int, default="1",
+parser.add_argument("--rep", type=int, default="10",
                     help="Repetitions of neuron sampling for EP estimation (default: 1).")
 parser.add_argument("--bin_size", type=float, default="0.01",
                     help="Bin size for neural spike disretization (default: 10).")
 parser.add_argument("--order", type=str, default="random",
                     choices=["random", "sorted","sorted_desc"],
                     help="Ordering of neurons: random or sorted by activity (default: random).")
-parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
-                    help="Disable Adam optimizer (enabled by default).")
-parser.set_defaults(args=True)
+parser.add_argument("--use_Adam", action="store_true", default=False,
+                    help="Use Barzilai-Borwein optimizer (disabled by default).")
+parser.add_argument("--use_BB", action="store_true", default=False,
+                    help="Use Adam optimizer (disabled by default).")
 parser.add_argument("--obs", type=int, default=1,
                     help="Observable (default: 1).")
-parser.add_argument("--patience", type=int, default=10,
-                    help="Early stopping patience for the optimizer (default: 10).")
-parser.add_argument("--lr", type=float, default=0.001,
-                    help="Base learning rate (default: 0.001).")
+parser.add_argument("--patience", type=int, default=100,
+                    help="Early stopping patience for the optimizer (default: 100).")
+parser.add_argument("--lr", type=float, default=1,
+                    help="Base learning rate (default: 0.25).")
 parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: sqrtN).")
-parser.add_argument("--tol", type=float, default=1e-6,
-                    help="Base tolerance for convergence (default: 1e-6).")
+parser.add_argument("--tol", type=float, default=0,
+                    help="Base tolerance for convergence (default: 0).")
 parser.add_argument("--tol_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the tolerance by 'N', 'sqrtN', or use it as-is with 'none' (default: N).")
 parser.add_argument("--sizes", nargs="+", type=int,
-                    default=[50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+                    default=[50, 100, 150, 200, 250, 300],#, 350, 400, 450, 500],
                     help="List of population sizes to test (default: [50, 100, ..., 500]).")
 parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.9, 0.999, 1e-8],
                     help="Adam optimizer parameters: beta1, beta2, epsilon (default: 0.9 0.999 1e-8)")
@@ -120,6 +120,8 @@ def calc(sizes, session_type, session_id, r):
     if args.use_Adam:
         adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
         save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    elif args.use_BB:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
     else:
         save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 
@@ -143,12 +145,13 @@ def calc(sizes, session_type, session_id, r):
             indices = np.arange(S_total.shape[0])
 
         S = S_total[indices, :]
-        N0 = S.shape[0]
+        N0,T = S.shape
+        
 
         if order != 'sorted':
-            min_spikes = 10000
-            print(f"!!! with order={order}, we restrict attention only to  neurons with >= {min_spikes} spikes")
-            good_ixs = np.sum(S, axis=1)>=min_spikes
+            min_spikes_ratio = 0.02
+            print(f"!!! with order={order}, we restrict attention only to  neurons with >= {min_spikes_ratio*100}% of active bins")
+            good_ixs = np.mean(S, axis=1)>=min_spikes_ratio
             S = S[good_ixs, :]
             N0 = S.shape[0]
 
@@ -212,12 +215,13 @@ def calc(sizes, session_type, session_id, r):
         else:
             exit()
 
-        trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
+#        trn, tst = data.split_train_test(holdout_fraction=1/5, holdout_shuffle=True)
+        trn, val, tst = data.split_train_val_test()
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
         start_time = time.time()
-        EP_maxent_tst,theta,EP_maxent_full = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, 
-                                                lr=lr, tol=tol, use_Adam=args.use_Adam, patience=args.patience, 
+        EP_maxent_val,theta,EP_maxent_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=tst,
+                                                lr=lr, tol=tol, use_Adam=args.use_Adam,  use_BB=args.use_BB, patience=args.patience, 
                                                 verbose=1,#,report_every=10, 
                                                 beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[2]
                                                 )
@@ -225,9 +229,9 @@ def calc(sizes, session_type, session_id, r):
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
         utils.empty_torch_cache()
 
-        EP[n] = EP_maxent_tst
+        EP[n] = EP_maxent_val
         R[n] = spike_avg
-        print(f"  [Result took {time.time()-stime:3f}] EP tst/full: {EP_maxent_tst:.5f} {EP_maxent_full:.5f} | R: {R[n]:.5f} | EP tst/R: {EP[n]/R[n]:.5f}")
+        print(f"  [Result took {time.time()-stime:3f}] EP val/trn: {EP_maxent_val:.5f} {EP_maxent_trn:.5f} | R: {R[n]:.5f} | EP val/R: {EP[n]/R[n]:.5f}")
 
 
 

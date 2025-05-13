@@ -25,9 +25,10 @@ parser.add_argument("--N", type=int, default=200)
 parser.add_argument("--bin_size", type=float, default=0.01)
 parser.add_argument("--obs", type=int, default=1)
 parser.add_argument("--tol", type=float, default=1e-6)
-parser.add_argument("--no_Adam", dest="use_Adam", action="store_false",
-                    help="Disable Adam optimizer (enabled by default).")
-parser.set_defaults(use_Adam=True)
+parser.add_argument("--use_Adam", action="store_true", default=False,
+                    help="Use Barzilai-Borwein optimizer (disabled by default).")
+parser.add_argument("--use_BB", action="store_true", default=False,
+                    help="Use Adam optimizer (disabled by default).")
 parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001)")
 parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: N).")
@@ -79,20 +80,28 @@ S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.).float().to(torch.get_default_devi
 
 SAVE_DATA_DIR = Path("ep_fit_results")
 SAVE_DATA_DIR.mkdir(exist_ok=True)
-result_fname = SAVE_DATA_DIR / f'neuropixels_visual_sorted_binsize_{args.bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+#result_fname = SAVE_DATA_DIR / f'neuropixels_visual_sorted_binsize_{args.bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+if args.use_Adam:
+    adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
+    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+elif args.use_BB:
+    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+else:
+    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 
 
 if result_fname.exists() and not args.overwrite:
     print(f"[Skipping] Loading previously saved results from: {result_fname}")
     with h5py.File(result_fname, "r") as f:
-        EP_maxent_tst = f["EP_test"][()]
-        EP_maxent_full = f["EP_full"][()]
+        EP_maxent_tst = f["EP_val"][()]
+        EP_maxent_full = f["EP_trn"][()]
         theta_np = f["theta"][:]
     print(f"\nEP test: {EP_maxent_tst:.5f} | EP full: {EP_maxent_full:.5f}")
 else:
     # --- Fit MaxEnt model ---
     data = ep_estimators.RawDataset(S_t, S1_t) if args.obs == 1 else ep_estimators.RawDataset2(S_t, S1_t)
-    trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
+#    trn, tst = data.split_train_test(holdout_fraction=0.5, holdout_shuffle=True)
+    trn, val, tst = data.split_train_val_test()
 
     if args.lr_scale == "none":
         lr_scaled = args.lr
@@ -108,9 +117,11 @@ else:
     EP_maxent_tst, theta, EP_maxent_full = ep_estimators.get_EP_GradientAscent(
         data=trn,
         holdout_data=tst,
+        validation_data=val,
         lr=lr_scaled,
         tol=args.tol,
         use_Adam=args.use_Adam,
+        use_BB=args.use_BB,
         patience=args.patience,
         verbose=1,
         beta1=args.Adam_args[0],
