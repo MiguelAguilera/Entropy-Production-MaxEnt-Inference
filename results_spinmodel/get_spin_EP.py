@@ -95,7 +95,7 @@ def calc_spin(i_args):
     Performs entropy production estimation for a single spin using multiple methods.
     Saves results in the specified HDF5 file.
     """
-    i, N, beta, rep, T, file_name, file_name_out, g_samples, J_i_t, nflips = i_args
+    i, N, beta, rep, T, file_name, file_name_out, g_samples, J_i_t, nflips, seed = i_args
 
     if g_samples.shape[0] <= 100:
         print(f"[Warning] Skipping spin {i}: insufficient spin flips")
@@ -111,11 +111,12 @@ def calc_spin(i_args):
 #    data = ep_estimators.Dataset(g_samples)
 #    est = ep_estimators.EPEstimators(data)
 
-#    torch.cuda.manual_seed(3)
-    print("→ Torch seed {args.seed}  set for CPU.")
+    torch.manual_seed(seed)
+    print("→ Torch seed {seed}  set for CPU.")
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
-        print("→ Torch seed {args.seed} set for CUDA.")    
+        torch.cuda.manual_seed_all(seed)
+        print("→ Torch seed {seed} set for CUDA.")   
+         
     data = ep_estimators.Dataset(g_samples=g_samples)
     trn, val, tst = data.split_train_val_test()
         
@@ -180,7 +181,7 @@ def calc_spin(i_args):
         group.create_dataset("Emp", data=Emp)
 
     
-def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwrite=True, check_memory=True):
+def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwrite=True, check_memory=True, seed=None):
     """
     Compute entropy production estimates for a full spin system.
 
@@ -221,6 +222,10 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     T = N * rep
     cap = None  # Cap on number of flips per spin (disabled)
 
+    if seed is not None:
+        print(f"Setting random seed to {seed}")
+        np.random.seed(seed)
+        
     class DummyProgress:
         def __init__(self):
             self.value = 0
@@ -275,7 +280,7 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
         del X_i, J_i  # Free memory
 
         # Perform estimation
-        calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, g_samples, J_i_t, nflips))
+        calc_spin((i, N, beta, rep, T, file_name, temp_file_name_out, g_samples, J_i_t, nflips, seed))
         progress.value += 1
 
         # Preload next spin in background

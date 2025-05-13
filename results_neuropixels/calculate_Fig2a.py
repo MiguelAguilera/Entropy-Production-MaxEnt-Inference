@@ -28,8 +28,6 @@ parser.add_argument("--mode", type=str, default="visual",
                     help="Brain area mode to filter neurons (default: visual).")
 parser.add_argument("--L2", type=str, default="0",
                     help="L2 regularization type: 0, lin1, lin.1 (default: 0).")
-parser.add_argument("--seed", type=int, default=None,
-                    help="Random number seed.")
 parser.add_argument("--rep", type=int, default="10",
                     help="Repetitions of neuron sampling for EP estimation (default: 1).")
 parser.add_argument("--bin_size", type=float, default="0.01",
@@ -217,6 +215,7 @@ def calc(sizes, session_type, session_id, r):
         else:
             exit()
 
+        torch.manual_seed(args.seed)
         print("→ Torch seed {args.seed}  set for CPU.")
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(args.seed)

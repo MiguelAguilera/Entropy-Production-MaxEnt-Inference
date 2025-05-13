@@ -36,6 +36,8 @@ if __name__ == "__main__":
                         help="Do not overwrite existing files.")
     parser.add_argument("--num_neighbors", type=int, default=None,
                         help="Number of neighbors for sparse connectivity (default: None).")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Observable (default: 0).")
     args = parser.parse_args()
 
     N = args.N
@@ -73,7 +75,7 @@ if __name__ == "__main__":
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_beta_{beta}_patterns_{args.patterns}.npz"
             file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite)
+        EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite, seed = args.seed)
         
 
     # -------------------------------
@@ -104,7 +106,7 @@ if __name__ == "__main__":
 
     # Axes and labels
     plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
-    plt.ylabel(r'$\Sigma$', rotation=0, labelpad=20)
+    plt.ylabel(r'EP', rotation=0, labelpad=20)
     plt.xlabel(r'$\beta$')
 
     # Legend
