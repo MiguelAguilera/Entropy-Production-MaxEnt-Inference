@@ -676,6 +676,8 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
 
         if validation_data is not None:
             return _get_valid_solution(objective=validation_data.get_objective(theta), theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        elif holdout_data is not None:
+            return _get_valid_solution(objective=best_val, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
