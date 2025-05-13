@@ -791,6 +791,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
                 #    last_round = True
                 
                 elif f_new_tst > best_tst_score:
+                    if verbose > 1 and t-best_iter>1: 
+                        msg(f"[Patience] Resetting patience counter, last improvement {t-best_iter} steps ago")
                     best_tst_score   = f_new_tst
                     best_theta       = new_theta.clone()  # Save the best model
                     patience_counter = 0
