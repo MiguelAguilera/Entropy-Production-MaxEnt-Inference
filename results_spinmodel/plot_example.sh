@@ -90,11 +90,12 @@ ARGS="--rep 10000000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta
 ARGS="--rep 1000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --thinning_multiplier 2 --warmup 0.2 --BASE_DIR ~/MaxEntData1000_wait"
 # ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000test"
 # ARGS=" --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData1000restarts"
-ARGS="--rep 5000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData5000restarts"
+ARGS="--rep 2500000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData2.5M"
 
 #ARGS="--rep 100000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000_100k"
+ARGS="--beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000n20 --num_neighbors 20"
 
-python generate_data_spin_model.py --seed 42  --trials 1000 --num_neighbors 6  $ARGS  # --overwrite
+python generate_data_spin_model.py --seed 42  --trials 1000  $ARGS  # --overwrite
 python scaling_fig.py                    $ARGS  $ARGSEP   --max_spins 1000  #  --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 

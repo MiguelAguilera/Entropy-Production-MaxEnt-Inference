@@ -738,6 +738,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None
             new_theta = numpy_to_torch(theta_init)
         else:
             new_theta = torch.zeros(data.nobservables, device=data.device)
+        theta = new_theta.clone()
 
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
