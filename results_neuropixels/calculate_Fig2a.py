@@ -96,6 +96,24 @@ def calc(sizes, session_type, session_id, r):
 
     empty_array = (np.array([None]), np.array([None]))
 
+    
+    SAVE_DATA_DIR = 'ep_data'
+    if args.use_Adam:
+        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    elif args.use_BB:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+    else:
+        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+
+    group_path = f"{session_type}/{session_id}/rep_{r}"
+
+    if os.path.exists(save_path):
+        with h5py.File(save_path, 'r') as f:
+            if group_path in f and not args.overwrite:
+                print(f"[Skipping] All sizes for {group_path} already exist in {save_path}. Use --overwrite to recompute.")
+                return
+                
     filename = BASE_DIR / f'data_binsize_{bin_size}_session_{session_id}.h5'
     print(f"Loading data from: {filename}")
 
@@ -115,23 +133,7 @@ def calc(sizes, session_type, session_id, r):
     EP = np.zeros(len(sizes))
     R = np.zeros(len(sizes))
     
-    
-    SAVE_DATA_DIR = 'ep_data'
-    if args.use_Adam:
-        adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
-        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
-    elif args.use_BB:
-        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
-    else:
-        save_path = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 
-    group_path = f"{session_type}/{session_id}/rep_{r}"
-
-    if os.path.exists(save_path):
-        with h5py.File(save_path, 'r') as f:
-            if group_path in f and not args.overwrite:
-                print(f"[Skipping] All sizes for {group_path} already exist in {save_path}. Use --overwrite to recompute.")
-                return
                 
     for n, N in enumerate(sizes):
         print(f"\n> Processing system size {N} neurons")

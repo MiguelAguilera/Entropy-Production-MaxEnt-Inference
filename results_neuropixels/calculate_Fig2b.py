@@ -31,7 +31,7 @@ parser.add_argument("--use_Adam", action="store_true", default=False,
                     help="Use Barzilai-Borwein optimizer (disabled by default).")
 parser.add_argument("--use_BB", action="store_true", default=False,
                     help="Use Adam optimizer (disabled by default).")
-parser.add_argument("--lr", type=float, default=0.001, help="Learning rate (default: 0.001)")
+parser.add_argument("--lr", type=float, default=1, help="Learning rate (default: 1)")
 parser.add_argument("--lr_scale", type=str, choices=["none", "N", "sqrtN"], default="N",
                     help="Scale the learning rate by 'N', 'sqrtN', or use it as-is with 'none' (default: N).")
 parser.add_argument("--Adam_args", nargs=3, type=float, default=[0.9, 0.999, 1e-8],
@@ -79,26 +79,27 @@ S, areas = S[area_order], areas[area_order]
 S_t = torch.from_numpy(S[:, 1:].T * 2. - 1.).float().to(torch.get_default_device())
 S1_t = torch.from_numpy(S[:, :-1].T * 2. - 1.).float().to(torch.get_default_device())
 
+mode="visual"
+order="sorted"
 
 SAVE_DATA_DIR = Path("ep_fit_results")
 SAVE_DATA_DIR.mkdir(exist_ok=True)
 #result_fname = SAVE_DATA_DIR / f'neuropixels_visual_sorted_binsize_{args.bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 if args.use_Adam:
     adam_str = f'beta1_{args.Adam_args[0]}_beta2_{args.Adam_args[1]}_eps_{args.Adam_args[2]}'
-    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
+    result_fname = SAVE_DATA_DIR / f'neuropixels_{mode}_{order}_binsize_{args.bin_size}_obs_{args.obs}_Adam_lr_{args.lr}_lr-scale_{args.lr_scale}_args_{adam_str}.h5'
 elif args.use_BB:
-    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+    result_fname = SAVE_DATA_DIR / f'neuropixels_{mode}_{order}_binsize_{args.bin_size}_obs_{args.obs}_BB_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 else:
-    result_fname = f'{SAVE_DATA_DIR}/neuropixels_{mode}_{order}_binsize_{bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
+    result_fname = SAVE_DATA_DIR / f'neuropixels_{mode}_{order}_binsize_{args.bin_size}_obs_{args.obs}_lr_{args.lr}_lr-scale_{args.lr_scale}.h5'
 
 
 if result_fname.exists() and not args.overwrite:
     print(f"[Skipping] Loading previously saved results from: {result_fname}")
     with h5py.File(result_fname, "r") as f:
-        EP_maxent_tst = f["EP_val"][()]
-        EP_maxent_full = f["EP_trn"][()]
+        EP_maxent = f["EP"][()]
         theta_np = f["theta"][:]
-    print(f"\nEP test: {EP_maxent_tst:.5f} | EP full: {EP_maxent_full:.5f}")
+    print(f"\nEP test: {EP_maxent:.5f}")
 else:
     # --- Fit MaxEnt model ---
     data = ep_estimators.RawDataset(S_t, S1_t) if args.obs == 1 else ep_estimators.RawDataset2(S_t, S1_t)
@@ -121,7 +122,7 @@ else:
         
 
     print(f"Training MaxEnt model (N={args.N}, tol={args.tol})...")
-    EP_maxent_tst, theta, EP_maxent_full = ep_estimators.get_EP_GradientAscent(
+    EP_maxent, theta, EP_maxent_trn = ep_estimators.get_EP_GradientAscent(
         data=trn,
         validation_data=val,
         test_data=tst,
@@ -137,12 +138,11 @@ else:
     )
     theta_np = theta.cpu().numpy()
     
-    print(f"\nEP test: {EP_maxent_tst:.5f} | EP full: {EP_maxent_full:.5f}")
+    print(f"\nEP test: {EP_maxent:.5f} | EP trn: {EP_maxent_trn:.5f}")
     
     # Save results
     with h5py.File(result_fname, "w") as f:
-        f.create_dataset("EP_test", data=EP_maxent_tst)
-        f.create_dataset("EP_full", data=EP_maxent_full)
+        f.create_dataset("EP", data=EP_maxent)
         f.create_dataset("theta", data=theta_np)
     print(f"[Saved] Results to: {result_fname}")
     
@@ -180,12 +180,12 @@ area_centers = (area_start + area_end) / 2
 
 # --- Plot θ matrix ---
 norm = mcolors.SymLogNorm(
-    linthresh=0.01, linscale=0.1,
+    linthresh=0.02, linscale=0.10,
     vmin=-np.max(np.abs(th)), vmax=np.max(np.abs(th))
 )
 
 plt.figure(figsize=(5, 4))
-plt.imshow(th, cmap='bwr', aspect='equal', interpolation='nearest', norm=norm)
+plt.imshow(th, cmap='seismic', aspect='equal', interpolation='nearest', norm=norm)
 plt.text(-0.28, 0.5, r'$\theta_{ij}^*$', fontsize=20, 
          va='center', ha='center', rotation=0, transform=plt.gca().transAxes)
 
