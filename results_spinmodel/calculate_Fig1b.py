@@ -69,7 +69,7 @@ if __name__ == "__main__":
     # Initialization and Parameters
     # -------------------------------
     BASE_DIR = os.path.expanduser(args.BASE_DIR)
-    SAVE_DATA_DIR = 'ep_data/spin'
+    SAVE_DATA_DIR = 'ep_data'
     if not os.path.exists(SAVE_DATA_DIR):
         print(f'Creating base directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR, exist_ok=True)
@@ -108,6 +108,7 @@ if __name__ == "__main__":
 
     upper_indices = np.triu_indices(N, k=1)
     nonzero_mask = dbetaJ[upper_indices] != 0
+    nonzero_mask = dbetaJ[upper_indices] <  1e10
     filtered_indices = (upper_indices[0][nonzero_mask], upper_indices[1][nonzero_mask])
 
     r2_N1 = R2(dtheta_N1[filtered_indices], dbetaJ[filtered_indices])
@@ -132,9 +133,9 @@ if __name__ == "__main__":
     plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
     plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
 
-    ticks = np.arange(-4, 5, 2)
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)
+#    ticks = np.arange(-4, 5, 2)
+#    ax.set_xticks(ticks)
+#    ax.set_yticks(ticks)
 
     plt.xlabel(r"$\beta(w_{ij} - w_{ji})$")
     plt.ylabel(r'$\theta_{ij}-\theta_{ji}$', rotation=90, labelpad=0)
@@ -143,7 +144,7 @@ if __name__ == "__main__":
     if not os.path.exists(IMG_DIR):
         print(f'Creating base directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
-    plt.savefig(f'{IMG_DIR}/Fig_1b.pdf', bbox_inches='tight', pad_inches=0)
+    plt.savefig(f'{IMG_DIR}/Fig1b.pdf', bbox_inches='tight', pad_inches=0)
 
     if not args.no_plot:
         plt.show()

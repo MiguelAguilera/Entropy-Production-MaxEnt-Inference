@@ -124,7 +124,7 @@ if __name__ == "__main__":
     if not os.path.exists(IMG_DIR):
         print(f'Creating base directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
-    plt.savefig(f'{IMG_DIR}/Fig_1a.pdf', bbox_inches='tight')
+    plt.savefig(f'{IMG_DIR}/Fig1a.pdf', bbox_inches='tight')
 
     if not args.no_plot:
         plt.show()
