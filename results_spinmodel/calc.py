@@ -25,10 +25,9 @@ def calc_spin(beta, J, i, g_samples):
 
     # trn, tst = data.split_train_test()
     np.random.seed(123)
-    # trn, val, tst = data.split_train_val_test(val_fraction=0.1, test_fraction=0.1)
+    trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.2)
 
-    trn, val = data.split_train_test(test_fraction=0.5)
-    tst = None
+    #trn, val = data.split_train_test(test_fraction=0.5) ; tst = None
 
     stime = time.time()
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
@@ -49,8 +48,8 @@ def calc_spin(beta, J, i, g_samples):
 
 # iteration 20, tst=0.020
     to_run = [
-   #     ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, max_iter=1) ),
-  #      ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, validation_data=val, test_data=tst, max_iter=1) ),
+       ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 #        ('NR'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False)),
 
  #       ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, 
