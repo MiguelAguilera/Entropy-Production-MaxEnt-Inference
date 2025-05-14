@@ -88,11 +88,13 @@ ARGS="--beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 100 --num_beta 1  --BASE_DIR ~
 ARGS="--rep 2000000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000_2M"
 
 ARGS="--rep 10000000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000_10M"
-ARGS="--rep 1000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --thinning_multiplier 2 --warmup 0.1 --BASE_DIR ~/MaxEntData1000_wait"
-#ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000"
+ARGS="--rep 1000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --thinning_multiplier 2 --warmup 0.2 --BASE_DIR ~/MaxEntData1000_wait"
+# ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000test"
+# ARGS=" --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData1000restarts"
+ARGS="--rep 5000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData5000restarts"
 
-python generate_data_spin_model.py --seed 42   --num_neighbors 6  $ARGS 
-python scaling_fig.py                    $ARGS  $ARGSEP --overwrite  --max_spins 1000  #  --overwrite #--nograd --overwrite  #--nograd   --overwrite 
+python generate_data_spin_model.py --seed 42  --trials 1000 --num_neighbors 6  $ARGS  # --overwrite
+python scaling_fig.py                    $ARGS  $ARGSEP   --max_spins 1000  #  --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 

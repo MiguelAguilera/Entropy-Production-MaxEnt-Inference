@@ -25,8 +25,10 @@ def calc_spin(beta, J, i, g_samples):
 
     # trn, tst = data.split_train_test()
     np.random.seed(123)
-    trn, val, tst = data.split_train_val_test(val_fraction=0.4, test_fraction=0.2)
+    # trn, val, tst = data.split_train_val_test(val_fraction=0.1, test_fraction=0.1)
 
+    trn, val = data.split_train_test(test_fraction=0.5)
+    tst = None
 
     stime = time.time()
     sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)

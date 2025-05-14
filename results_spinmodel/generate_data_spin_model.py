@@ -4,6 +4,7 @@ import numpy as np
 sys.path.insert(0, '..')
 import spin_model
 
+
 def save_data(file_name, J, S, F, beta, args):
     """
     Save model data to a .npz file.
@@ -148,10 +149,11 @@ for beta_ix, beta in enumerate(betas):
             print(f"# File {file_name} exists, skipping simulation.")
             continue
         else:
-            print(f"# File {file_name} exists, overwriting.")
-            os.remove(file_name)
+            print(f"# File {file_name} exists, will overwrite it.")
+            # os.remove(file_name)
 
     start_time = time.time()
+
     S, F = spin_model.run_simulation(
         beta=beta, 
         J=J, 

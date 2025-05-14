@@ -9,6 +9,7 @@
 import numpy as np
 from numba import njit, objmode, prange
 
+
 DTYPE = 'float32'  # Default data type for numerical operations
 
 # ***** Methods to generate coupling matrices *****
@@ -100,7 +101,7 @@ def ParallelGlauberStep(J, s, T=1):
     return s
 
 
-@njit(parallel=True, fastmath=True, cache=True)
+@njit(parallel=True, fastmath=True)
 def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_multiplier=1,
                    num_restarts=1000, sequential=True, progressbar=True):
     """
@@ -122,6 +123,7 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_mul
         S: Nxsamples_per_spin int array : Samples of -1,1 state from stationary distribution
         F: Nxsamples_per_spin bool array : Samples of state transitions (True: flipped, False: no flip)
     """
+
     N = J.shape[0]
     betaJ = (beta*J).astype(DTYPE)
 
