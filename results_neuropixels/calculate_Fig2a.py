@@ -224,7 +224,7 @@ def calc(sizes, session_type, session_id, r):
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
         start_time = time.time()
-        EP_maxent_val,theta,EP_maxent_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=tst,
+        EP_maxent_val,theta,EP_maxent_trn = ep_estimators.get_EP_GradientAscent(data=trn,  validation_data=tst, test_data=tst,
                                                 lr=lr, tol=tol, use_Adam=args.use_Adam,  use_BB=args.use_BB, patience=args.patience, 
                                                 verbose=1,#,report_every=10, 
                                                 beta1=args.Adam_args[0], beta2=args.Adam_args[1], eps=args.Adam_args[2]

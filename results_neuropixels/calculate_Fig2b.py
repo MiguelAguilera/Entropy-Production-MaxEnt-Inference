@@ -123,8 +123,8 @@ else:
     print(f"Training MaxEnt model (N={args.N}, tol={args.tol})...")
     EP_maxent_tst, theta, EP_maxent_full = ep_estimators.get_EP_GradientAscent(
         data=trn,
-        holdout_data=tst,
         validation_data=val,
+        test_data=tst,
         lr=lr_scaled,
         tol=args.tol,
         use_Adam=args.use_Adam,

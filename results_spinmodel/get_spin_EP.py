@@ -136,7 +136,7 @@ def calc_spin(i_args):
     
     # Compute 1-step Newton
     t0 = time.time()
-    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, validation_data=val, max_iter=1, adjust_radius=True, num_chunks=num_chunks)
+    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn, validation_data=val, test_data=tst, max_iter=1, adjust_radius=True, num_chunks=num_chunks)
 #    theta_init=theta_hat_g.clone() # save theta for later initialization
     EP_hat_g = Pi * sig_hat_g
     EP_hat_g_trn = Pi * sig_hat_g_trn
