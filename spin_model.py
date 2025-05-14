@@ -7,7 +7,7 @@
 # matrix is indicated as J (not w as in the manuscript)
 
 import numpy as np
-from numba import njit, objmode
+from numba import njit, objmode, prange
 
 DTYPE = 'float32'  # Default data type for numerical operations
 
@@ -137,7 +137,7 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_mul
     if progressbar:
         print("-"*100)
 
-    for restart_ix in range(num_restarts):
+    for restart_ix in prange(num_restarts):
         # Start from a random state, then warm up for N * warmup * samples_per_restart steps
         s = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         if sequential:
