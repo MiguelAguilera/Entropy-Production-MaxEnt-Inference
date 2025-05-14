@@ -101,7 +101,7 @@ def ParallelGlauberStep(J, s, T=1):
 
 
 @njit(parallel=True, fastmath=True, cache=True)
-def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, 
+def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_multiplier=1,
                    num_restarts=1000, sequential=True, progressbar=True):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
@@ -112,8 +112,8 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
         J (2d np.array)             : NxN matrix of coupling coefficients
         warmup (float)              : Fraction of Monte Carlo steps in the warm-up at the beginning of each restart
         samples_per_spin (int)      : Number of samples per spin to return
-                                      In between these samples, we use a thinning factor of N
-                                      throwaway samples
+        thinning_multiplier (int)   : In between these samples, we reduce correlations by discarding 
+                                       thinning_multiplier * N samples
         num_restarts (int)          : Number of times to restart sampler
         sequential (bool)           : Whether to use sequential or parallel updates
         progressbar (bool)          : Whether to display progressbar during simulation
@@ -124,6 +124,8 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
     """
     N = J.shape[0]
     betaJ = (beta*J).astype(DTYPE)
+
+    samples_per_spin = int(samples_per_spin)
 
     # Define matrix of spin states and spin flips      
     S = np.empty((samples_per_spin, N), dtype=np.int8)
@@ -149,12 +151,12 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000,
         for r in range(samples_per_restart):
             # First, thin out samples by N steps to decrease correlations
             if sequential:
-                indices = np.random.randint(0, N, int(N))
+                indices = np.random.randint(0, N, int(N*thinning_multiplier))
                 for i in indices:
                     s[i] = GlauberStep(betaJ[i, :], s)
 
             else:
-                s = ParallelGlauberStep(betaJ, s, T=1)
+                s = ParallelGlauberStep(betaJ, s, T=thinning_multiplier)
             
             # Save the sampled state
             sample_ix = restart_ix * samples_per_restart + r

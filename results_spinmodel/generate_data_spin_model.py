@@ -61,6 +61,10 @@ parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
 parser.add_argument("--num_neighbors", type=int, default=None,
                     help="Number of neighbors for sparse connectivity (default: None).")
+parser.add_argument("--warmup", type=float, default=0.1,
+                    help="Fraction of Monte Carlo steps in the warm-up at the beginning of each restart (default 0.1).")
+parser.add_argument("--thinning_multiplier", type=int, default=1,
+                    help="To reduce correlations, we discard thinning_multiplier * N steps between samples (default: 1).")
 
 # Flags for update mode: sequential or parallel
 parser.add_argument("--sequential", action="store_true", help="Enable sequential update mode.")
@@ -149,7 +153,12 @@ for beta_ix, beta in enumerate(betas):
 
     start_time = time.time()
     S, F = spin_model.run_simulation(
-        beta=beta, J=J, samples_per_spin=args.rep, num_restarts=args.trials, sequential=args.sequential,
+        beta=beta, 
+        J=J, 
+        samples_per_spin=args.rep, 
+        num_restarts=args.trials, 
+        sequential=args.sequential,
+        warmup=args.warmup,
     )
 
     print(f'Sampled {S.shape[0]} states, {F.shape[0]*F.shape[1]} transitions, {(F==1).sum()} flips in  {time.time()-start_time:.3f}s')
