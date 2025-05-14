@@ -137,7 +137,7 @@ def calc(file_name, max_spins=None):
     epdata = {'frequencies':frequencies, 'J': data['J'], 'beta': beta, 
                 'thetas':{}, 'ep':{}, 'times':{}}
 
-    if max_spins is None:
+    if max_spins is None or max_spins >= N:
         spin_ids = np.arange(N)
     else:
         np.random.seed(123)
