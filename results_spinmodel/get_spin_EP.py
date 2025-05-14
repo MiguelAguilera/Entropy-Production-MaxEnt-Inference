@@ -147,7 +147,7 @@ def calc_spin(i_args):
 #    gc.collect()
 
     # Compute Newton estimation
-    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=val,  use_BB=True, verbose=0)
+    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_GradientAscent(data=trn, validation_data=tst, validation_data=val,  use_BB=True, verbose=0)
 #    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=1.0, adjust_radius=False, num_chunks=num_chunks, verbose=1, tol=1e-8, patience=1)
 #    
     EP_g = Pi * sig_g
