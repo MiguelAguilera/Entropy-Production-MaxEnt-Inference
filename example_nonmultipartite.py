@@ -42,26 +42,26 @@ g_samples = np.vstack([ (X1[:,i] - X0[:,i])*X1[:,j]
                         for i in range(N) for j in range(N) if i != j]).T
 
 data1         = ep_estimators.Dataset(g_samples=g_samples)
-train, test   = data1.split_train_test() 
+train, val, test = data1.split_train_val_test()
 
 stime = time.time()
-sigma_N_obs  = ep_estimators.get_EP_Newton(train, holdout_data=test, trust_radius=1).objective
+sigma_N_obs  = ep_estimators.get_EP_Newton(train, validation_data=val, test_data=test, trust_radius=1).objective
 time_N_obs   = time.time() - stime
 
 
 stime = time.time()
-sigma_G_obs  = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
+sigma_G_obs  = ep_estimators.get_EP_GradientAscent(train, validation_data=val, test_data=test).objective
 time_G_obs   = time.time() - stime
 
 # Estimate EP using gradient ascent method , from state samples
 stime = time.time()
 trainS, testS = ep_estimators.RawDataset2(X0, X1).split_train_test()
-sigma_S_state = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
+sigma_S_state = ep_estimators.get_EP_GradientAscent(train, validation_data=val, test_data=test).objective
 time_S_state  = time.time() - stime
 
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
-print(f"  Σ     (Empirical)                              :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ     (Empirical)                              :    {sigma_emp      :.6f}  ({time_emp      :.3f}s)")
 print(f"  Σ_g   (Using observable samples, grad. ascent) :    {sigma_G_obs    :.6f}  ({time_G_obs    :.3f}s)")
 print(f"  Σ_g   (Using observable samples, Newton method):    {sigma_N_obs    :.6f}  ({time_N_obs    :.3f}s)")
 print(f"  Σ_g   (Using state samples, grad. ascent)      :    {sigma_S_state  :.6f}  ({time_S_state  :.3f}s)")

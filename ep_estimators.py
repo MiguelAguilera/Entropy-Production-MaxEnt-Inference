@@ -42,17 +42,17 @@ class DatasetBase(object):
 
     def get_objective(self, theta):
         # Return objective value for parameters theta
-        v = self.get_tilted_statistics(numpy_to_torch(theta), return_objective=True)
+        v = self.get_tilted_statistics(theta, return_objective=True)
         return v['objective']
 
 
     @staticmethod
-    def _get_trn_indices(nsamples, holdout_fraction=1/2, holdout_shuffle=True, with_replacement=False):
+    def _get_trn_indices(nsamples, test_fraction=1/2, shuffle=True, with_replacement=False):
         # Get indices for training and testing data
-        assert 0 <= holdout_fraction <= 1, "holdout_fraction must be between 0 and 1"
-        trn_nsamples = nsamples - int(nsamples * holdout_fraction)
+        assert 0 <= test_fraction <= 1, "test_fraction must be between 0 and 1"
+        trn_nsamples = nsamples - int(nsamples * test_fraction)
 
-        if holdout_shuffle:
+        if shuffle:
             perm = np.random.choice(nsamples, size=nsamples, replace=with_replacement)
             #perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
@@ -62,9 +62,51 @@ class DatasetBase(object):
             tst_indices = np.arange(trn_nsamples, nsamples)
         return trn_indices, tst_indices
 
-    def split_train_test(self, **holdout_options):
+    def split_train_test(self, **kw_options):
         raise NotImplementedError("split_train_test is not implemented")
 
+    
+    def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
+        # Split dataset into train/val/test sets with default 80/10/10 split
+        assert val_fraction + test_fraction < 1.0
+        trn, val_tst = self.split_train_test(test_fraction=val_fraction + test_fraction, shuffle=shuffle)
+        val, tst = val_tst.split_train_test(test_fraction=test_fraction / (val_fraction + test_fraction), shuffle=shuffle)
+        return trn, val, tst
+
+        # nsamples = self.forward_nsamples
+
+        # if shuffle:
+        #     perm = np.random.permutation(nsamples)
+        # else:
+        #     perm = np.arange(nsamples)
+
+        # n_val   = int(nsamples * val_fraction)
+        # n_test  = int(nsamples * test_fraction)
+        # n_train = nsamples - n_val - n_test
+
+        # trn_indices = perm[:n_train]
+        # val_indices = perm[n_train:n_train + n_val]
+        # tst_indices = perm[n_train + n_val:]
+
+        # if self.rev_g_samples is not None:
+        #     if self.nsamples != self.forward_nsamples:
+        #         trn_rev, val_rev, tst_rev = np.random.permutation(self.nsamples).split([n_train, n_val, n_test])
+        #     else:
+        #         trn_rev = trn_indices
+        #         val_rev = val_indices
+        #         tst_rev = tst_indices
+
+        #     rev_trn = self.rev_g_samples[trn_rev]
+        #     rev_val = self.rev_g_samples[val_rev]
+        #     rev_tst = self.rev_g_samples[tst_rev]
+        # else:
+        #     rev_trn = rev_val = rev_tst = None
+
+        # trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        # val = self.__class__(g_samples=self.g_samples[val_indices], rev_g_samples=rev_val)
+        # tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
+
+        # return trn, val, tst
 
 
 class Dataset(DatasetBase):
@@ -116,13 +158,13 @@ class Dataset(DatasetBase):
             torch.cov(self.rev_g_samples.T, correction=0)    
     
 
-    def split_train_test(self, **holdout_opts):
+    def split_train_test(self, **split_opts):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(nsamples=self.forward_nsamples, **holdout_opts)
+        trn_indices, tst_indices = self._get_trn_indices(nsamples=self.forward_nsamples, **split_opts)
 
         if self.rev_g_samples is not None:
             if self.nsamples != self.forward_nsamples:
-                trn_indices_rev, tst_indices_rev = self._get_trn_indices(nsamples=self.nsamples, **holdout_opts)
+                trn_indices_rev, tst_indices_rev = self._get_trn_indices(nsamples=self.nsamples, **split_opts)
             else: # assume that forward and reverse samples are paired (there is the same number), 
                 trn_indices_rev = trn_indices
                 tst_indices_rev = tst_indices
@@ -134,44 +176,7 @@ class Dataset(DatasetBase):
         trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
         tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
         return trn, tst
-    
-    def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
-        # Split dataset into train/val/test sets with default 80/10/10 split
-        assert val_fraction + test_fraction < 1.0
-        nsamples = self.forward_nsamples
 
-        if shuffle:
-            perm = np.random.permutation(nsamples)
-        else:
-            perm = np.arange(nsamples)
-
-        n_val = int(nsamples * val_fraction)
-        n_test = int(nsamples * test_fraction)
-        n_train = nsamples - n_val - n_test
-
-        trn_indices = perm[:n_train]
-        val_indices = perm[n_train:n_train + n_val]
-        tst_indices = perm[n_train + n_val:]
-
-        if self.rev_g_samples is not None:
-            if self.nsamples != self.forward_nsamples:
-                trn_rev, val_rev, tst_rev = np.random.permutation(self.nsamples).split([n_train, n_val, n_test])
-            else:
-                trn_rev = trn_indices
-                val_rev = val_indices
-                tst_rev = tst_indices
-
-            rev_trn = self.rev_g_samples[trn_rev]
-            rev_val = self.rev_g_samples[val_rev]
-            rev_tst = self.rev_g_samples[tst_rev]
-        else:
-            rev_trn = rev_val = rev_tst = None
-
-        trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
-        val = self.__class__(g_samples=self.g_samples[val_indices], rev_g_samples=rev_val)
-        tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
-
-        return trn, val, tst
         
     def get_random_batch(self, batch_size):
         indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
@@ -296,9 +301,9 @@ class RawDataset(DatasetBase):
         return -self.g_mean  # Antisymmetric observables
 
 
-    def split_train_test(self, **holdout_opts):
+    def split_train_test(self, **split_opts):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, **holdout_opts)
+        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, **split_opts)
         trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, tst
@@ -462,7 +467,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
 # ==========================================
 # Entropy production (EP) estimation methods 
 # ==========================================
-def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validation_data=None,
+def get_EP_Newton(data, theta_init=None, verbose=0, validation_data=None, test_data=None,
                     max_iter=None, tol=1e-8, linsolve_eps=1e-4, num_chunks=None,
                     trust_radius=None, solve_constrained=True, adjust_radius=False,
                     eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
@@ -474,7 +479,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
     #   data             : Dataset object providing statistics of observables   
     #   theta_init       : torch tensor specifiying initial parameters (set to 0s if None)
     #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
-    #   holdout_data     : if not None, we use this dataset for early stopping 
+    #   validation_data     : if not None, we use this dataset for early stopping 
     #   max_iter (int)   : maximum number of iterations
     #   tol (float)      : early stopping once objective does not improve by more than tol
     #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
@@ -488,6 +493,11 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
     #   eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
     #                                : hyperparameters for adjusting trust radius
 
+    # Returns:
+    #   Solution object with test       objective (EP estimate), theta, and train objective (if test_data provided)
+    #   Solution object with validation objective (EP estimate), theta, and train objective (if validation_data provided)
+    #   Solution object with train      objective (EP estimate), theta, and None            (otherwise)
+
     funcname = 'get_EP_Newton_steps'
 
     if max_iter is None:
@@ -496,8 +506,8 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
     with torch.no_grad():   # We don't need to torch to keep track of gradients (sometimes a bit faster)
     
             
-        if holdout_data:
-            f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = 0.0
+        if validation_data:
+            f_cur_trn = f_cur_val = f_new_trn = f_new_val = 0.0
         else:
             f_cur_trn = f_new_trn = 0.0
         
@@ -507,15 +517,15 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
             theta = torch.zeros(data.nobservables, device=data.device)
         I     = torch.eye(len(theta), device=theta.device)
         
-        if holdout_data:
-            best_theta = theta.clone()
-            best_val = -float('inf')
+        if validation_data:
+            best_val_theta     = theta.clone()
+            best_val_score = -float('inf')
             no_improve_count = 0
 
         for t in range(max_iter):
             if verbose and verbose > 1: 
                 print(f'{funcname} : iter {t:5d} f_cur_trn={f_cur_trn: 3f}', 
-                                                    f'f_cur_tst={f_cur_tst: 3f}' if holdout_data is not None else '')
+                                                    f'f_cur_val={f_cur_val: 3f}' if validation_data is not None else '')
 
             # Find Newton step direction. We first get gradient and Hessian
             stats = data.get_tilted_statistics(theta, return_mean=True, return_covariance=True, num_chunks=num_chunks)
@@ -586,7 +596,7 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
 
 
 
-#            if holdout_data is None:
+#            if validation_data is None:
 #                if is_infnan(f_new_trn):  
 #                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_trn} in training objective at iter {t}")
 #                    break                  # Training value should be finite and increasing
@@ -604,20 +614,20 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
 #                    f_new_trn = np.log(data.nsamples)
 #                    last_round = True
 
-#            else                # Do the same checks but now on the heldout test data
-#                f_new_tst = holdout_data.get_objective(new_theta) 
-#                if is_infnan(f_new_tst):
-#                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
+#            else                # Do the same checks but now on the validation data
+#                f_new_val = validation_data.get_objective(new_theta) 
+#                if is_infnan(f_new_val):
+#                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_val} in validation objective at iter {t}")
 #                    break
-#                elif f_new_tst <= f_cur_tst:
-#                    if verbose: print(f"[Stopping] Testing objective did not improve (f_new_tst <= f_cur_tst) at iter {t}")
+#                elif f_new_val <= f_cur_val:
+#                    if verbose: print(f"[Stopping] Validation objective did not improve (f_new_val <= f_cur_val) at iter {t}")
 #                    break
-#                elif np.abs(f_new_tst - f_cur_tst) <= tol:
-#                    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
+#                elif np.abs(f_new_val - f_cur_val) <= tol:
+#                    if verbose: print(f"{funcname} : [Converged] Validation objective change below tol={tol} at iter {t}")
 #                    last_round = True
-#                elif f_new_tst > np.log(holdout_data.nsamples):
-#                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
-#                    f_new_tst = np.log(holdout_data.nsamples)
+#                elif f_new_val > np.log(validation_data.nsamples):
+#                    if verbose: print(f"{funcname} : [Clipping] Validation objective exceeded log(#samples), clipping at iter {t}")
+#                    f_new_val = np.log(validation_data.nsamples)
 #                    last_round = True
 
             if is_infnan(f_new_trn):  
@@ -634,38 +644,38 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
                 f_new_trn = np.log(data.nsamples)
                 last_round = True
 
-            if holdout_data is not None:
-                f_new_tst = holdout_data.get_objective(new_theta)
-                if is_infnan(f_new_tst):
-                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_tst} in test objective at iter {t}")
+            if validation_data is not None:
+                f_new_val = validation_data.get_objective(new_theta)
+                if is_infnan(f_new_val):
+                    if verbose: print(f"{funcname} : [Stopping] Invalid value {f_new_val} in validation objective at iter {t}")
                     break
-                elif f_new_tst > np.log(holdout_data.nsamples):
-                    if verbose: print(f"{funcname} : [Clipping] Test objective exceeded log(#samples), clipping at iter {t}")
-                    f_new_tst = np.log(holdout_data.nsamples)
+                elif f_new_val > np.log(validation_data.nsamples):
+                    if verbose: print(f"{funcname} : [Clipping] Validation objective exceeded log(#samples), clipping at iter {t}")
+                    f_new_val = np.log(validation_data.nsamples)
                     last_round = True
                 
-                if f_new_tst > best_val:
-                    best_val = f_new_tst
-                    best_val_trn = f_new_trn
-                    best_theta = new_theta.clone()
+                if f_new_val > best_val_score:
+                    best_val_score   = f_new_val
+                    best_val_trn     = f_new_trn
+                    best_val_theta       = new_theta.clone()
                     no_improve_count = 0
                 else:
                     no_improve_count += 1
                     if no_improve_count >= patience:
                         last_round=True
                         if verbose: print(f"{funcname} : [Early stopping] No improvement for {patience} steps at iter {t}.")
-                f_cur_tst = f_new_tst
+                f_cur_val = f_new_val
                 
             # Update our estimate of the paramters and objective value
             f_cur_trn, theta = f_new_trn, new_theta
-            if holdout_data is not None:
-                f_cur_tst = f_new_tst
+            if validation_data is not None:
+                f_cur_val = f_new_val
 
             if last_round:
-                if holdout_data is not None:
-                    f_cur_tst = best_val
+                if validation_data is not None:
+                    f_cur_val = best_val_score
                     f_cur_trn = best_val_trn
-                    theta = best_theta.clone()
+                    theta = best_val_theta.clone()
                 break
 
         else:   # for loop did not break
@@ -674,16 +684,16 @@ def get_EP_Newton(data, theta_init=None, verbose=0, holdout_data=None, validatio
                 print(f'max_iter {max_iter} reached in get_EP_Newton!')
             pass
 
-        if validation_data is not None:
-            return _get_valid_solution(objective=validation_data.get_objective(theta), theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
-        elif holdout_data is not None:
+        if test_data is not None:
+            return _get_valid_solution(objective=test_data.get_objective(theta), theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        elif validation_data is not None:
             return _get_valid_solution(objective=best_val, theta=theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
 
 
-def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, validation_data=None, report_every=10,
+def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None, test_data=None, report_every=10,
                             max_iter=None, lr = 0.001, patience = 10, tol=1e-8, 
                             use_Adam=True, use_BB=False, beta1=0.9, beta2=0.999, eps=1e-8, skip_warm_up=False,
                             batch_size=None):
@@ -693,7 +703,7 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
     #   data             : Dataset object providing statistics of observables   
     #   theta_init       : torch tensor specifiying initial parameters (set to 0s if None)
     #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
-    #   holdout_data     : if not None, we use this dataset for early stopping 
+    #   validation_data  : if not None, we use this dataset for early stopping 
     #   max_iter (int)   : maximum number of iterations
     #   lr               : learning rate
     #   tol (float)      : early stopping once objective does not improve by more than tol
@@ -706,7 +716,9 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
     #   skip_warm_up   : Adam option
     #
     # Returns:
-    #   Solution object with objective (EP estimate), theta, and trn_objective (if holdout)
+    #   Solution object with test       objective (EP estimate), theta, and train objective (if test_data provided)
+    #   Solution object with validation objective (EP estimate), theta, and train objective (if validation_data provided)
+    #   Solution object with train      objective (EP estimate), theta, and None            (otherwise)
 
     funcname = 'get_EP_GradientAscent'
     def msg(s):
@@ -715,10 +727,10 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
     if max_iter is None:
         max_iter = 10000
     
-    if holdout_data is not None:
-        f_cur_trn = f_cur_tst = f_new_trn = f_new_tst = np.nan
+    if validation_data is not None:
+        f_cur_trn = f_cur_val = f_new_trn = f_new_val = np.nan
     else:
-        f_cur_trn = f_new_tst = np.nan
+        f_cur_trn = f_new_val = np.nan
 
     with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
 
@@ -730,17 +742,18 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
         
-        best_tst_score   = -float('inf')  # for maximization
-        best_iter        = 0
+        best_val_score   = -float('inf')  # for maximization
+        best_val_iter    = 0
         patience_counter = 0
         old_time         = time.time()
 
-        old_grad = delta_theta = best_theta = None
+        old_grad = delta_theta = None
+        best_val_theta = new_theta.clone()
         for t in range(max_iter):
             if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
                 new_time = time.time()
                 print(f'{funcname} : iter {t:4d} | {(new_time - old_time)/report_every:4.2f}s/iter | f_cur_trn={f_cur_trn: 5.3f}', 
-                      f'f_cur_tst={f_cur_tst: 5.3f}' if holdout_data is not None else '')
+                      f'f_cur_val={f_cur_val: 5.3f}' if validation_data is not None else '')
                 old_time = new_time
 
 
@@ -772,36 +785,36 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
                 if verbose: msg(f"[Converged] Training objective change below tol={tol}")
                 last_round = True
 
-            if holdout_data is not None: #  and t > 150:
-                f_new_tst = holdout_data.get_objective(new_theta) 
+            if validation_data is not None: #  and t > 150:
+                f_new_val = validation_data.get_objective(new_theta) 
                 #train_gain = f_new_trn - f_cur_trn
-                #test_drop = f_cur_tst - f_new_tst
-                if is_infnan(f_new_tst):
-                    if verbose: msg(f"[Stopping] Invalid value {f_new_tst} in test objective")
+                #test_drop = f_cur_val - f_new_val
+                if is_infnan(f_new_val):
+                    if verbose: msg(f"[Stopping] Invalid value {f_new_val} in validation objective")
                     break
 #                    elif test_drop > 0 and train_gain > tol :
-#                        print(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
+#                        print(f"[Stopping] Validation objective did not improve (f_new_val <= f_cur_val and (f_new_trn - f_cur_trn) > tol ) at iter {t}")
 #                        break
-                elif f_new_tst > np.log(holdout_data.nsamples):
-                    best_tst_score = np.log(holdout_data.nsamples)
-                    best_theta = new_theta
-                    if verbose: msg(f"[Clipping] f_new_tst >= log(nsamples)")
+                elif f_new_val > np.log(validation_data.nsamples):
+                    best_val_score = np.log(validation_data.nsamples)
+                    best_val_theta = new_theta
+                    if verbose: msg(f"[Clipping] f_new_val >= log(nsamples)")
                     last_round = True 
 
-                #elif np.abs(f_new_tst - f_cur_tst) < tol:
-                #    if verbose: print(f"{funcname} : [Converged] Test objective change below tol={tol} at iter {t}")
+                #elif np.abs(f_new_val - f_cur_val) < tol:
+                #    if verbose: print(f"{funcname} : [Converged] Validation objective change below tol={tol} at iter {t}")
                 #    last_round = True
                 
-                elif f_new_tst > best_tst_score:
-                    if verbose > 1 and t-best_iter>1: 
-                        msg(f"[Patience] Resetting patience counter, last improvement {t-best_iter} steps ago")
-                    best_tst_score   = f_new_tst
-                    best_theta       = new_theta.clone()  # Save the best model
+                elif f_new_val > best_val_score:
+                    if verbose > 1 and t-best_val_iter>1: 
+                        msg(f"[Patience] Resetting patience counter, last improvement {t-best_val_iter} steps ago")
+                    best_val_score   = f_new_val
+                    best_val_theta       = new_theta.clone()  # Save the best model
                     patience_counter = 0
-                    best_iter        = t
+                    best_val_iter    = t
 
                 elif patience_counter >= patience:
-                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_tst <= f_cur_tst and) for {patience} steps (last improvement {t-best_iter} steps ago)")
+                    if verbose: msg(f"[Stopping] Test objective did not improve (f_new_val <= f_cur_val and) for {patience} steps (last improvement {t-best_val_iter} steps ago)")
                     last_round = True
                 
                 else:
@@ -809,8 +822,8 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
                     
                     
             f_cur_trn, theta = f_new_trn, new_theta
-            if holdout_data is not None:
-                f_cur_tst = f_new_tst
+            if validation_data is not None:
+                f_cur_val = f_new_val
 
             if last_round:
                 break
@@ -855,10 +868,10 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, holdout_data=None, v
                 print(f'get_EP_GradientAscent : max_iter {max_iter} reached!')
             pass
 
-        if validation_data is not None:
-            return _get_valid_solution(objective=validation_data.get_objective(best_theta), theta=best_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
-        elif holdout_data is not None:
-            return _get_valid_solution(objective=best_tst_score, theta=best_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        if test_data is not None:
+            return _get_valid_solution(objective=test_data.get_objective(best_val_theta), theta=best_val_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
+        elif validation_data is not None:
+            return _get_valid_solution(objective=best_val_score, theta=best_val_theta, nsamples=data.nsamples, trn_objective=f_cur_trn)
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 

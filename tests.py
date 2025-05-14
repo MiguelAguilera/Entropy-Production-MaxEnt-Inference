@@ -95,13 +95,14 @@ def run_inference(beta, J, S, F, num_chunks=None, do_rev=False):
         # Full optimization with trust-region Newton method and holdout
         np.random.seed(1) # Set seed for holdout reproducibility 
         trn, tst = data.split_train_test()
-        spin_fullH = ep_estimators.get_EP_Newton(trn, trust_radius=1/4, holdout_data=tst, num_chunks=num_chunks).objective
+        spin_fullH = ep_estimators.get_EP_Newton(trn, trust_radius=1/4, test_data=tst, num_chunks=num_chunks).objective
+        spin_fullH = ep_estimators.get_EP_Newton(trn, trust_radius=1/4, test_data=tst, validation_data=tst, num_chunks=num_chunks).objective
 
         # Full optimization with gradient ascent method , no holdout
         spin_grad = ep_estimators.get_EP_GradientAscent(data).objective
 
         # Full optimization with gradient ascent method 
-        spin_gradH = ep_estimators.get_EP_GradientAscent(trn, holdout_data=tst).objective
+        spin_gradH = ep_estimators.get_EP_GradientAscent(trn, validation_data=tst).objective
 
         # Multidimensional TUR
         spin_MTUR = ep_estimators.get_EP_MTUR(data).objective
@@ -165,15 +166,15 @@ def test_consistency():
                             for i in range(N) for j in range(i+1, N) ]).T
     data1 = ep_estimators.Dataset(g_samples=g_samples, rev_g_samples=-g_samples)
     trn1, tst1 = data1.split_train_test()
-    sigma_g1   = ep_estimators.get_EP_GradientAscent(trn1, holdout_data=tst1).objective
+    sigma_g1   = ep_estimators.get_EP_GradientAscent(trn1, validation_data=tst1).objective
 
     data2 = ep_estimators.Dataset(g_samples=g_samples)
     trn2, tst2 = data2.split_train_test()
-    sigma_g2   = ep_estimators.get_EP_GradientAscent(trn2, holdout_data=tst2).objective
+    sigma_g2   = ep_estimators.get_EP_GradientAscent(trn2, validation_data=tst2).objective
 
     data3 = ep_estimators.RawDataset(X0, X1)
     trn3, tst3 = data3.split_train_test()
-    sigma_g3   = ep_estimators.get_EP_GradientAscent(trn3, holdout_data=tst3).objective
+    sigma_g3   = ep_estimators.get_EP_GradientAscent(trn3, validation_data=tst3).objective
 
     theta = np.random.rand(data1.nobservables)
     assert(torch.norm(data1.g_mean - data2.g_mean)<1e-5)

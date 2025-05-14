@@ -59,7 +59,7 @@ def calc_spin(beta, J, i, g_samples):
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0) ),
-         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, validation_data=val, holdout_data=tst, lr=1e-2, 
+         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, validation_data=val, test_data=tst, lr=1e-2, 
                                                                       use_BB=True, verbose=0, report_every=1, patience=10) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]

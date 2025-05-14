@@ -59,16 +59,16 @@ for i in tqdm(range(N), smoothing=0):
     sigma_MTUR += p_i * spin_MTUR
     
     # Create dataset with holdout data
-    train, test = data.split_train_test(holdout_shuffle=True)
-    # Full optimization with trust-region Newton method and holdout 
+    train, val, test = data.split_train_val_test()
+    # Full optimization with trust-region Newton method and validation dataset (for early stopping) and test set (for evaluating the objective)
     stime      = time.time()
-    sol_newton = ep_estimators.get_EP_Newton(train, trust_radius=1/4, holdout_data=test)
+    sol_newton = ep_estimators.get_EP_Newton(train, trust_radius=1/4, validation_data=val, test_data=test)
     sigma_g   += p_i * sol_newton.objective 
     time_g    += time.time() - stime
 
-    # Full optimization with gradient ascent method and holdout
+    # Full optimization with gradient ascent method
     stime     = time.time()
-    spin_grad = ep_estimators.get_EP_GradientAscent(train, holdout_data=test).objective
+    spin_grad = ep_estimators.get_EP_GradientAscent(train, validation_data=val, test_data=test).objective
     time_g2   += time.time() - stime
     sigma_g2  += p_i * spin_grad
 
