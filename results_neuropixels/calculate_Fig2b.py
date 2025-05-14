@@ -108,7 +108,7 @@ else:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
         print("→ Torch seed {args.seed} set for CUDA.")
-    trn, val, tst = data.split_train_val_test()
+    trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
 
     if args.lr_scale == "none":
         lr_scaled = args.lr

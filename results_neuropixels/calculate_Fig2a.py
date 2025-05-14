@@ -216,11 +216,11 @@ def calc(sizes, session_type, session_id, r):
             exit()
 
         torch.manual_seed(args.seed)
-        print("→ Torch seed {args.seed}  set for CPU.")
+#        print("→ Torch seed {args.seed}  set for CPU.")
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(args.seed)
-            print("→ Torch seed {args.seed} set for CUDA.")
-        trn, val, tst = data.split_train_val_test()
+#            print("→ Torch seed {args.seed} set for CUDA.")
+        trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
         start_time = time.time()

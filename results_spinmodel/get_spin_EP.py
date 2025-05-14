@@ -7,6 +7,7 @@ import time, os, sys, gc
 from threading import Thread
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
 
 sys.path.insert(0, '..')
@@ -112,13 +113,13 @@ def calc_spin(i_args):
 #    est = ep_estimators.EPEstimators(data)
 
     torch.manual_seed(seed)
-    print("→ Torch seed {seed}  set for CPU.")
+#    print("→ Torch seed {seed}  set for CPU.")
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        print("→ Torch seed {seed} set for CUDA.")   
+#        print("→ Torch seed {seed} set for CUDA.")   
          
     data = ep_estimators.Dataset(g_samples=g_samples)
-    trn, val, tst = data.split_train_val_test()
+    trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
         
     # Calculate empirical estimate of true EP
     
@@ -146,7 +147,7 @@ def calc_spin(i_args):
 #    gc.collect()
 
     # Compute Newton estimation
-    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=val,  use_BB=True, verbose=1)
+    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, validation_data=val,  use_BB=True, verbose=0)
 #    sig_g, theta_g, sig_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, trust_radius=1.0, adjust_radius=False, num_chunks=num_chunks, verbose=1, tol=1e-8, patience=1)
 #    
     EP_g = Pi * sig_g
