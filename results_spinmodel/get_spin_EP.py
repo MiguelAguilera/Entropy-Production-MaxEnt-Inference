@@ -136,7 +136,7 @@ def calc_spin(i_args):
     
     # Compute 1-step Newton
     t0 = time.time()
-    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn, validation_data=val, test_data=tst, max_iter=1, adjust_radius=True, num_chunks=num_chunks)
+    sig_hat_g, theta_hat_g, sig_hat_g_trn = ep_estimators.get_EP_Newton(trn,holdout_data=tst, validation_data=val, max_iter=1, trust_radius=None, num_chunks=num_chunks)
 #    theta_init=theta_hat_g.clone() # save theta for later initialization
     EP_hat_g = Pi * sig_hat_g
     EP_hat_g_trn = Pi * sig_hat_g_trn
@@ -223,9 +223,9 @@ def calc(N, beta, rep, file_name, file_name_out, return_parameters=False, overwr
     T = N * rep
     cap = None  # Cap on number of flips per spin (disabled)
 
-    if seed is not None:
-        print(f"Setting random seed to {seed}")
-        np.random.seed(seed)
+    if seed is None:
+        seed = np.random.randint(0, 2**32 - 1)
+        print(f"No seed provided. Using random seed: {seed}")
         
     class DummyProgress:
         def __init__(self):
