@@ -38,13 +38,13 @@ time_g  = time_g2 = time_N1 = time_MTUR = 0.0
 
 # Because system is multipartite, we can separately estimate EP for each spin
 for i in tqdm(range(N), smoothing=0):
-    p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
+    p_i           =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
     # Calculate samples of g observables for states in which spin i changes state
-    g_samples               = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
-    g_mean                  = g_samples.mean(axis=0)
+    g_samples     = utils.numpy_to_torch(spin_model.get_g_observables(S, F, i))
+    g_mean        = g_samples.mean(axis=0)
 
-    data = ep_estimators.Dataset(g_samples=g_samples)
+    data          = ep_estimators.Dataset(g_samples=g_samples)
 
     # Multidimensional TUR
     stime         = time.time()
@@ -57,16 +57,16 @@ for i in tqdm(range(N), smoothing=0):
 
     # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
     # By default, we use gradient ascent with Barzilai-Borwein step sizes
-    stime       = time.time()
-    spin_g, _   = ep_estimators.get_EP_Estimate(data=train, validation_data=val, test_data=test)
-    sigma_g    += p_i * spin_g 
-    time_g     += time.time() - stime
+    stime        = time.time()
+    spin_g, _    = ep_estimators.get_EP_Estimate(data, validation=val, test=test)
+    sigma_g     += p_i * spin_g 
+    time_g      += time.time() - stime
 
     # 1 step of Newton
-    stime       = time.time()
-    spin_N1, _  = ep_estimators.get_EP_Newton1Step(data=train, validation_data=val, test_data=test) 
-    time_N1    += time.time() - stime
-    sigma_N1   += p_i * spin_N1
+    stime        = time.time()
+    spin_N1, _   = ep_estimators.get_EP_Newton1Step(data, validation=val, test=test) 
+    time_N1     += time.time() - stime
+    sigma_N1    += p_i * spin_N1
 
 
 

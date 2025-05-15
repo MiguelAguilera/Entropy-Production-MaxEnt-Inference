@@ -257,13 +257,13 @@ Solution = namedtuple('Solution', ['objective', 'x', 'trn_objective'], defaults=
 
 def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimizer_args=None, 
              max_iter=None,  tol=1e-8, max_trn_objective=None, max_val_objective=None, min_trn_objective=None, min_val_objective=None,
-             validation_objective=None, test_objective=None, patience=None, 
+             validation=None, test          =None, patience=None, 
              verbose=0, report_every=10,
              ):
     # Optimize function using the specified optimizer
     # Arguments:
     #   x0               : torch tensor specifiying initial parameters (set to 0s if None)
-    #   objective        : Object providing objective, gradient and/or Hessian information
+    #   objective        : Instance of Objective that provides get_objective, get_gradient and/or get_hessian information
     #   minimize         : whether to minimize or maximize the objective function
     #   optimizer (str)  : optimizer to use (see list above)
     #   optimizer_args (dict) : arguments to pass to the optimizer
@@ -273,8 +273,8 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
     #   max_val_objective (float) : maximum validation objective value, clip and stop if exceeded
     #   min_trn_objective (float) : minimum training objective value, clip and stop if below
     #   min_val_objective (float) : minimum validation objective value, clip and stop if below
-    #   validation_objective : if not None, we use this dataset for early stopping. It should provide get_objective method
-    #   test_objective   : if not None, we use this dataset for evaluating the objective. It should provide get_objective method
+    #   validation       : if not None, we use this Objective instance for early stopping. It should provide get_objective method
+    #   test             : if not None, we use this Objective instance for evaluating the objective. It should provide get_objective method
     #   patience (int)   : number of iterations to wait for validation improvement before stopping
     #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
     #   report_every (int) : if verbose > 1, we report every report_every iterations
@@ -293,8 +293,8 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
 
         # # Empty datasets
         # if objective.nsamples == 0 or \
-        #     (validation_objective is not None and validation_objective.nsamples == 0) or \
-        #     (test_objective       is not None and test_objective.nsamples       == 0):  
+        #     (validation       is not None and validation.nsamples =      = 0) or \
+        #     (test                 is not None and test          .nsamples       == 0):  
         #     if verbose: print(f"optimize found no samples in dataset")
         #     return Solution(objective=0.0, x=torch.zeros(objective.nobservables, device=objective.device), trn_objective=0.0)
         
@@ -303,7 +303,7 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
         optimizer = OPTIMIZERS[optimizer](minimize=minimize, verbose=verbose, **optimizer_args)
 
         f_new_trn = np.nan
-        if validation_objective is not None:
+        if validation is not None:
             f_new_val = f_best_val = np.nan
             best_val_x       = x.clone()
             best_val_iter    = 0
@@ -335,11 +335,11 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
             if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
                 new_time = time.time()
                 optimizer.msg(f'{(new_time - old_time)/report_every:4.2f}s/iter | f_cur_trn={f_cur_trn: 5.3f}' + 
-                    (f' f_new_val={f_new_val: 5.3f} f_best_val={f_best_val: 5.3f} patience_counter={patience_counter}' if validation_objective is not None else '') , t)
+                    (f' f_new_val={f_new_val: 5.3f} f_best_val={f_best_val: 5.3f} patience_counter={patience_counter}' if validation is not None else '') , t)
                 old_time = new_time
 
-            if validation_objective is not None:
-                f_new_val = validation_objective.get_objective(new_x) 
+            if validation is not None:
+                f_new_val = validation.get_objective(new_x) 
                 if is_infnan(f_new_val):
                     if verbose: optimizer.msg(f"[Stopping] Invalid validation objective {f_new_val}", t)
                     break
@@ -360,7 +360,7 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
                 if verbose: optimizer.msg(f"[Converged] Training objective change below tol={tol}", t)
                 break 
 
-            if validation_objective is not None: 
+            if validation is not None: 
                 if max_val_objective is not None and f_new_val > max_val_objective:
                     f_best_val = max_val_objective
                     best_val_x = x
@@ -395,9 +395,9 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
             if verbose:
                 optimizer.msg(f'max_iter {max_iter} reached!')
 
-        if test_objective is not None:
-            return Solution(objective=test_objective.get_objective(best_val_x), x=best_val_x, trn_objective=f_cur_trn)
-        elif validation_objective is not None:
+        if test is not None:
+            return Solution(objective=test.get_objective(best_val_x), x=best_val_x, trn_objective=f_cur_trn)
+        elif validation is not None:
             return Solution(objective=f_best_val, x=best_val_x, trn_objective=f_cur_trn)
         else:
             return Solution(objective=f_cur_trn, x=x)
@@ -408,7 +408,7 @@ def optimize(x0, objective, minimize=True, optimizer='GradientDescentBB', optimi
 
 if __name__ == "__main__":
     from ep_estimators import Dataset
-    if False:
+    if True:
         # Test the optimizers
         for k in OPTIMIZERS.keys():
             break
@@ -428,12 +428,12 @@ if __name__ == "__main__":
                                 for (trn, val, tst) in [(objective, None, None), 
                                                         (trn1, val1, None), 
                                                         (trn2, val2, tst2)]:
-                                    optimize(x0=x0, objective=trn, optimizer=k, validation_objective=val, test_objective=tst, verbose=verbose, 
+                                    optimize(x0=x0, objective=trn, optimizer=k, validation=val, test          =tst, verbose=verbose, 
                                             minimize=minimize, max_trn_objective=max_trn_objective, max_val_objective=max_val_objective)
                                     
             break # Only test the first optimizer for now
 
-    if False:
+    if True:
         import spin_model
         N    = 100
         J    = spin_model.get_couplings_random(N=N, k=10)
@@ -445,8 +445,8 @@ if __name__ == "__main__":
         objective = Dataset(g_samples=g_samples)
         x0   = torch.zeros(objective.nobservables, device=objective.device)
         trn2, val2, tst2 = objective.split_train_val_test()
-        for k in OPTIMIZERS.keys():
-            r = optimize(x0=x0, objective=trn2, optimizer=k, validation_objective=val2, test_objective=tst2, minimize=False, verbose=0)
+        for k in OPTIMIZERS.keys      ():
+            r = optimize(x0=x0, objective=trn2, optimizer=k, validation=val2, test          =tst2, minimize=False, verbose=0)
             print(f"{k:30s} {r.objective:5.3f}")
 
     class TestObjective(object):

@@ -21,23 +21,25 @@ from utils import *
 # TODO: Cache intermediate results
 import functools
 
-class DatasetBase(object):
+class Objective(object):
+    def get_objective(self, theta): # Return objective value for parameters theta
+        raise NotImplementedError
+    def get_gradient(self, theta): # Return gradient of the objective function for parameters theta
+        raise NotImplementedError("get_gradient is not implemented")
+    def get_hessian(self, theta):  # Return hessian of the objective function for parameters theta
+        raise NotImplementedError("get_hessian is not implemented")
+    
+class DatasetBase(Objective):
     @functools.cached_property
-    def g_mean(self)     : raise NotImplementedError("g_mean is not implemented")
+    def g_mean(self)     : raise NotImplementedError 
 
     @functools.cached_property
-    def rev_g_mean(self): raise NotImplementedError("g_rev_mean is not implemented")
-    def g_cov(self)     : raise NotImplementedError("g_cov is not implemented")
-    def rev_g_cov(self) : raise NotImplementedError("g_rev_cov is not implemented")
-    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, **kwargs):
+    def rev_g_mean(self): raise NotImplementedError 
+    def g_cov(self)     : raise NotImplementedError 
+    def rev_g_cov(self) : raise NotImplementedError 
+
+    def get_tilted_statistics(self, theta, **kwargs):
         raise NotImplementedError("get_tilted_statistics is not implemented")
-    
-    def _get_null_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        nan = float('nan')
-        d = {'tilted_mean': theta * nan, 'objective': nan}
-        if return_covariance:
-            d['tilted_covariance'] = torch.zeros((self.nobservables, self.nobservables))*nan
-        return d
     
     def get_objective(self, theta):
         # Return objective value for parameters theta
@@ -45,32 +47,50 @@ class DatasetBase(object):
         return v['objective']
 
 
+    def get_gradient(self, theta):
+        stats = self.get_tilted_statistics(theta, return_mean=True)
+        g_theta = stats['tilted_mean']
+        return self.g_mean - g_theta
+    
+
+    def get_hessian(self, theta):
+        stats = self.get_tilted_statistics(theta, return_covariance=True)
+        g_cov = stats['tilted_covariance']
+        return -g_cov
+
+
+    def _get_null_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
+        nan = float('nan')
+        d = {'tilted_mean': theta * nan, 'objective': nan}
+        if return_covariance:
+            d['tilted_covariance'] = torch.zeros((self.nobservables, self.nobservables))*nan
+        return d
+    
+
     @staticmethod
-    def _get_trn_indices(nsamples, test_fraction=1/2, shuffle=True, with_replacement=False):
+    def get_trn_val_tst_indices(nsamples, val_fraction=0.1, test_fraction=0.1, shuffle=True, with_replacement=False):
         # Get indices for training and testing data
         assert 0 <= test_fraction <= 1, "test_fraction must be between 0 and 1"
-        trn_nsamples = nsamples - int(nsamples * test_fraction)
+        trn_nsamples = int(nsamples * (1 - val_fraction - test_fraction))
+        val_nsamples = int(nsamples * val_fraction)
 
         if shuffle:
             perm = np.random.choice(nsamples, size=nsamples, replace=with_replacement)
-            #perm = np.random.permutation(nsamples)
             trn_indices = perm[:trn_nsamples]
-            tst_indices = perm[trn_nsamples:]
+            val_indices = perm[trn_nsamples:trn_nsamples+val_nsamples]
+            tst_indices = perm[trn_nsamples+val_nsamples:]
         else:
             trn_indices = np.arange(trn_nsamples)
-            tst_indices = np.arange(trn_nsamples, nsamples)
-        return trn_indices, tst_indices
+            val_indices = np.arange(trn_nsamples, trn_nsamples+val_nsamples)
+            tst_indices = np.arange(trn_nsamples+val_nsamples, nsamples)
+        return trn_indices, val_indices, tst_indices
 
-    def split_train_test(self, **kw_options):
-        raise NotImplementedError("split_train_test is not implemented")
+    def split_train_test(self, test_fraction=0.1, **kw_options):
+        tst, _, trn = self.split_train_val_test(test_fraction=test_fraction, **kw_options)
+        return trn, tst
 
-    
     def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
-        # Split dataset into train/val/test sets with default 80/10/10 split
-        assert val_fraction + test_fraction < 1.0
-        trn, val_tst = self.split_train_test(test_fraction=val_fraction + test_fraction, shuffle=shuffle)
-        val, tst = val_tst.split_train_test(test_fraction=test_fraction / (val_fraction + test_fraction), shuffle=shuffle)
-        return trn, val, tst
+        raise NotImplementedError("split_train_val_test is not implemented")
 
 
 class Dataset(DatasetBase):
@@ -100,6 +120,16 @@ class Dataset(DatasetBase):
     @functools.cached_property
     def g_mean(self):
         return self.g_samples.mean(axis=0)
+    
+    def g_cov(self): # Covariance of g_samples
+        return torch.cov(self.g_samples.T, correction=0)
+    
+    def rev_g_cov(self):
+        # Covariance of reverse samples
+        if self.rev_g_samples is None: # antisymmetric observables, they have the same covariance matrix
+            return self.g_cov()
+        else:
+            torch.cov(self.rev_g_samples.T, correction=0)
 
     @functools.cached_property
     def rev_g_mean(self):
@@ -108,60 +138,28 @@ class Dataset(DatasetBase):
         else:
             return self.rev_g_samples.mean(axis=0)
 
-    def get_gradient(self, theta):
-        stats = self.get_tilted_statistics(theta, return_mean=True)
-        g_theta = stats['tilted_mean']
-        return self.g_mean - g_theta
     
-
-    def get_hessian(self, theta):
-        stats = self.get_tilted_statistics(theta, return_covariance=True)
-        g_cov = stats['tilted_covariance']
-        return -g_cov
-
-    def g_cov(self):
-        # Covariance of g_samples
-        return torch.cov(self.g_samples.T, correction=0)
-    
-    
-    def rev_g_cov(self):
-        # Covariance of reverse samples
-        if self.rev_g_samples is None: # antisymmetric observables, they have the same covariance matrix
-            return self.g_cov()
-        else:
-            torch.cov(self.rev_g_samples.T, correction=0)    
-    
-
-    def split_train_test(self, **split_opts):
-        # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(nsamples=self.forward_nsamples, **split_opts)
+    def split_train_val_test(self, **split_opts):  # Split current data set into training and heldout testing part
+        trn_indices, val_indices, tst_indices = self.get_trn_val_tst_indices(nsamples=self.forward_nsamples, **split_opts)
 
         if self.rev_g_samples is not None:
             if self.nsamples != self.forward_nsamples:
-                trn_indices_rev, tst_indices_rev = self._get_trn_indices(nsamples=self.nsamples, **split_opts)
+                trn_indices_rev, val_indices_rev, tst_indices_rev = self.get_trn_val_tst_indices(nsamples=self.nsamples, **split_opts)
             else: # assume that forward and reverse samples are paired (there is the same number), 
-                trn_indices_rev = trn_indices
+                tst_indices_rev = tst_indices
+                val_indices_rev = val_indices
                 tst_indices_rev = tst_indices
             rev_trn = self.rev_g_samples[trn_indices_rev]
+            rev_val = self.rev_g_samples[val_indices_rev]
             rev_tst = self.rev_g_samples[tst_indices_rev]
         else:
-            rev_trn, rev_tst = None, None 
+            rev_trn, rev_val, rev_tst = None, None, None
 
         trn = self.__class__(g_samples=self.g_samples[trn_indices], rev_g_samples=rev_trn)
+        val = self.__class__(g_samples=self.g_samples[val_indices], rev_g_samples=rev_val)
         tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
-        return trn, tst
 
-        
-    def get_random_batch(self, batch_size):
-        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
-        if self.rev_g_samples is not None:
-            if self.nsamples != self.forward_nsamples:
-                rev_indices = np.random.choice(self.forward_nsamples, size=batch_size, replace=True)
-            else: # assume that forward and reverse samples are paired (there is the same number), 
-                rev_indices = indices
-            return self.__class__(g_samples=self.g_samples[indices], rev_g_samples=self.rev_g_samples[rev_indices])
-        else:
-            return self.__class__(g_samples=self.g_samples[indices])
+        return trn, val, tst
 
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
@@ -172,8 +170,6 @@ class Dataset(DatasetBase):
 
         if self.nsamples == 0:  # No observables
             return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
-        
-        
 
         vals  = {}
         theta = numpy_to_torch(theta)
@@ -205,23 +201,15 @@ class Dataset(DatasetBase):
                 if return_covariance:
                     if num_chunks is None:
                         if use_rev:
-#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
                             weighted_rev_g = exp_tilt[:, None] * self.rev_g_samples  # shape: (k, i)
                             K = weighted_rev_g.T @ self.rev_g_samples
                         else:
-#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
                             weighted_rev_g = exp_tilt[:, None] * self.g_samples
                             K = weighted_rev_g.T @ self.g_samples
                         vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
 
-                    elif num_chunks == -1:
-                        if use_rev:
-                            vals['tilted_covariance'] = torch.cov(self.rev_g_samples.T, correction=0, aweights=exp_tilt)
-                        else:
-                            vals['tilted_covariance'] = torch.cov(self.g_samples.T, correction=0, aweights=exp_tilt)
-
                     else:
-                        # Chunked computation
+                        # Chunked computation, helps reduce memory usage for large datasets
                         K = torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=self.device)
                         chunk_size = (self.nsamples + num_chunks - 1) // num_chunks  # Ceiling division
 
@@ -230,16 +218,10 @@ class Dataset(DatasetBase):
                             end = min((r + 1) * chunk_size, self.nsamples)
                             g_chunk = self.rev_g_samples[start:end] if use_rev else -self.g_samples[start:end]
                             
-#                            K += torch.einsum('k,ki,kj->ij', exp_tilt[start:end], g_chunk, g_chunk)
                             weighted_g = exp_tilt[start:end][:, None] * g_chunk
                             K += weighted_g.T @ g_chunk
 
                         vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
-
-#                        if use_rev:
-#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.rev_g_samples, self.rev_g_samples)
-#                        else:
-#                            K = torch.einsum('k,ki,kj->ij', exp_tilt, self.g_samples, self.g_samples)
 
         return vals
 
@@ -249,30 +231,23 @@ class Dataset(DatasetBase):
 
 # TODO : Explain what this does, i.e., calculate statistics directly from state samples
 # from forward process. It assumes on antisymmetric observables
-class RawDataset(DatasetBase):
+class DatasetStateSamples(DatasetBase):
     def __init__(self, X0, X1):
         # Arguments:
         # X0          : 2d tensor (nsamples x N) containing initial states of the system
         # X1          : 2d tensor (nsamples x N) containing final states of the system
-        
         assert(X0.shape == X1.shape)
-        
         self.X0 = numpy_to_torch(X0)
         self.X1 = numpy_to_torch(X1)
-        
-        # self.N indicates dimensionality of the system
-        self.nsamples, self.N = self.X0.shape
-        self.nsamples = self.nsamples
-
+        self.nsamples, self.N = self.X0.shape             # self.N indicates dimensionality of the system
         self.device = self.X0.device
-    
         self.nobservables = self.g_mean.shape[0]
 
 
     @functools.cached_property
     def g_mean(self): # Calculate mean of observables under forward process
         triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
-        g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 )/ self.nsamples  # shape (N, N)
+        g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 ) / self.nsamples  # shape (N, N)
         return g_mean_raw[triu_indices[0], triu_indices[1]]
 
 
@@ -281,38 +256,14 @@ class RawDataset(DatasetBase):
         return -self.g_mean  # Antisymmetric observables
 
 
-    def split_train_test(self, **split_opts):
+    def split_train_val_test(self, **split_opts):
         # Split current data set into training and heldout testing part
-        trn_indices, tst_indices = self._get_trn_indices(self.nsamples, **split_opts)
-        trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
-        tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
-        return trn, tst
-        
-    def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
-        # Split current data set into training, validation, and test parts
-        assert val_fraction + test_fraction < 1.0
-
-        if shuffle:
-            perm = np.random.permutation(self.nsamples)
-        else:
-            perm = np.arange(self.nsamples)
-
-        n_val = int(self.nsamples * val_fraction)
-        n_test = int(self.nsamples * test_fraction)
-        n_train = self.nsamples - n_val - n_test
-
-        trn_indices = perm[:n_train]
-        val_indices = perm[n_train:n_train + n_val]
-        tst_indices = perm[n_train + n_val:]
-
+        trn_indices, val_indices, tst_indices = self.get_trn_val_tst_indices(self.nsamples, **split_opts)
         trn = type(self)(X0=self.X0[trn_indices], X1=self.X1[trn_indices])
         val = type(self)(X0=self.X0[val_indices], X1=self.X1[val_indices])
         tst = type(self)(X0=self.X0[tst_indices], X1=self.X1[tst_indices])
         return trn, val, tst
 
-    def get_random_batch(self, batch_size):
-        indices = np.random.choice(self.nsamples, size=batch_size, replace=True)
-        return self.__class__(X0=self.X0[indices], X1=self.X1[indices])
 
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, num_chunks=None):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
@@ -361,27 +312,19 @@ class RawDataset(DatasetBase):
 
     
         
-class RawDataset2(RawDataset):
+class DatasetStateSamples2(DatasetStateSamples):
     def __init__(self, X0, X1):
         # Arguments:
         # X0          : 2d tensor (nsamples x N) containing initial states of the system
         # X1          : 2d tensor (nsamples x N) containing final states of the system
-        
         assert(X0.shape == X1.shape)
-        
         self.X0 = numpy_to_torch(X0)
         self.X1 = numpy_to_torch(X1)
-        self.diffX = self.X1 - self.X0
-        
-        # self.N indicates dimensionality of the system
-        self.nsamples, self.N = self.X0.shape
-        self.nsamples = self.nsamples
-
+        self.nsamples, self.N = self.X0.shape             # self.N indicates dimensionality of the system
         self.device = self.X0.device
-    
+        self.diffX = self.X1 - self.X0
         self.nobservables = self.g_mean.shape[0]
 
-        # print(torch.any(self.diffX != 0, dim=1).to(torch.float32).mean())
 
     @functools.cached_property
     def g_mean(self): # Calculate mean of observables under forward process
@@ -430,37 +373,31 @@ class RawDataset2(RawDataset):
 # ============================================================
 
 import optimizers
-def get_EP_Estimate(data, validation_data=None, test_data=None, verbose=0,
-                    optimize_kwargs=None):
+def get_EP_Estimate(data, validation=None, test=None, verbose=0, optimize_kwargs=None):
 
     x0 = torch.zeros(data.nobservables, device=data.device)
     if data.nsamples == 0 or \
-        (validation_data is not None and validation_data.nsamples == 0) or \
-        (test_data       is not None and test_data.nsamples       == 0):
+        (validation is not None and validation.nsamples == 0) or \
+        (test       is not None and test.nsamples       == 0):
         # There is not enough data to estimate the objective
         return 0, x0
     
     if optimize_kwargs is None:
         optimize_kwargs = {}
     
-    o = optimizers.optimize(x0=x0,
-                            objective=data, 
-                            validation_objective=validation_data,
-                            test_objective=test_data,
-                            minimize=False,
-                            **optimize_kwargs,
-                            )
+    o = optimizers.optimize(x0=x0, 
+            objective=data, validation=validation, test=test, minimize=False, **optimize_kwargs)
     
     return o.objective, o.x 
 
 # TODO: Explain
-def get_EP_Newton1Step(data, validation_data=None, test_data=None, verbose=0,
+def get_EP_Newton1Step(data, validation=None, test=None, verbose=0,
                     optimize_kwargs=None):
     if optimize_kwargs is None:
         optimize_kwargs = {}
     optimize_kwargs['max_iter'] = 1
     optimize_kwargs['optimizer'] = 'NewtonMethod'
-    return get_EP_Estimate(data, validation_data=validation_data, test_data=test_data,
+    return get_EP_Estimate(data, validation=validation, test=test,
                            optimize_kwargs=optimize_kwargs)
 
 

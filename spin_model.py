@@ -253,9 +253,9 @@ def get_empirical_EP(beta, J, S, F):
     for i in range(N):
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = get_g_observables(S, F, i)
-        g_mean     = g_samples.mean(axis=0)
-
-        sigma_emp += frequencies[i] * get_spin_empirical_EP(beta, J, i, g_mean)
+        if len(g_samples) > 0:
+            g_mean     = g_samples.mean(axis=0)
+            sigma_emp += frequencies[i] * get_spin_empirical_EP(beta, J, i, g_mean)
 
     return sigma_emp
 
