@@ -16,40 +16,23 @@ torch.set_grad_enabled(False)
 
 
 def calc_spin(beta, J, i, g_samples):
-    verbose=False
-
-
-    sigmas, times, thetas = {}, {}, {}
-
     data = ep_estimators.Dataset(g_samples=g_samples)
-
-    # trn, tst = data.split_train_test()
     np.random.seed(123)
     trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.2)
 
-    #trn, val = data.split_train_test(test_fraction=0.5) ; tst = None
+    sigmas, times, thetas = {}, {}, {}
 
     stime = time.time()
-    sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
+    if data.nsamples == 0:
+        sigmas['Emp'] = 0
+    else:
+        sigmas['Emp'] = spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean)
     times['Emp'] = time.time() - stime
 
-    if False:
-        stime = time.time()
-        tur_sol = ep_estimators.get_EP_MTUR(data=trn)
-        sigmas['TUR'] = tur_sol.objective
-        times['TUR'] = time.time() - stime
 
-    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=data.g_mean))
-    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=trn.g_mean))
-    # print( spin_model.get_spin_empirical_EP(beta=beta, J=J, i=i, g_mean=tst.g_mean))
-    # print()
-
-# Emp=0.02383  TUR=0.00623  NR h a=0.02243  NR h a tst=0.02110  mem=4126.4mb:   2%|██                                                                                               | 21/1000 [00:37<29:15,  1.79s/it]^C^CTraceback (most recent call last):
-
-# iteration 20, tst=0.020
     to_run = [
         ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, validation_data=val, test_data=tst, max_iter=1) ),
-       ('TUR'      ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
+        ('TUR'     ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 #        ('NR'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False)),
 
  #       ('NR h a'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, 
@@ -76,7 +59,7 @@ def calc_spin(beta, J, i, g_samples):
         if res.trn_objective is None:  
             sigmas[k] = res.objective
         else: # holdout was used
-            sigmas[k] = data.get_objective(res.theta)
+            sigmas[k] = res.trn_objective
             sigmas[k+' tst'] = res.objective
             #print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
 
@@ -93,12 +76,8 @@ def calc_spin(beta, J, i, g_samples):
         stats2 -= stats2.mean()
         sns.kdeplot( stats2, label='Gaussian')
         #plt.yscale('log')
-
         plt.legend() 
-        
-
         plt.show()
-            #asdf
 
     del data, trn, tst 
 
@@ -115,20 +94,10 @@ def calc(file_name, max_spins=None):
 
     print()
     print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-    data = np.load(file_name)
+    data   = np.load(file_name)
     S_bin  = data['S_bin'] # .astype('float32')*2-1 # torch.from_numpy(data["S_bin"]).to(device)*2-1
     rep, N = S_bin.shape
     F      = data['F'] # torch.from_numpy(data["F"]).to(device).bool()
-
-    # if data['beta'] >= 3:
-    #     return None
-
-    if False:
-        vvv=data['J'].reshape([1,-1])[0,:]
-        plt.hist(vvv)
-        #sns.kdeplot(vvv)
-        plt.show()
-        #asf
 
     J    = data['J']
     beta = data['beta']
@@ -143,7 +112,6 @@ def calc(file_name, max_spins=None):
         np.random.seed(123)
         spin_ids = np.random.choice(N, size=max_spins, replace=False)
 
-    #spin_ids = [7,]
     pbar = tqdm(spin_ids, smoothing=0)
 
     print("=" * 70)
@@ -159,8 +127,8 @@ def calc(file_name, max_spins=None):
             utils.empty_torch_cache()
 
         g_samples = spin_model.get_g_observables_bin(S_bin, F, i)
-
-        # g_samples = torch.concat([g_samples, torch.randn(1000, g_samples.shape[1])], dim=0)
+        if i == 5:
+            g_samples = g_samples[:0,:]
 
         res = calc_spin( beta, J, i, g_samples)
 

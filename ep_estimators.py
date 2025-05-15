@@ -155,7 +155,8 @@ class Dataset(DatasetBase):
         stats = self.get_tilted_statistics(theta, return_mean=True)
         g_theta = stats['tilted_mean']
         return self.g_mean - g_theta
-        
+    
+
     def get_hessian(self, theta):
         stats = self.get_tilted_statistics(theta, return_covariance=True)
         g_cov = stats['tilted_covariance']
@@ -212,7 +213,7 @@ class Dataset(DatasetBase):
 
         assert return_mean or return_covariance or return_objective
 
-        if len(self.g_samples) == 0:  # No observables
+        if self.nsamples == 0:  # No observables
             return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
         
         
@@ -368,6 +369,9 @@ class RawDataset(DatasetBase):
         
         assert return_objective or return_mean
         
+        if self.nsamples == 0:  # No observables
+            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
+        
         vals = {}
         theta = numpy_to_torch(theta)
 
@@ -437,7 +441,7 @@ class RawDataset2(RawDataset):
         
         assert return_objective or return_mean
 
-        if len(self.X0) == 0:  # No observables
+        if self.nsamples == 0:  # No observables
             return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
         
         vals = {}
@@ -474,7 +478,10 @@ class RawDataset2(RawDataset):
 #   trn_objective (float) : estimate of EP on training data (if holdout is used)
 Solution = namedtuple('Solution', ['objective', 'theta', 'trn_objective'], defaults=[None])
 
-def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
+def _get_null_solution(data):
+    return Solution(objective=0.0, theta=torch.zeros(data.nobservables, device=data.device), trn_objective=0.0)
+
+def _get_valid_solution(objective, theta, nsamples=None, trn_objective=None):
     # This returns a Solution object, after doing some basic sanity checking of the values
     # This checking is useful in the undersampled regime with many dimensions and few samles
     if objective < 0:
@@ -523,6 +530,12 @@ def get_EP_Newton(data, theta_init=None, verbose=0, validation_data=None, test_d
     #   Solution object with validation objective (EP estimate), theta, and train objective (if validation_data provided)
     #   Solution object with train      objective (EP estimate), theta, and None            (otherwise)
 
+    if data.nsamples == 0 or \
+        (validation_data is not None and validation_data.nsamples == 0) or \
+        (test_data       is not None and test_data.nsamples       == 0):
+        # There is not enough data to estimate the objective
+        return _get_null_solution(data)
+    
     funcname = 'get_EP_Newton_steps'
 
     if max_iter is None:
@@ -540,14 +553,6 @@ def get_EP_Newton(data, theta_init=None, verbose=0, validation_data=None, test_d
             theta = numpy_to_torch(theta_init).clone()
         else:
             theta = torch.zeros(data.nobservables, device=data.device)
-
-        # UPDATE 
-        # Test with empty dataset
-        if data.nsamples == 0 or \
-            (validation_data is not None and validation_data.nsamples == 0) or \
-            (test_data       is not None and test_data.nsamples       == 0):  
-            if verbose: print(f"{funcname} : [Stopping] No samples in dataset")
-            return _get_valid_solution(objective=0.0, theta=torch.zeros(data.nobservables, device=data.device), nsamples=None, trn_objective=0.0)
 
 
         I     = torch.eye(len(theta), device=theta.device)
@@ -755,6 +760,13 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None
     #   Solution object with validation objective (EP estimate), theta, and train objective (if validation_data provided)
     #   Solution object with train      objective (EP estimate), theta, and None            (otherwise)
 
+    if data.nsamples == 0 or \
+        (validation_data is not None and validation_data.nsamples == 0) or \
+        (test_data       is not None and test_data.nsamples       == 0):
+        # There is not enough data to estimate the objective
+        return _get_null_solution(data)
+
+    
     funcname = 'get_EP_GradientAscent'
     def msg(s):
         print(f"get_EP_GradientAscent : iter={t:4d} | ‖θ‖∞={torch.abs(theta).max():3.2f}: {s}")
@@ -774,15 +786,6 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None
         else:
             new_theta = torch.zeros(data.nobservables, device=data.device)
         theta = new_theta.clone()
-
-        # UPDATE 
-        # Test with empty dataset
-        if data.nsamples == 0 or \
-            (validation_data is not None and validation_data.nsamples == 0) or \
-            (test_data       is not None and test_data.nsamples       == 0):  
-            if verbose: print(f"{funcname} : [Stopping] No samples in dataset")
-            return _get_valid_solution(objective=0.0, theta=torch.zeros(data.nobservables, device=data.device), nsamples=None, trn_objective=0.0)
-
 
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
@@ -810,7 +813,6 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None
             tilted_stats = c_data.get_tilted_statistics(new_theta, return_objective=True, return_mean=True)
 
             grad         = c_data.g_mean - tilted_stats['tilted_mean']   # Gradient
-
             f_new_trn    = tilted_stats['objective']
 
             # Different conditions that will stop optimization. See get_EP_Newton above
@@ -932,6 +934,9 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
     #   num_chunks (int)         : chunk covariance computations to reduce memory requirements
     #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
     #                               numerical stability of linear solvers
+
+    if data.nsamples == 0:  # There is not enough data to estimate the objective
+        return _get_null_solution(data)
 
     mean_diff      = data.g_mean - data.rev_g_mean
 
