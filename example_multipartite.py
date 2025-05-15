@@ -6,7 +6,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # Enable torch fallback for MPS
 import torch
 
 import spin_model
-import ep_estimators
+import ep_estimators2 as ep_estimators
 import utils
 
 # The following allows torch to use GPU for computation
@@ -46,39 +46,36 @@ for i in tqdm(range(N), smoothing=0):
 
     data = ep_estimators.Dataset(g_samples=g_samples)
 
+    # Multidimensional TUR
+    stime         = time.time()
+    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
+    time_MTUR    += time.time() - stime
+    sigma_MTUR   += p_i * spin_MTUR
+    
+    # Create dataset with validation and test holdout data
+    train, val, test = data.split_train_val_test()
+
+    # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
+    # By default, we use gradient ascent with Barzilai-Borwein step sizes
+    stime       = time.time()
+    spin_g, _   = ep_estimators.get_EP_Estimate(data=train, validation_data=val, test_data=test)
+    sigma_g    += p_i * spin_g 
+    time_g     += time.time() - stime
+
     # 1 step of Newton
     stime       = time.time()
-    spin_N1     = ep_estimators.get_EP_Newton(data, max_iter=1).objective 
+    spin_N1, _  = ep_estimators.get_EP_Newton1Step(data=train, validation_data=val, test_data=test) 
     time_N1    += time.time() - stime
     sigma_N1   += p_i * spin_N1
 
-    # Multidimensional TUR
-    stime       = time.time()
-    spin_MTUR   = ep_estimators.get_EP_MTUR(data).objective
-    time_MTUR  += time.time() - stime
-    sigma_MTUR += p_i * spin_MTUR
-    
-    # Create dataset with holdout data
-    train, val, test = data.split_train_val_test()
-    # Full optimization with trust-region Newton method and validation dataset (for early stopping) and test set (for evaluating the objective)
-    stime      = time.time()
-    sol_newton = ep_estimators.get_EP_Newton(train, trust_radius=1/4, validation_data=val, test_data=test)
-    sigma_g   += p_i * sol_newton.objective 
-    time_g    += time.time() - stime
 
-    # Full optimization with gradient ascent method
-    stime     = time.time()
-    spin_grad = ep_estimators.get_EP_GradientAscent(train, validation_data=val, test_data=test).objective
-    time_g2   += time.time() - stime
-    sigma_g2  += p_i * spin_grad
 
     utils.empty_torch_cache()
 
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
-print(f"  Σ     (Empirical)                         :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
-print(f"  Σ_g   (Full optimization w/ Newton)       :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
-print(f"  Σ_g   (Full optimization w/ grad. ascent) :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
-print(f"  Σ̂_g   (1-step Newton)                     :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
-print(f"  Σ_TUR (Multidimensional MTUR)             :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
+print(f"  Σ     (Empirical)             :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ_g   (Full optimization)     :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
+print(f"  Σ̂_g   (1-step Newton)         :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
+print(f"  Σ_TUR (Multidimensional MTUR) :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
 

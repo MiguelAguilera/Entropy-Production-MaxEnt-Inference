@@ -132,8 +132,8 @@ class NewtonMethod(Optimizer):
 
 
 class NewtonMethodTrustRegion(NewtonMethod):
+    # Newton's method with adaptive trust region constraints
     def __init__(self, trust_radius=1, minimize=True, verbose=0, linsolve_eps=1e-8):
-        # Newton method optimizer
         self.linsolve_eps = linsolve_eps
         self.trust_radius = trust_radius
         self.minimize     = minimize
@@ -156,9 +156,23 @@ class NewtonMethodTrustRegion(NewtonMethod):
 
         
 class TRON(NewtonMethodTrustRegion):
+    # TRON method, Newton's method with adaptive trust region constraints
+    # Reference:
+    #   Newton's method for large bound-constrained optimization problems
+    #   CJ Lin, JJ Moré
+    #   SIAM Journal on Optimization 9 (4), 1100-1127
+    #
     def __init__(self, trust_radius=1, eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
                     trust_radius_adjust_max_iter=100, minimize=True, verbose=0, linsolve_eps=1e-8):
-        # Newton method optimizer
+        # Parameters
+        #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
+        # Trust-region-related arguments (all optional):
+        #   trust_radius (float or None) : maximum trust region (if None, trust region constraint are not used)
+        #   solve_constrained (bool)     : if True, we find direction by solving the constrained trust-region problem 
+        #                                  if False, we simply rescale usual Newton step to desired maximum norm 
+        #   adjust_radius (bool)         : change trust-region radius in an adaptive way
+        #   eta0=0.0, eta1=0.25, eta2=0.75,trust_radius_min,trust_radius_max,trust_radius_adjust_max_iter
+        #                                : hyperparameters for adjusting trust radius
         self.linsolve_eps = linsolve_eps
         self.verbose = verbose
         self.trust_radius = trust_radius

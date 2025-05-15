@@ -731,7 +731,25 @@ def get_EP_Newton(data, theta_init=None, verbose=0, validation_data=None, test_d
         else:
             return _get_valid_solution(objective=f_cur_trn, theta=theta, nsamples=data.nsamples)
 
-
+import optimizers
+def get_EP_Estimate(data, validation_data=None, test_data=None, theta_init=None, verbose=0,
+                    optimizer_kwargs=None):
+    if data.nsamples == 0 or \
+        (validation_data is not None and validation_data.nsamples == 0) or \
+        (test_data       is not None and test_data.nsamples       == 0):
+        # There is not enough data to estimate the objective
+        return _get_null_solution(data)
+    
+    if optimizer_kwargs is None:
+        optimizer_kwargs = {}
+    
+    o = optimizers.optimize(x0=torch.zeros(data.nobservables, device=data.device),
+                            objective=data, 
+                            validation_objective=validation_data,
+                            test_objective=test_data,
+                            **optimizer_kwargs,
+                            minimize=False)
+    return o.objective, o.x 
 
 def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None, test_data=None, report_every=10,
                             max_iter=None, lr = 0.001, patience = 10, tol=1e-8, 
