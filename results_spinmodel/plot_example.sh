@@ -96,8 +96,11 @@ ARGS="--rep 2500000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 
 ARGS="--beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000n20 --num_neighbors 20"
 
 
-ARGS="--beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 100 --num_beta 1  --BASE_DIR ~/MaxEntData100v10  --num_neighbors 5"
+# ARGS="--beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 100 --num_beta 1  --BASE_DIR ~/MaxEntData100v10  --num_neighbors 5"
+ARGS="--beta_min 0 --beta_max 4 --DJ 1 --J0 1 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000w1  --num_neighbors 5"
+ARGS="--beta_min 0 --beta_max 4 --DJ 0.5 --J0 1 --N 100 --num_beta 5  --BASE_DIR ~/MaxEntData100w1djHalf "
 
+ARGS="--beta_min 0 --beta_max 4 --DJ 0.5 --J0 1 --N 100 --num_beta 5 --num_neighbors 5 --BASE_DIR ~/MaxEntData100w1djHalfn "
 python generate_data_spin_model.py --seed 42  --trials 1000  $ARGS  # --overwrite
 python scaling_fig.py                    $ARGS  $ARGSEP    #  --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  

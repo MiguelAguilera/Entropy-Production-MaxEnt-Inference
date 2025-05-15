@@ -39,7 +39,14 @@ class DatasetBase(object):
     def rev_g_cov(self) : raise NotImplementedError("g_rev_cov is not implemented")
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False, **kwargs):
         raise NotImplementedError("get_tilted_statistics is not implemented")
-
+    
+    def _get_null_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
+        nan = float('nan')
+        d = {'tilted_mean': theta * nan, 'objective': nan}
+        if return_covariance:
+            d['tilted_covariance'] = torch.zeros((self.nobservables, self.nobservables))*nan
+        return d
+    
     def get_objective(self, theta):
         # Return objective value for parameters theta
         v = self.get_tilted_statistics(theta, return_objective=True)
@@ -117,6 +124,7 @@ class Dataset(DatasetBase):
         #   rev_g_samples            : 2d tensor (nsamples x nobservables) containing samples of observables
         #                              under reverse process . If None, we assume antisymmetric observables
         #                              where rev_g_samples = -g_samples
+
         self.g_samples        = numpy_to_torch(g_samples)
         self.forward_nsamples = self.g_samples.shape[0]
         self.nobservables     = self.g_samples.shape[1]
@@ -136,7 +144,6 @@ class Dataset(DatasetBase):
     def g_mean(self):
         return self.g_samples.mean(axis=0)
 
-
     @functools.cached_property
     def rev_g_mean(self):
         if self.rev_g_samples is None: # antisymmetric observables
@@ -144,6 +151,15 @@ class Dataset(DatasetBase):
         else:
             return self.rev_g_samples.mean(axis=0)
 
+    def get_gradient(self, theta):
+        stats = self.get_tilted_statistics(theta, return_mean=True)
+        g_theta = stats['tilted_mean']
+        return self.g_mean - g_theta
+        
+    def get_hessian(self, theta):
+        stats = self.get_tilted_statistics(theta, return_covariance=True)
+        g_cov = stats['tilted_covariance']
+        return -g_cov
 
     def g_cov(self):
         # Covariance of g_samples
@@ -196,13 +212,19 @@ class Dataset(DatasetBase):
 
         assert return_mean or return_covariance or return_objective
 
+        if len(self.g_samples) == 0:  # No observables
+            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
+        
+        
+
         vals  = {}
         theta = numpy_to_torch(theta)
 
         use_rev = self.rev_g_samples is not None  # antisymmetric observables or not
 
         with torch.no_grad():
-        
+            
+            # print((self.g_samples @ theta).sum())
             th_g = self.rev_g_samples @ theta if use_rev else -(self.g_samples @ theta)
 
             # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
@@ -414,6 +436,9 @@ class RawDataset2(RawDataset):
             raise NotImplementedError("Covariance not implemented for RawDataset2")
         
         assert return_objective or return_mean
+
+        if len(self.X0) == 0:  # No observables
+            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
         
         vals = {}
         theta = numpy_to_torch(theta)
@@ -457,7 +482,7 @@ def _get_valid_solution(objective, theta, nsamples, trn_objective=None):
         objective = 0.0 
         if theta is not None:
             theta = 0*theta
-    elif objective >= np.log(nsamples):
+    elif nsamples is not None and nsamples > 0 and objective >= np.log(nsamples):  # UPDATE WITH None check
         # EP estimate should not be larger than log(# samples), because it is not possible
         # to estimate KL divergence larger than log(m) from m samples
         objective = np.log(nsamples)
@@ -515,6 +540,16 @@ def get_EP_Newton(data, theta_init=None, verbose=0, validation_data=None, test_d
             theta = numpy_to_torch(theta_init).clone()
         else:
             theta = torch.zeros(data.nobservables, device=data.device)
+
+        # UPDATE 
+        # Test with empty dataset
+        if data.nsamples == 0 or \
+            (validation_data is not None and validation_data.nsamples == 0) or \
+            (test_data       is not None and test_data.nsamples       == 0):  
+            if verbose: print(f"{funcname} : [Stopping] No samples in dataset")
+            return _get_valid_solution(objective=0.0, theta=torch.zeros(data.nobservables, device=data.device), nsamples=None, trn_objective=0.0)
+
+
         I     = torch.eye(len(theta), device=theta.device)
         
         if validation_data:
@@ -740,6 +775,15 @@ def get_EP_GradientAscent(data, theta_init=None, verbose=0, validation_data=None
             new_theta = torch.zeros(data.nobservables, device=data.device)
         theta = new_theta.clone()
 
+        # UPDATE 
+        # Test with empty dataset
+        if data.nsamples == 0 or \
+            (validation_data is not None and validation_data.nsamples == 0) or \
+            (test_data       is not None and test_data.nsamples       == 0):  
+            if verbose: print(f"{funcname} : [Stopping] No samples in dataset")
+            return _get_valid_solution(objective=0.0, theta=torch.zeros(data.nobservables, device=data.device), nsamples=None, trn_objective=0.0)
+
+
         m = torch.zeros_like(new_theta)
         v = torch.zeros_like(new_theta)
         
@@ -903,14 +947,16 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
         if data.rev_g_samples is None:
             combined_samples = data.g_samples
             num_total        = combined_samples.shape[0]
-            weights          = torch.empty(num_total, device=data.device)
-            weights[:data.nsamples] = 1.0/data.nsamples
+            weights          = torch.zeros(num_total, device=data.device)
+            if data.nsamples > 0:
+                weights[:data.nsamples] = 1.0/data.nsamples
         else:
             combined_samples = torch.concatenate([data.g_samples, data.rev_g_samples], dim=0)
             num_total        = combined_samples.shape[0]
-            weights          = torch.empty(num_total, device=data.device)
-            weights[:data.nsamples] = 1.0/data.nsamples/2.0
-            weights[data.nsamples:] = 1.0/data.nsamples/2.0
+            weights          = torch.zeros(num_total, device=data.device)
+            if data.nsamples > 0:
+                weights[:data.nsamples] = 1.0/data.nsamples/2.0
+                weights[data.nsamples:] = 1.0/data.nsamples/2.0
 
 
         if num_chunks is None:
