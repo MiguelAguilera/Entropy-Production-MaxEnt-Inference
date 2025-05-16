@@ -11,7 +11,8 @@ import torch
 
 sys.path.insert(0, '..')
 # from methods_EP_parallel import *
-import ep_estimators, utils
+import ep_estimators_bak as ep_estimators
+import utils
 utils.set_default_torch_device()
 torch.set_grad_enabled(False)
 
@@ -119,7 +120,7 @@ trn, tst = data.split_train_test()
 
 #theta_init = np.random.randn(data.nobservables)/np.sqrt(data.nobservables)
 
-res=ep_estimators.get_EP_GradientAscent(data=trn, holdout_data=tst, lr=lr, use_Adam=use_Adam, use_BB=use_BB, # skip_warm_up=True,
+res=ep_estimators.get_EP_GradientAscent(data=trn, validation_data=tst, lr=lr, use_Adam=use_Adam, use_BB=use_BB, # skip_warm_up=True,
                                          tol=tol, verbose=2, report_every=10, patience=patience, batch_size=batch_size,
                                          max_iter=max_iter, theta_init=theta_init)
 sigma = res.objective

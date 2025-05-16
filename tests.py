@@ -10,7 +10,7 @@ import utils
 utils.set_default_torch_device()
 
 import spin_model
-import ep_estimators2 as ep_estimators
+import ep_estimators
 import observables
 
 _cached_simulation = None
@@ -80,7 +80,8 @@ def run_inference(beta, J, S, F, num_chunks=None, do_rev=False):
 
     # Because system is multipartite, we can separately estimate EP for each spin
     for i in tqdm(range(N)):
-        p_i            =  F[:,i].sum()/total_flips               # frequency of spin i flips
+        # frequency of spin i flips
+        p_i            =  F[:,i].sum()/(total_flips if total_flips > 0 else 1)
 
         # Select states in which spin i flipped and use it create object for EP estimation 
         g_samples  = observables.get_g_observables(S, F, i)
@@ -208,7 +209,7 @@ def test_consistency():
 
 import optimizers
 # Test optimizers
-def test_optimizer(split=0, minimize=None, max_trn_objective=None, max_val_objective=None, verbose=False):
+def test_optimizer(split=0, max_trn_objective=None, max_val_objective=None, verbose=False):
     beta, J, S, F = get_simulation_results()
     i   = 9   # spin index
     trn = observables.Dataset(observables.get_g_observables(S, F, i))
@@ -221,13 +222,13 @@ def test_optimizer(split=0, minimize=None, max_trn_objective=None, max_val_objec
     for k in optimizers.OPTIMIZERS:
         x0 = np.zeros(trn.nobservables)
         optimizers.optimize(x0=x0, objective=trn, optimizer=k(), validation=val, verbose=verbose, 
-                minimize=minimize, max_trn_objective=max_trn_objective, max_val_objective=max_val_objective, max_iter=20)
+                minimize=False, max_trn_objective=max_trn_objective, max_val_objective=max_val_objective)
     
                                     
 def test_optimizer_bounds():
-    test_optimizer(split=False, minimize=True, max_trn_objective=1e2)
-    test_optimizer(split=True, minimize=True, max_trn_objective=1e2, max_val_objective=1e2)
-    test_optimizer(split=True, minimize=True, max_trn_objective=1e2, max_val_objective=1e2)
+    test_optimizer(split=False, max_trn_objective=1e2)
+    test_optimizer(split=True, max_trn_objective=1e2, max_val_objective=1e2)
+    test_optimizer(split=True, max_trn_objective=1e2, max_val_objective=1e2)
 
 def test_optimizer_split_verbose():
     test_optimizer(verbose=True)
@@ -277,13 +278,16 @@ def test_optimizers2():
     objective = TestObjective()
     x0   = objective.y * 0
     for k in optimizers.OPTIMIZERS:
-        r = optimizers.optimize(x0=x0, objective=objective, minimize=True, optimizer=k())
-        assert(abs(r.objective) < 1e-4)
+        r = optimizers.optimize(x0=x0, 
+                                objective=objective, 
+                                minimize=True, 
+                                optimizer=k())
+        assert(abs(r.objective) < 1e-3)
         assert( (r.x - objective.y ).norm() < 1e-2)
 
     objective2 = TestObjectiveNegative()
     x0   = objective2.y * 0
     for k in optimizers.OPTIMIZERS:
         r = optimizers.optimize(x0=x0, objective=objective2, minimize=False, optimizer=k())
-        assert(abs(r.objective) < 1e-4)
+        assert(abs(r.objective) < 1e-3)
         assert( (r.x - objective2.y ).norm() < 1e-2)

@@ -2,7 +2,7 @@ import time
 import numpy as np
 
 import spin_model
-import ep_estimators2 as ep_estimators
+import ep_estimators
 import utils
 import observables
 
@@ -35,7 +35,6 @@ print(f"  Σ     (Empirical)                                :    {sigma_emp     
 for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'ᵢ−xᵢ)xⱼ"]):
     # Calculate antisymmetric observables explicitly
     if observable_ix == 0:
-        continue
         g_samples = np.vstack([ X1[:,i]*X0[:,j] - X0[:,i]*X1[:,j] 
                                 for i in range(N) for j in range(i+1, N) ]).T
         dataS     = observables.CrossCorrelations1(X0, X1)
@@ -57,7 +56,7 @@ for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'�
     train, val, test = data.split_train_val_test()
 
     stime            = time.time()
-    sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train) # , validation=val, test=test)
+    sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
     time_N_obs       = time.time() - stime
 
 

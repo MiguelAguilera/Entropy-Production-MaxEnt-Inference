@@ -1,4 +1,6 @@
 import argparse, sys, os
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 from pathlib import Path
 import numpy as np
 import torch
@@ -9,10 +11,9 @@ import matplotlib.colors as mcolors
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import squareform
 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 sys.path.insert(0, '..')
 
-import ep_estimators
+import ep_estimators_bak as ep_estimators
 import utils
 utils.set_default_torch_device()
 torch.set_grad_enabled(False)

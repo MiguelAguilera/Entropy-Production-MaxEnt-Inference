@@ -10,7 +10,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]="1"
 import torch
 
 sys.path.insert(0, '..')
-import ep_estimators
+import ep_estimators_bak as ep_estimators
 import utils
 utils.set_default_torch_device()
 

@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 import spin_model
 import observables
-import ep_estimators2 as ep_estimators
+import ep_estimators
 import utils
 
 # The following allows torch to use GPU for computation, if available
