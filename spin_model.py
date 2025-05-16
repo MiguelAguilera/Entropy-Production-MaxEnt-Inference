@@ -9,8 +9,7 @@
 import numpy as np
 from numba import njit, objmode, prange
 
-
-DTYPE = 'float32'  # Default data type for numerical operations
+from config import DTYPE   # Default data type for numerical operations
 
 # ***** Methods to generate coupling matrices *****
 def get_couplings_random(N, k=None, J0=0.0, DJ=1.0):
@@ -65,7 +64,7 @@ def get_couplings_patterns(N, L):
 
 # ***** Monte Carlo code  *****
 
-@njit('float32(float32[::1], float32[::1])', inline='always')
+@njit(f'{DTYPE}({DTYPE}[::1], {DTYPE}[::1])', inline='always')
 def GlauberStep(Ji, s):
     """
     Perform a single Glauber update for a given spin.
@@ -80,7 +79,7 @@ def GlauberStep(Ji, s):
     return float(int(np.random.rand() < (np.tanh(Ji @ s) + 1) / 2) * 2 - 1)
 
 
-@njit('float32[:](float32[:,::1], float32[::1], int32)', inline='always')
+@njit(f'{DTYPE}[:]({DTYPE}[:,::1], {DTYPE}[::1], int32)', inline='always')
 def ParallelGlauberStep(J, s, T=1):
     """
     Parallel Glauber dynamics: all spins are updated simultaneously.
@@ -208,37 +207,10 @@ def convert_to_nonmultipartite(S, F):
 
 
 
-import utils  # we use torch for faster computations
-def get_g_observables(S, F, i):
-    # Given states S ∈ {-1,1} in which spin i flipped, we calculate the observables 
-    #        g_{ij}(x) = (x_i' - x_i) x_j 
-    # for all j, where x_i' and x_i indicate the state of spin i after and before the jump, 
-    # and x_j is the state of every other spin.
-    # Here F indicates which spins flipped. We try to use GPU and in-place operations
-    # where possible, to increase speed while reducing GPU memory requirements
-    S_i      = S[F[:,i],:]
-    X        = utils.numpy_to_torch(np.delete(S_i, i, axis=1))
-    y        = utils.numpy_to_torch(S_i[:,i])
-    X.mul_( (-2 * y).unsqueeze(1) )  # in place multiplication
-    return X.contiguous()
+# ***** Entropy production estimates from empirical statistics *****
 
-
-def get_g_observables_bin(S_bin, F, i):
-    # Same as get_g_observables, but we take binary states S_bin ∈ {0,1} and convert {0,1}→{−1,1}
-    S_bin_i  = S_bin[F[:,i],:]
-    X        = utils.numpy_to_torch(np.delete(S_bin_i, i, axis=1))*2-1
-    y        = utils.numpy_to_torch(S_bin_i[:,i])*2-1
-    X.mul_( (-2 * y).unsqueeze(1) )  # in place multiplication
-    return X.contiguous()
-
-    # The following can be a bit faster, but may use doulbe the memory on the GPU
-    # S_i  = utils.numpy_to_torch(S_bin[F[:,i],:])*2-1
-    # y    = -2 * S_i[:, i]
-    # S_i  = torch.hstack((S_i[:,:i], S_i[:,i+1:]))
-    # S_i.mul_( y.unsqueeze(1) )
-    # return S_i.contiguous()
-
-
+import observables
+import utils
 def get_empirical_EP(beta, J, S, F):
     # Calculate empirical EP from samples S and F
     num_samples_per_spin, N = S.shape
@@ -252,7 +224,7 @@ def get_empirical_EP(beta, J, S, F):
     frequencies = F.sum(axis=0)/total_flips      # frequency of spin i flips
     for i in range(N):
         # Select states in which spin i flipped and use it create object for EP estimation 
-        g_samples  = get_g_observables(S, F, i)
+        g_samples  = observables.get_g_observables(S, F, i)
         if len(g_samples) > 0:
             g_mean     = g_samples.mean(axis=0)
             sigma_emp += frequencies[i] * get_spin_empirical_EP(beta, J, i, g_mean)
@@ -262,8 +234,8 @@ def get_empirical_EP(beta, J, S, F):
 
 def get_spin_empirical_EP(beta, J, i, g_mean):
     # Calculate ``ground truth'' EP contribution from spin i. Here g_mean is the expectation of samples
-    # return by get_g_observables, i.e., 
-    #       g_mean = get_g_observables(S, F, i).mean(axis=0) 
+    # return by observables.get_g_observables, i.e., 
+    #       g_mean = observables.get_g_observables(S, F, i).mean(axis=0) 
 
     # Calculate contributions to empirical EP from observables of spin i
     J_i         = utils.torch_to_numpy(J[i,:])

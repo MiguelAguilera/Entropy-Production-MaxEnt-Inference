@@ -8,7 +8,8 @@ import torch
 
 sys.path.insert(0, '..')
 import utils
-import ep_estimators
+import ep_estimators2 as ep_estimators
+import observables
 import spin_model
 
 device = utils.set_default_torch_device()
@@ -16,7 +17,7 @@ torch.set_grad_enabled(False)
 
 
 def calc_spin(beta, J, i, g_samples):
-    data = ep_estimators.Dataset(g_samples=g_samples)
+    data = observables.Dataset(g_samples=g_samples)
     np.random.seed(123)
     trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.2)
 
@@ -31,7 +32,7 @@ def calc_spin(beta, J, i, g_samples):
 
 
     to_run = [
-        ('N1'      ,      ep_estimators.get_EP_Newton, dict(data=trn, validation_data=val, test_data=tst, max_iter=1) ),
+        ('N1'      ,      ep_estimators.get_EP_Newton1Step, dict(data=trn, validation=val, test=tst) ),
         ('TUR'     ,      ep_estimators.get_EP_MTUR, dict(data=data) ),
 #        ('NR'     ,      ep_estimators.get_EP_Newton, dict(data=trn, holdout_data=tst, trust_radius=1/4, adjust_radius=False)),
 
@@ -41,8 +42,7 @@ def calc_spin(beta, J, i, g_samples):
         
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0, verbose=1,lr=.02) ),
 #          ('G h'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, holdout_data=tst, tol=0) ),
-         ('Gbb'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=trn, validation_data=val, test_data=tst, lr=1e-2, 
-                                                                      use_BB=True, verbose=0, report_every=1, patience=10) ),
+         ('Gbb'    ,      ep_estimators.get_EP_Estimate  , dict(data=trn, validation=val, test=tst) ),
 #          ('G'    ,      ep_estimators.get_EP_GradientAscent  , dict(data=data) ),
     ]
     utils.empty_torch_cache()
@@ -51,17 +51,17 @@ def calc_spin(beta, J, i, g_samples):
 
     for k, f, kwargs in to_run:
         stime = time.time()
-        res = f(**kwargs)
+        sigmas[k], thetas[k] = f(**kwargs)
         # utils.torch_synchronize()
         times[k] = time.time() - stime
-        if res.theta is not None:
-            thetas[k] = utils.torch_to_numpy(res.theta)
-        if res.trn_objective is None:  
-            sigmas[k] = res.objective
-        else: # holdout was used
-            sigmas[k] = res.trn_objective
-            sigmas[k+' tst'] = res.objective
-            #print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
+        # if res.theta is not None:
+        #     thetas[k] = utils.torch_to_numpy(res.theta)
+        # if res.trn_objective is None:  
+        #     sigmas[k] = res.objective
+        # else: # holdout was used
+        #     sigmas[k] = res.trn_objective
+        #     sigmas[k+' tst'] = res.objective
+        #     #print(k, sigmas[k], res.objective, tst.get_objective(res.theta),trn.get_objective(res.theta))
 
         
     if False:  # histogram of g outcomes
@@ -126,7 +126,7 @@ def calc(file_name, max_spins=None):
         if i % 40 == 0:
             utils.empty_torch_cache()
 
-        g_samples = spin_model.get_g_observables_bin(S_bin, F, i)
+        g_samples = observables.get_g_observables_bin(S_bin, F, i)
         if i == 5:
             g_samples = g_samples[:0,:]
 

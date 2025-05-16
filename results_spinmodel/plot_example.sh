@@ -82,7 +82,6 @@ ARGS="--beta_min 0 --rep 100000 --DJ 1 --J0 0 --beta_max 4 --N 100 --num_beta 5 
 ARGS="--beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 100 --num_beta 1  --BASE_DIR ~/MaxEntData100"
 
 
-## ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000"
 
 ARGS="--rep 2000000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000_2M"
 
@@ -90,7 +89,6 @@ ARGS="--rep 10000000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta
 ARGS="--rep 1000000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --thinning_multiplier 2 --warmup 0.2 --BASE_DIR ~/MaxEntData1000_wait"
 # ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000test"
 # ARGS=" --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData1000restarts"
-ARGS="--rep 2500000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData2.5M"
 
 #ARGS="--rep 100000 --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5  --BASE_DIR ~/MaxEntData1000_100k"
 ARGS="--beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --BASE_DIR ~/MaxEntData1000n20 --num_neighbors 20"
@@ -101,6 +99,10 @@ ARGS="--beta_min 0 --beta_max 4 --DJ 1 --J0 1 --N 1000 --num_beta 5  --BASE_DIR 
 ARGS="--beta_min 0 --beta_max 4 --DJ 0.5 --J0 1 --N 100 --num_beta 5  --BASE_DIR ~/MaxEntData100w1djHalf "
 
 ARGS="--beta_min 4 --beta_max 4 --DJ 0.5 --J0 1 --N 100 --num_beta 1 --num_neighbors 5 --BASE_DIR ~/MaxEntData100w1djHalfnf "
+
+ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5 --num_neighbors 6 --BASE_DIR ~/MaxEntData1000"
+#ARGS="--rep 2500000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData2.5M"
+
 python generate_data_spin_model.py --seed 42  --trials 1000  $ARGS  # --overwrite
 python scaling_fig.py                    $ARGS  $ARGSEP      --overwrite #--nograd --overwrite  #--nograd   --overwrite 
  
