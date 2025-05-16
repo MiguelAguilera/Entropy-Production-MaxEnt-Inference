@@ -323,8 +323,8 @@ def optimize(x0, objective, minimize=True, validation=None, optimizer=None,
     #
     # Returns:
     #   Solution object with the following attributes:
-    #       objective : final objective value on training data set
-    #       x         : final parameters
+    #       objective     : final objective value on training data set
+    #       x             : final parameters, as a torch tensor
     #       val_objective : final objective value on validation data set (if validation is not None)
 
     if optimizer is None: 
