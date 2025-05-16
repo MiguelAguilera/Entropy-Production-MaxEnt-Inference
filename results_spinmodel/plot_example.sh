@@ -104,7 +104,7 @@ ARGS=" --beta_min 0 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 5 --num_neigh
 #ARGS="--rep 2500000 --beta_min 4 --beta_max 4 --DJ 1 --J0 0 --N 1000 --num_beta 1  --warmup 2 --BASE_DIR ~/MaxEntData2.5M"
 
 python generate_data_spin_model.py --seed 42  --trials 1000  $ARGS  # --overwrite
-python scaling_fig.py                    $ARGS  $ARGSEP      --overwrite #--nograd --overwrite  #--nograd   --overwrite 
+python scaling_fig.py                    $ARGS  $ARGSEP      --overwrite --max_spins 5 #--nograd --overwrite  #--nograd   --overwrite 
  
 # python calculate_Fig1a_v2.py                    $ARGS  $ARGSEP  --overwrite  --nograd  #--nograd   --overwrite 
 

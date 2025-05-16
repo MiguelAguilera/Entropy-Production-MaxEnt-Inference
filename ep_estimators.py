@@ -7,7 +7,7 @@ import numpy as np
 
 import optimizers
 import linear_solvers
-from utils import eye_like, outer_product, numpy_to_torch
+from utils import eye_like, outer_product, numpy_to_torch, torch_to_numpy
 
 
 
@@ -54,7 +54,7 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, **optimize_args
         ret_objective = o.val_objective
     else:
         ret_objective = o.objective
-    return ret_objective, o.x 
+    return ret_objective, torch_to_numpy(o.x) 
 
 # TODO: Explain
 def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_args):
@@ -89,5 +89,5 @@ def get_EP_MTUR(data, linsolve_eps=1e-4):
     x  = linear_solvers.solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
     objective = float(x @ mean_diff)/2
 
-    return objective, x
+    return objective, torch_to_numpy(x)
 
