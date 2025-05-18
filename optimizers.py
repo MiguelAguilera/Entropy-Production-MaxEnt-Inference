@@ -78,7 +78,7 @@ class GradientDescent(Optimizer):
 
 class GradientDescentBB(GradientDescent):
     # Gradient ascent with Barzilai-Borwein step sizes (short-step version)
-    def __init__(self, lr=0.0001, max_iter=1000, **kwargs):
+    def __init__(self, lr=0.001, max_iter=1000, **kwargs):
         # TODO: check if optimizer can be unstable if lr is too large (and maybe even if too low), 
         # this can be tested using example_general.py
         # lr is the initial learning rate
@@ -301,7 +301,7 @@ Solution = namedtuple('Solution', ['objective', 'x', 'val_objective'], defaults=
 
 def optimize(x0, objective, minimize=True, validation=None, optimizer=None, 
              tol=1e-8, max_trn_objective=None, max_val_objective=None, min_trn_objective=None, min_val_objective=None,
-             verbose=0, report_every=10, skip_max_iter_warning=False,
+             verbose=0, report_every=10, skip_max_iter_warning=False, device=None
              ):
     # Optimize function using the specified optimizer
     # Arguments:
@@ -332,9 +332,18 @@ def optimize(x0, objective, minimize=True, validation=None, optimizer=None,
     else:
         optimizer.reset_state()
     optimizer.set_minimize_flag(minimize)
+    
+    if device is None:
+        if torch.backends.mps.is_available():
+            device = torch.device("mps")
+        elif torch.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+    
 
     with torch.no_grad():  # We calculate our own gradients, so we don't need to torch to do it (sometimes a bit faster)
-        x = numpy_to_torch(x0)
+        x = numpy_to_torch(x0).to(device)
 
         f_cur_trn = f_new_trn = np.nan
         if validation is not None:
