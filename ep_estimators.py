@@ -62,6 +62,11 @@ def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_a
     return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, 
                            verbose=verbose, report_every=1, skip_max_iter_warning=True, **optimize_args)
 
+def get_EP_GradientDescentBB(data, validation=None, test=None, verbose=0, **optimize_args):
+    optimizer = optimizers.GradientDescentBB(verbose=verbose)
+    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, 
+                           verbose=verbose, report_every=1, skip_max_iter_warning=True, **optimize_args)
+
 
 
 def get_EP_MTUR(data, linsolve_eps=1e-4):

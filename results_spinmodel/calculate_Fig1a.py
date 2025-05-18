@@ -1,10 +1,15 @@
-import os, sys
+import os
+import sys
 import argparse
 import numpy as np
 from matplotlib import pyplot as plt
 
+# Import EP estimation routine
 from get_spin_EP import *
 
+# -------------------------------
+# Main Entry Point
+# -------------------------------
 if __name__ == "__main__":
 
     # -------------------------------
@@ -17,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--N", type=int, default=100,
                         help="System size (default: 100)")
     parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
-                        help="Base directory to store simulation results (default: '~/MaxEntData').")
+                        help="Base directory to store simulation results (default: '~/MaxEntData')")
     parser.add_argument("--beta_min", type=float, default=0,
                         help="Minimum beta value (default: 0)")
     parser.add_argument("--beta_max", type=float, default=3,
@@ -31,39 +36,39 @@ if __name__ == "__main__":
     parser.add_argument('--no_plot', action='store_true', default=False,
                         help='Disable plotting if specified')
     parser.add_argument("--patterns", type=int, default=None,
-                        help="Hopfield pattern density (default: None).")
-    parser.add_argument("--overwrite", action="store_true",  default=False,
-                        help="Do not overwrite existing files.")
+                        help="Hopfield pattern density (default: None)")
+    parser.add_argument("--overwrite", action="store_true", default=False,
+                        help="Overwrite existing output files (default: False)")
     parser.add_argument("--num_neighbors", type=int, default=None,
-                        help="Number of neighbors for sparse connectivity (default: None).")
+                        help="Number of neighbors for sparse connectivity (default: None)")
     parser.add_argument("--seed", type=int, default=0,
-                        help="Observable (default: 0).")
-    args = parser.parse_args()
+                        help="Random seed for reproducibility (default: 0)")
 
-    N = args.N
-    rep = args.rep
+    args = parser.parse_args()
 
     # -------------------------------
     # Global Setup
     # -------------------------------
+    N = args.N
+    rep = args.rep
     BASE_DIR = os.path.expanduser(args.BASE_DIR)
-    DTYPE = 'float32'
     betas = np.linspace(args.beta_min, args.beta_max, args.num_beta)
 
     # -------------------------------
-    # Save results setup
+    # Create Data Directory
     # -------------------------------
     SAVE_DATA_DIR = 'ep_data'
     if not os.path.exists(SAVE_DATA_DIR):
-        print(f'Creating base directory: {SAVE_DATA_DIR}')
+        print(f'Creating output directory: {SAVE_DATA_DIR}')
         os.makedirs(SAVE_DATA_DIR, exist_ok=True)
-        
+
     # -------------------------------
     # Run Experiments Across Beta Values
     # -------------------------------
-    EP = np.zeros((4, args.num_beta))  # Rows: Empirical, MTUR, Newton-1, Newton-2
+    EP = np.zeros((4, args.num_beta))  # Rows: [Empirical, MTUR, Newton-1, Gradient]
 
     for ib, beta in enumerate(np.round(betas, 8)):
+        # Construct input and output file names
         if args.patterns is None:
             if args.num_neighbors is None:
                 file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_{N:06d}_beta_{beta}_J0_{args.J0}_DJ_{args.DJ}.npz"
@@ -74,9 +79,11 @@ if __name__ == "__main__":
         else:
             file_name = f"{BASE_DIR}/sequential/run_reps_{rep}_N_beta_{beta}_patterns_{args.patterns}.npz"
             file_name_out = f"{SAVE_DATA_DIR}/results_N_{N}_reps_{rep}_beta_{beta}_patterns_{args.patterns}.h5"
+
         print(f"[Loading] Reading data from file:\n  → {file_name}\n")
-        EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite, seed = args.seed)
-        
+
+        # Perform EP estimation
+        EP[:, ib] = calc(N, beta, rep, file_name, file_name_out, overwrite=args.overwrite, seed=args.seed)
 
     # -------------------------------
     # Plot Results
@@ -87,44 +94,52 @@ if __name__ == "__main__":
     plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
     labels = [
-        r'$\Sigma$', 
-        r'$\Sigma_{\bm g}^\textnormal{\small TUR}$', 
-        r'$\widehat{\Sigma}_{\bm g}$', 
-        r'${\Sigma}_{\bm g}$'
+        r'$\Sigma$',                   # Empirical EP
+        r'$\Sigma_{\bm g}^\textnormal{\small TUR}$',  # MTUR
+        r'$\widehat{\Sigma}_{\bm g}$',                # Newton-1
+        r'${\Sigma}_{\bm g}$'                         # Gradient Descent
     ]
 
     cmap = plt.get_cmap('inferno_r')
-    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]#, cmap(1.)]
+    colors = [cmap(0.25), cmap(0.5), cmap(0.75)]
 
-    plt.figure(figsize=(4, 4))
+    fig, ax = plt.subplots(figsize=(4, 4))
 
-    # Plot each EP estimator
-    plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)  # Reference line
+    # Reference critical point (if relevant)
+    beta_c = 1.3485
+
+    # Plot results
+    plt.plot(betas[0], EP[0, 0], 'k', linestyle=(0, (2, 3)), label=labels[0], lw=3)
     for i in range(1, EP.shape[0]):
-        plt.plot(betas, EP[i, :], label=labels[i], color=colors[i-1], lw=2)
-    plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for clarity
+        plt.plot(betas, EP[i, :], label=labels[i], color=colors[i - 1], lw=2)
+    plt.plot(betas, EP[0, :], 'k', linestyle=(0, (2, 3)), lw=3)  # Re-plot empirical for emphasis
 
     # Axes and labels
     plt.axis([betas[0], betas[-1], 0, np.max(EP) * 1.05])
-    plt.ylabel(r'EP', rotation=0, labelpad=20)
     plt.xlabel(r'$\beta$')
+    plt.ylabel(r'EP', rotation=0, labelpad=20)
 
-    # Legend
-    plt.legend(
+    # Add legend
+    legend = plt.legend(
         ncol=1,
         columnspacing=0.25,
         handlelength=1.0,
         handletextpad=0.25,
-        labelspacing=0.25,  # reduce vertical space between entries
+        labelspacing=0.25,
         loc='best'
     )
 
-    # Save and show figure
-    IMG_DIR='img'
+    # -------------------------------
+    # Save Plot
+    # -------------------------------
+    IMG_DIR = 'img'
     if not os.path.exists(IMG_DIR):
-        print(f'Creating base directory: {IMG_DIR}')
+        print(f'Creating image directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
-    plt.savefig(f'{IMG_DIR}/Fig1a.pdf', bbox_inches='tight')
 
+    plt.savefig(f'{IMG_DIR}/Fig1a.pdf', bbox_inches='tight', pad_inches=0.1)
+
+    # Show plot (unless disabled)
     if not args.no_plot:
         plt.show()
+
