@@ -11,7 +11,7 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
 
 sys.path.insert(0, '..')
-import ep_estimators
+import ep_estimators_bak as ep_estimators
 import utils
 from numba import njit
 

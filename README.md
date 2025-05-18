@@ -6,6 +6,24 @@ The repository contains code to generate data and estimate entropy production (E
 
 The code uses `numpy`, `numba`, and `torch` for acceleration (taking advantage of GPU if available). 
 
+Here is a simple demonstration of how to use the code:
+```python
+import numpy as np
+import observables, ep_estimators
+
+# Create dataset of observable samples from forward and reverse processes
+#   size = (nsamples x ndimensions)
+observable_samples_forward = np.random.normal(loc= 1, size=(10000, 10))
+observable_samples_reverse = np.random.normal(loc=-1, size=(10000, 10))
+# for antisymmetric observables, can set observable_samples_reverse=None
+
+data = observables.Dataset(g_samples=observable_samples_forward, 
+                           rev_g_samples=observable_samples_reverse)
+ep, optimal_params = ep_estimators.get_EP_Estimate(data)
+print("Estimated EP:", ep)
+```
+
+
 ### Demonstration files
 
 We include few simple scripts to get started.

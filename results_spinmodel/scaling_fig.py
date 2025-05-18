@@ -145,6 +145,8 @@ if __name__ == "__main__":
                 continue
             Thetas = np.vstack([np.concatenate([m[:i], [0,], m[i:]]) 
                                 for i,m in enumerate(res['thetas'][k])])
+            if Thetas.shape[0] != Thetas.shape[1]:
+                continue
             yy = (Thetas - Thetas.T)[:]
 
             R2[k] = 1- np.mean( (yy-xvals)**2 ) / np.mean( (yy-yy.mean())**2 )

@@ -8,7 +8,7 @@ import torch
 
 sys.path.insert(0, '..')
 import utils
-import ep_estimators2 as ep_estimators
+import ep_estimators
 import observables
 import spin_model
 

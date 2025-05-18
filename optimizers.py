@@ -26,7 +26,29 @@ class Objective(object):
 # and defines the methods that should be implemented by each specific optimizer.
 class Optimizer(object):
     minimize = True
-    verbose  = 0
+
+    def reset_state(self): # Reset the optimizer internal state if needed
+        pass
+
+    def __init__(self, max_iter=1000, patience=10, verbose=0):
+        # Initialize optimizer with universally-shared parameters
+        # Arguments:
+        #   minimize (bool) : whether to minimize or maximize the objective function
+        #   max_iter (int)  : maximum number of iterations
+        #   patience (int)  : number of iterations to wait for validation improvement before stopping
+        #   verbose (int)   : verbosity level
+        self.max_iter = max_iter
+        self.patience = patience
+        self.verbose = verbose
+
+        self.reset_state()  # Reset the optimizer state
+
+
+    def set_minimize_flag(self, minimize):
+        # Set the flag for minimization or maximization
+        self.minimize = minimize
+
+
     def msg(self, s, t=None):
         print(f"{self.__class__.__name__} : " + (f"iter={t:4d} :" if t is not None else "") + s)
 
@@ -40,20 +62,13 @@ class Optimizer(object):
         #   2. (new_x, f_new_trn) (the updated parameters and the new training objective)
         # The logic in optimize(...) will handle both cases
         raise NotImplementedError
-    
-    def reset_state(self): # Reset the optimizer state if needed
-        pass
-
-    def set_minimize_flag(self, minimize):
-        # Set the flag for minimization or maximization
-        self.minimize = minimize
 
 
 class GradientDescent(Optimizer):
-    def __init__(self, lr=0.001, verbose=0):
+    def __init__(self, lr=0.001, max_iter=10000, **kwargs):
         # Gradient ascent optimizer. lr is the learning rate
         self.lr = lr
-        self.verbose = verbose
+        super().__init__(max_iter=max_iter, **kwargs)
 
     def get_update(self, t, objective, x):
         grad = objective.get_gradient(x)
@@ -61,14 +76,13 @@ class GradientDescent(Optimizer):
         return x + self.lr * grad
     
 
-class GradientDescentBB(Optimizer):
+class GradientDescentBB(GradientDescent):
     # Gradient ascent with Barzilai-Borwein step sizes (short-step version)
-    def __init__(self, lr=0.0001, verbose=0):
-        # TODO: varify if optimizer can be unstable if lr is too large (and maybe even if too low), 
+    def __init__(self, lr=0.0001, max_iter=1000, **kwargs):
+        # TODO: check if optimizer can be unstable if lr is too large (and maybe even if too low), 
         # this can be tested using example_general.py
-        self.lr = lr  # initial learning rate
-        self.verbose = verbose
-        self.reset_state()
+        # lr is the initial learning rate
+        super().__init__(max_iter=max_iter, lr=lr, **kwargs)
 
     def reset_state(self):
         # Reset the optimizer state
@@ -88,15 +102,8 @@ class GradientDescentBB(Optimizer):
                 # If alpha is NaN, fall back to the default learning rate
                 if self.verbose: print(f'GradientDescentBB : Invalid alpha!')
                 alpha = self.lr
-
-
         else:
             alpha        = self.lr
-
-        # if self.verbose > 1 and t ==1:
-        #     self.msg(f"lr={self.lr} x={x[:20]}, grad={grad[:20]} prev_grad={self.previous_grad[:20]} {grad.dtype} alpha={alpha}", t)
-        #     if t>0:
-        #         print(last_delta_x.norm(), d_grad.norm())
 
         self.previous_grad = grad
         self.previous_x    = x
@@ -105,17 +112,24 @@ class GradientDescentBB(Optimizer):
         return x - alpha * grad  
 
 
-class Adam(Optimizer):
+class Adam(GradientDescent):
     # Gradient-based optimized using Adam (Adaptive Moment Estimation) optimizer by Kingma and Ba
-    def __init__(self, lr=0.001, verbose=0, beta1=0.9, beta2=0.999, skip_warm_up=False, eps=1e-8):
-        # Adam optimizer
-        self.lr = lr
+    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, skip_warm_up=False, eps=1e-8, **kwargs):
+        # Adam optimizer.
+        # Arguments:
+        #   lr (float) : learning rate
+        #   max_iter (int) : maximum number of iterations
+        #   beta1 (float) : exponential decay rate for the first moment estimates
+        #   beta2 (float) : exponential decay rate for the second moment estimates
+        #   skip_warm_up (bool) : if True, we skip the warm-up phase for the first moment estimates
+        #   eps (float) : small constant to prevent division by zero
+        #   verbose (int) : verbosity level
         self.beta1 = beta1
         self.beta2 = beta2
         self.skip_warm_up = skip_warm_up
         self.eps = eps
-        self.verbose = verbose
-        self.reset_state()
+        super().__init__(lr=lr, **kwargs)
+
 
     def reset_state(self): # Reset the optimizer state
         self.m = None
@@ -147,9 +161,9 @@ class Adam(Optimizer):
 
 class NewtonMethod(Optimizer):
     # Newton-Raphson method optimizer
-    def __init__(self, verbose=0, linsolve_eps=1e-8):
+    def __init__(self, linsolve_eps=1e-8, max_iter=100, **kwargs):
         self.linsolve_eps = linsolve_eps   # regularization parameter for linear solvers (helps numerical stability)
-        self.verbose = verbose
+        super().__init__(max_iter=max_iter, **kwargs)
 
     def get_regularized_hessian(self, objective, x):
         # Get the Hessian matrix and add a small regularization term
@@ -158,7 +172,6 @@ class NewtonMethod(Optimizer):
             if self.verbose: print(f'NewtonMethod : [Stopping] Invalid Hessian')
             return None 
         return H + self.linsolve_eps * eye_like(H)
-    
 
     def get_update(self, t, objective, x):
         grad = objective.get_gradient(x)
@@ -172,12 +185,11 @@ class NewtonMethod(Optimizer):
 
 class NewtonMethodTrustRegion(NewtonMethod):
     # Newton's method with trust region constraint
-    def __init__(self, trust_radius=1, verbose=0, linsolve_eps=1e-8):
-        self.linsolve_eps = linsolve_eps  # regularization parameter for linear solvers (helps numerical stability)
+    def __init__(self, max_iter=1000, trust_radius=1, **kwargs):
         self.trust_radius = trust_radius  # maximum trust region
-        self.verbose      = verbose
+        super().__init__(max_iter=max_iter, **kwargs)
 
-    def get_update(self, t, objective, x, verbose=0):
+    def get_update(self, t, objective, x):
         grad = objective.get_gradient(x)
         H_reg = self.get_regularized_hessian(objective, x)
         if H_reg is None: return None 
@@ -197,8 +209,9 @@ class TRON(NewtonMethodTrustRegion):
     # Reference:
     #   Lin and Moré, Newton's method for large bound-constrained optimization problems
     #   SIAM Journal on Optimization 9 (4), 1100-1127
-    def __init__(self, trust_radius=1, eta0=0.0, eta1=0.25, eta2=0.75, trust_radius_min=1e-3, trust_radius_max=1000.0,
-                    trust_radius_adjust_max_iter=100, verbose=0, linsolve_eps=1e-8):
+    def __init__(self, max_iter=1000, trust_radius=1, eta0=0.0, eta1=0.25, eta2=0.75, 
+                    trust_radius_min=1e-3, trust_radius_max=1000.0,
+                    trust_radius_adjust_max_iter=100, linsolve_eps=1e-8, **kwargs):
         # Parameters
         #   linsolve_eps     : regularization parameter for linear solvers (helps numerical stability)
         # Trust-region-related arguments (all optional):
@@ -213,19 +226,19 @@ class TRON(NewtonMethodTrustRegion):
         self.trust_radius_min = trust_radius_min  # minimum trust region radius
         self.trust_radius_max = trust_radius_max  # maximum trust region radius
         self.trust_radius_adjust_max_iter = trust_radius_adjust_max_iter  # maximum number of iterations for adjusting trust radius
-        # hyperparameters for adjusting trust radius
         self.eta0 = eta0 
         self.eta1 = eta1
         self.eta2 = eta2
 
-        self.verbose = verbose
-        self.reset_state()
+        super().__init__(max_iter=max_iter, **kwargs)
+
 
     def reset_state(self):
         self.adjusted_trust_radius = float(self.trust_radius)
         self.f_last_trn = None   # keep track of the last training objective
 
-    def get_update(self, t, objective, x, verbose=0):
+
+    def get_update(self, t, objective, x):
         H_reg = self.get_regularized_hessian(objective, x)
         if H_reg is None: return None 
 
@@ -236,7 +249,7 @@ class TRON(NewtonMethodTrustRegion):
         if not hasattr(self, 'f_last_trn') or self.f_last_trn is None:
             self.f_last_trn = objective.get_objective(x)
             if is_infnan(self.f_last_trn):
-                if verbose: self.msg(f"[Stopping] Invalid training objective {self.f_last_trn}", t)
+                if self.verbose: self.msg(f"[Stopping] Invalid training objective {self.f_last_trn}", t)
                 return None
             
         for tr_iter in range(self.trust_radius_adjust_max_iter): # loop until adjusted_trust_radius is adjusted properly
@@ -248,7 +261,7 @@ class TRON(NewtonMethodTrustRegion):
             improvement      = f_new_trn - self.f_last_trn
             if self.minimize: 
                 improvement      = -improvement
-            if verbose > 1: self.msg(f"pred_improvement={pred_improvement:.3f} improvement={improvement:.3f}", t)
+            if self.verbose > 1: self.msg(f"pred_improvement={pred_improvement:.3f} improvement={improvement:.3f}", t)
 
             rho = improvement / (pred_improvement + 1e-20)
 
@@ -257,22 +270,22 @@ class TRON(NewtonMethodTrustRegion):
                 break
 
             if self.adjusted_trust_radius < self.trust_radius_min:
-                if verbose: self.msg(f"trust_radius_min={self.trust_radius_min} reached!", t)
+                if self.verbose: self.msg(f"trust_radius_min={self.trust_radius_min} reached!", t)
                 self.adjusted_trust_radius = self.trust_radius_min
                 last_round = True
                 break
 
             if rho < self.eta1:
                 self.adjusted_trust_radius *= 0.25
-                if verbose > 1: self.msg(f"reducing adjusted_trust_radius to {self.adjusted_trust_radius} in trust radius iteration={tr_iter}", t)
+                if self.verbose > 1: self.msg(f"reducing adjusted_trust_radius to {self.adjusted_trust_radius} in trust radius iteration={tr_iter}", t)
 
             elif rho > self.eta2 and delta_x.norm() >= self.adjusted_trust_radius:
                 self.adjusted_trust_radius = min(2.0 * self.adjusted_trust_radius, self.trust_radius_max)
-                if verbose > 1: self.msg(f"increasing adjusted_trust_radius to {self.adjusted_trust_radius} in trust radius iteration={tr_iter}", t)
+                if self.verbose > 1: self.msg(f"increasing adjusted_trust_radius to {self.adjusted_trust_radius} in trust radius iteration={tr_iter}", t)
 
 
         else: # for loop finished without breaking
-            if verbose: self.msg(f"max_iter reached in adjusted_trust_radius loop!", t)
+            if self.verbose: self.msg(f"max_iter reached in adjusted_trust_radius loop!", t)
 
 
         self.f_last_trn = f_new_trn
@@ -286,9 +299,9 @@ OPTIMIZERS = [GradientDescent, GradientDescentBB, Adam,
 # This is the solution object that is returned by the optimize function
 Solution = namedtuple('Solution', ['objective', 'x', 'val_objective'], defaults=[None])
 
-def optimize(x0, objective, minimize=True, validation=None, patience=None, optimizer=None, 
-             max_iter=None,  tol=1e-8, max_trn_objective=None, max_val_objective=None, min_trn_objective=None, min_val_objective=None,
-             verbose=0, report_every=10,
+def optimize(x0, objective, minimize=True, validation=None, optimizer=None, 
+             tol=1e-8, max_trn_objective=None, max_val_objective=None, min_trn_objective=None, min_val_objective=None,
+             verbose=0, report_every=10, skip_max_iter_warning=False,
              ):
     # Optimize function using the specified optimizer
     # Arguments:
@@ -297,8 +310,6 @@ def optimize(x0, objective, minimize=True, validation=None, patience=None, optim
     #   minimize         : whether to minimize or maximize the objective function
     #   validation       : if not None, we use this Objective instance for early stopping. It should provide get_objective method
     #   test             : if not None, we use this Objective instance for evaluating the objective. It should provide get_objective method
-    #   patience (int)   : number of iterations to wait for validation improvement before stopping
-    #   max_iter (int)   : maximum number of iterations
     #   tol (float)      : early stopping once objective does not improve by more than tol
     #   max_trn_objective (float) : maximum training objective value, clip and stop if exceeded
     #   max_val_objective (float) : maximum validation objective value, clip and stop if exceeded
@@ -308,15 +319,14 @@ def optimize(x0, objective, minimize=True, validation=None, patience=None, optim
     #                      If None, we use the default optimizer (GradientDescentBB)
     #   verbose (int)    : Verbosity level for printing debugging information (0=no printing)
     #   report_every (int) : if verbose > 1, we report every report_every iterations
+    #   skip_max_iter_warning (bool) : if True, we skip the warning about max_iter being reached
     #
     # Returns:
     #   Solution object with the following attributes:
-    #       objective : final objective value on training data set
-    #       x         : final parameters
+    #       objective     : final objective value on training data set
+    #       x             : final parameters, as a torch tensor
     #       val_objective : final objective value on validation data set (if validation is not None)
 
-    if max_iter  is None: max_iter = 1000
-    if patience  is None: patience = 10
     if optimizer is None: 
         optimizer = GradientDescentBB(verbose=verbose)
     else:
@@ -335,7 +345,7 @@ def optimize(x0, objective, minimize=True, validation=None, patience=None, optim
         
         old_time         = time.time()
 
-        for t in range(max_iter):
+        for t in range(optimizer.max_iter):
             r = optimizer.get_update(t=t, objective=objective, x=x)
             
             # get_update can return either new_x or (new_x, f_new_trn)
@@ -407,9 +417,9 @@ def optimize(x0, objective, minimize=True, validation=None, patience=None, optim
                     patience_counter = 0
                     best_val_iter    = t
 
-                elif patience_counter >= patience:
+                elif patience_counter >= optimizer.patience:
                     if verbose:
-                        optimizer.msg(f"[Stopping] Validation objective did not improve for {patience} steps (last improvement {t-best_val_iter} steps ago)", t)
+                        optimizer.msg(f"[Stopping] Validation objective did not improve for {optimizer.patience} steps (last improvement {t-best_val_iter} steps ago)", t)
                     break
                 
                 else:
@@ -417,7 +427,9 @@ def optimize(x0, objective, minimize=True, validation=None, patience=None, optim
             
                     
         else:   # for loop did not break
-            optimizer.msg(f'max_iter {max_iter} reached before convergence. May want to increase max_iter')
+            if not skip_max_iter_warning or verbose:
+                optimizer.msg(f'max_iter {optimizer.max_iter} reached before convergence.' + 
+                              ('May want to increase max_iter' if not skip_max_iter_warning else ''))
 
         if validation is not None:
             return Solution(objective=f_cur_trn, x=best_val_x, val_objective=f_best_val)
