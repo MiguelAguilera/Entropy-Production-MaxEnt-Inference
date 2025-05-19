@@ -1003,4 +1003,6 @@ def get_EP_MTUR(data, num_chunks=None, linsolve_eps=1e-4):
     objective = float(x @ mean_diff)/2
 
     return _get_valid_solution(objective=objective, theta=x, nsamples=data.nsamples)
+    
+    
 
