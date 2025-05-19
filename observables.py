@@ -9,6 +9,25 @@ import torch
 from utils import numpy_to_torch
 import optimizers
 
+def theta_cache(method):
+    # A simple cache decorator for class methods that saves only the most recent result.
+    # Caches based on the object ID of the 'theta' parameter rather than its value or hash.
+    def wrapper(self, theta):
+        if not hasattr(self, '_theta_cache_id'):
+            self._theta_cache_id  = {}
+            self._theta_cache_val = {}
+        methodname = method.__name__
+        if methodname not in self._theta_cache_id:
+            self._theta_cache_id[methodname] = None
+            self._theta_cache_val[methodname] = None
+        current_theta_id = id(theta)
+        if self._theta_cache_id[methodname] != current_theta_id:
+            # Cache miss
+            self._theta_cache_id[methodname]  = current_theta_id
+            self._theta_cache_val[methodname] = method(self, theta)
+        return self._theta_cache_val[methodname]
+    return wrapper
+
 # The following functions are used to calculate observables for the nonequilibrium spin model
 # They take as input the states of the system and the indices of the spins that flipped,
 # as produced by the Monte Carlo simulation in spin_model.py
@@ -47,51 +66,43 @@ def get_g_observables_bin(S_bin, F, i):
 # based on samples of observables or state transitions. 
 
 # The DatasetBase class is the base class for all data-based objectives
-class DatasetBase(optimizers.Objective):
+# We use torch to speed up calculations, e.g., using GPUs
+class DatasetBase(optimizers.Objective): 
+    def __init__(self):
+        self.device = torch.get_default_device()  # Default device for torch operations
+
+    def initialize_parameters(self, theta):  # This method is used to initialize the parameters variable
+        return numpy_to_torch(theta, device=self.device)
+    
 
     # We should implement the following methods
     @functools.cached_property
-    def g_mean(self)     : raise NotImplementedError 
+    def g_mean(self)         : raise NotImplementedError 
 
     @functools.cached_property
-    def rev_g_mean(self): raise NotImplementedError 
-    def g_cov(self)     : raise NotImplementedError 
-    def rev_g_cov(self) : raise NotImplementedError 
-
-    def get_tilted_statistics(self, theta, **kwargs):
-        raise NotImplementedError("get_tilted_statistics is not implemented")
+    def rev_g_mean(self)     : raise NotImplementedError 
+    def get_covariance(self) : raise NotImplementedError 
+    def _get_tilted_values(self, x)   : raise NotImplementedError
+    def get_tilted_mean(self, x)      :  raise NotImplementedError
+    def get_titled_covariance(self, x): raise NotImplementedError
     
-    def get_objective(self, theta):
-        # Return objective value for parameters theta
-        v = self.get_tilted_statistics(theta, return_objective=True)
-        return v['objective']
+    def get_objective(self, theta): # Return objective value for parameters theta
+        if self.nsamples == 0:
+            return float('nan')
 
+        theta = numpy_to_torch(theta)
 
-    def get_gradient(self, theta):
-        stats = self.get_tilted_statistics(theta, return_mean=True)
-        g_theta = stats['tilted_mean']
-        return self.g_mean - g_theta
+        th_g_max, norm_const, _ = self._get_tilted_values(theta)
+        log_Z                   = torch.log(norm_const) + th_g_max
+        return float( theta @ self.g_mean - log_Z )
     
-
-    def get_hessian(self, theta):
-        stats = self.get_tilted_statistics(theta, return_covariance=True)
-        g_cov = stats['tilted_covariance']
-        return -g_cov
-
-
-    def _get_null_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        nan = float('nan')
-        d = {'tilted_mean': theta * nan, 'objective': nan}
-        if return_covariance:
-            d['tilted_covariance'] = torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=theta.device)*nan
-        return d
-    
-
     # This method is used to get the indices for training, validation, and test sets
     @staticmethod
     def get_trn_val_tst_indices(nsamples, val_fraction=0.1, test_fraction=0.1, shuffle=True, with_replacement=False):
         # Get indices for training and testing data
-        assert 0 <= test_fraction <= 1, "test_fraction must be between 0 and 1"
+        assert 0 <= test_fraction, "test_fraction must be between 0 and 1"
+        assert 0 <= val_fraction , "val_fraction  must be between 0 and 1"
+        assert val_fraction + test_fraction <= 1, "val_fraction + test_fraction must be less than 1"
         trn_nsamples = int(nsamples * (1 - val_fraction - test_fraction))
         val_nsamples = int(nsamples * val_fraction)
 
@@ -115,10 +126,49 @@ class DatasetBase(optimizers.Objective):
     def split_train_val_test(self, val_fraction=0.1, test_fraction=0.1, shuffle=True):
         raise NotImplementedError("split_train_val_test is not implemented")
 
+    def get_gradient(self, theta):
+        return self.g_mean - self.get_tilted_mean(theta)  # Gradient of the objective function
+    
+    def get_hessian(self, theta):
+        return -self.get_titled_covariance(theta)
 
-# TODO: Cache intermediate results
 
-# This class implements an Objective using samples of observables
+def get_secondmoments(samples, num_chunks=None, weighting=None):
+    # Compute the second moment matrix of the samples
+    # Arguments:
+    #   samples     : 2d tensor (nsamples x nobservables) containing samples of observables
+    #   num_chunks  : number of chunks to use for computing tilted statistics. This is useful
+    #                 for large datasets, where we want to reduce memory usage.
+    #   weighting   : 1d tensor (nsamples) containing weights for each sample. If None, all samples are
+    #                 weighted equally.
+    # Returns:
+    #   K          : second moment matrix of the samples, shape (nobservables, nobservables)
+    #                   K[i,j] = <g_i g_j> = (1/nsamples) sum_k g_i(x_k) g_j(x_k)
+    nsamples, nobservables = samples.shape
+    if num_chunks is None:
+        if weighting is None:
+            K = samples.T @ samples
+        else:
+            weighted_samples = weighting[:, None] * samples  # shape: (k, i)
+            K = weighted_samples.T @ samples
+    else: # chunked computation
+        K = torch.zeros((nobservables, nobservables), dtype=samples.dtype, device=samples.device)
+        chunk_size = (nsamples + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for r in range(num_chunks):
+            start = r * chunk_size
+            end = min((r + 1) * chunk_size, nsamples)
+            g_chunk = samples[start:end]
+            if weighting is None:
+                K += g_chunk.T @ g_chunk
+            else:
+                weighted_chunk = weighting[start:end][:, None] * g_chunk
+                K += weighted_chunk.T @ g_chunk
+
+    return K / nsamples
+    
+
+# This class implements an Objective using samples of observables. We use torch to speed things up.
 class Dataset(DatasetBase):
     def __init__(self, g_samples, rev_g_samples=None, num_chunks=None):
         # Arguments:
@@ -154,16 +204,6 @@ class Dataset(DatasetBase):
     @functools.cached_property
     def g_mean(self):
         return self.g_samples.mean(axis=0)
-    
-    def g_cov(self): # Covariance of g_samples
-        return torch.cov(self.g_samples.T, correction=0)
-    
-    def rev_g_cov(self):
-        # Covariance of reverse samples
-        if self.rev_g_samples is None: # antisymmetric observables, so they have the same covariance matrix
-            return self.g_cov()
-        else:
-            return torch.cov(self.rev_g_samples.T, correction=0)
 
     @functools.cached_property
     def rev_g_mean(self):
@@ -173,6 +213,36 @@ class Dataset(DatasetBase):
             return self.rev_g_samples.mean(axis=0)
 
     
+    def get_covariance(self, return_forward=True, return_reverse=False): 
+        # Return covariance matrix of the forward and/or reverse samples
+        # Arguments:
+        #   return_forward : if True, return covariance matrix of forward samples
+        #   return_reverse : if True, return covariance matrix of reverse samples
+        #
+        # Returns:
+        #   cov           : covariance matrix of forward samples if only return_forward is True
+        #   rcov          : covariance matrix of reverse samples if only return_reverse is True
+        #   if both are True, return both covariance matrices as a tuple
+
+    
+        cov, rcov = None, None
+        if return_forward or (self.rev_g_samples is None and return_reverse):
+            cov = get_secondmoments(self.g_samples, num_chunks=self.num_chunks) - torch.outer(self.g_mean, self.g_mean)
+
+        if return_reverse:
+            if self.rev_g_samples is None: 
+                rcov = cov   # antisymmetric observables, so they have the same covariance matrix
+            else: 
+                rcov = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks) - torch.outer(self.rev_g_mean, self.rev_g_mean)
+
+        if   return_forward and not return_reverse : return cov
+        elif return_reverse and not return_forward : return rcov
+        elif return_forward and return_reverse     : return cov, rcov
+        else:
+            raise ValueError("Either return_forward or return_reverse must be True")
+
+
+
     def split_train_val_test(self, **split_opts):  # Split current data set into training, validation, and testing part
         trn_indices, val_indices, tst_indices = self.get_trn_val_tst_indices(nsamples=self.forward_nsamples, **split_opts)
 
@@ -194,69 +264,52 @@ class Dataset(DatasetBase):
         tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
 
         return trn, val, tst
-
-
-    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        # Compute tilted statistics under the reverse distribution titled by theta. This may include
-        # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
-
-        assert return_mean or return_covariance or return_objective
-
-        if self.nsamples == 0:  # No observables
-            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
-
-        vals  = {}
+    
+    # @theta_cache
+    def _get_tilted_values(self, theta):  # We cache some slow calculations, e.g., of normalization constants and weight
         theta = numpy_to_torch(theta)
+        if self.rev_g_samples is not None:
+            th_g = self.rev_g_samples @ theta
+        else:
+            th_g = -(self.g_samples @ theta)
+        # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
+        # The same multiplicative corrections enters into the normalization constant and the tilted
+        # means and covariance, so its cancels out
+        th_g_max    = torch.max(th_g)
+        exp_tilt    = torch.exp(th_g - th_g_max)
+        norm_const  = torch.mean(exp_tilt)
 
-        use_rev = self.rev_g_samples is not None  # antisymmetric observables or not
+        return th_g_max, norm_const, exp_tilt
 
-        with torch.no_grad():
-            th_g = self.rev_g_samples @ theta if use_rev else -(self.g_samples @ theta)
 
-            # To improve numerical stability, the exponentially tilting discounts exp(-th_g_max)
-            # The same multiplicative corrections enters into the normalization constant and the tilted
-            # means and covariance, so its cancels out
-            th_g_max    = torch.max(th_g)
-            exp_tilt    = torch.exp(th_g - th_g_max)
-            norm_const  = torch.mean(exp_tilt)
+    # @theta_cache
+    def get_tilted_mean(self, theta):
+        if self.nsamples == 0:
+            return theta * float('nan')
 
-            if return_objective:
-                # To return 'true' normalization constant, we need to correct again for th_g_max
-                log_Z             = torch.log(norm_const) + th_g_max
-                vals['objective'] = float( theta @ self.g_mean - log_Z )
+        theta = numpy_to_torch(theta)
+        _, norm_const, exp_tilt = self._get_tilted_values(theta)
+        # the first value (th_g_max) doesn't matter because it is cancelled by dividing by the norm_const
+        weights = exp_tilt / norm_const  
+        if self.rev_g_samples is not None:
+            return weights @ self.rev_g_samples / self.nsamples
+        else:
+            return -weights @ self.g_samples / self.nsamples
+    
 
-            if return_mean or return_covariance:
-                mean = exp_tilt @ self.rev_g_samples if use_rev else -(exp_tilt @ self.g_samples)
-                mean = mean / (self.nsamples * norm_const)
-                vals['tilted_mean'] = mean
+    def get_titled_covariance(self, theta):
+        if self.nsamples == 0:
+            return torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=theta.device) * float('nan')
 
-                if return_covariance:
-                    num_chunks = self.num_chunks
-                    if num_chunks is None:
-                        if use_rev:
-                            weighted_rev_g = exp_tilt[:, None] * self.rev_g_samples  # shape: (k, i)
-                            K = weighted_rev_g.T @ self.rev_g_samples
-                        else:
-                            weighted_rev_g = exp_tilt[:, None] * self.g_samples
-                            K = weighted_rev_g.T @ self.g_samples
-                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
-
-                    else:
-                        # Chunked computation, helps reduce memory usage for large datasets
-                        K = torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=self.device)
-                        chunk_size = (self.nsamples + num_chunks - 1) // num_chunks  # Ceiling division
-
-                        for r in range(num_chunks):
-                            start = r * chunk_size
-                            end = min((r + 1) * chunk_size, self.nsamples)
-                            g_chunk = self.rev_g_samples[start:end] if use_rev else -self.g_samples[start:end]
-                            
-                            weighted_g = exp_tilt[start:end][:, None] * g_chunk
-                            K += weighted_g.T @ g_chunk
-
-                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
-
-        return vals
+        theta   = numpy_to_torch(theta)
+        _, norm_const, exp_tilt = self._get_tilted_values(theta)
+        mean    = self.get_tilted_mean(theta)
+        weights = exp_tilt / norm_const
+        if self.rev_g_samples is not None:
+            K = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks, weighting=weights)
+        else:
+            K = get_secondmoments(-self.g_samples, num_chunks=self.num_chunks, weighting=weights)
+        return K - torch.outer(mean, mean)
 
 
     
@@ -293,34 +346,24 @@ class DatasetStateSamplesBase(DatasetBase):
 class CrossCorrelations1(DatasetStateSamplesBase):
     # This class is used to calculate the antisymmetric observables g_{ij} = x_i * x'_j - x'_i * x_j
     # without materializing the full g_samples matrix. 
+
+    @functools.cached_property
+    def triu_indices(self):
+        return torch.triu_indices(self.N, self.N, offset=1, device=self.device)
+    
     @functools.cached_property
     def g_mean(self): # Calculate mean of observables under forward process
-        triu_indices = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
         g_mean_raw = (self.X1.T @ self.X0 - self.X0.T @ self.X1 ) / self.nsamples  # shape (N, N)
-        return g_mean_raw[triu_indices[0], triu_indices[1]]
+        return g_mean_raw[self.triu_indices[0], self.triu_indices[1]]
 
 
-    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        # Compute tilted statistics under the reverse distribution titled by theta. This may include
-        # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
-
-        # Here we consider bilinear g_{ij} = x_i * x'_j,
-        # using upper-triangular theta without materializing full g_samples.
-
-        if return_covariance:
-            raise NotImplementedError("Covariance not implemented for RawDataset")
-        
-        assert return_objective or return_mean
-        
-        if self.nsamples == 0:  # No observables
-            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
-        
-        vals = {}
+    # @theta_cache
+    def _get_tilted_values(self, theta):
         theta = numpy_to_torch(theta)
 
-        triu = torch.triu_indices(self.N, self.N, offset=1, device=self.device)
+        triu = self.triu_indices
 
-        # 1. θᵀg_k
+        # θᵀg_k
         Theta = torch.zeros((self.N, self.N), dtype=theta.dtype, device=self.device)
         Theta[triu[0], triu[1]] = theta
         Y = (Theta - Theta.T) @ self.X1.T
@@ -329,21 +372,24 @@ class CrossCorrelations1(DatasetStateSamplesBase):
         th_g_max = torch.max(th_g)
         exp_tilt = torch.exp(th_g - th_g_max)
         norm_const  = torch.mean(exp_tilt)
+
+        return th_g_max, norm_const, exp_tilt
+    
+    # @theta_cache
+    def get_tilted_mean(self, theta):
+        if self.nsamples == 0:
+            return theta * float('nan')
+
+        triu = self.triu_indices
+
+        _, norm_const, exp_tilt = self._get_tilted_values(theta)
         weights = exp_tilt / norm_const
-        
-        if return_objective:
-            # To return 'true' normalization constant, we need to correct again for th_g_max
-            log_Z = torch.log(norm_const) + th_g_max
-            vals['objective'] = float(theta @ self.g_mean - log_Z)
+        weighted_X = self.X0 * weights[:, None]
+        mean_mat = (weighted_X.T @ self.X1) / self.nsamples  
+        mean_mat_asymm = mean_mat - mean_mat.T
+        return mean_mat_asymm[triu[0], triu[1]]
 
-        if return_mean:
-            weighted_X = self.X0 * weights[:, None]
-            mean_mat = (weighted_X.T @ self.X1) / self.nsamples  
-            mean_mat_asymm = mean_mat - mean_mat.T
-            g_mean_vec = mean_mat_asymm[triu[0], triu[1]]
-            vals['tilted_mean'] = g_mean_vec
 
-        return vals
 
     
 class CrossCorrelations2(CrossCorrelations1):
@@ -359,19 +405,8 @@ class CrossCorrelations2(CrossCorrelations1):
         # Here we consider g_{ij} = (x_i' - x_i) x_j
         return (self.diffX.T @ self.X0 / self.nsamples).flatten()
 
-    def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
-        # Compute tilted statistics under the reverse distribution titled by theta. This may include
-        # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
-
-        if return_covariance:
-            raise NotImplementedError("Covariance not implemented for RawDataset2")
-        
-        assert return_objective or return_mean
-
-        if self.nsamples == 0:  # No observables
-            return self._get_null_statistics(theta, return_mean, return_covariance, return_objective)
-        
-        vals = {}
+    # @theta_cache
+    def _get_tilted_values(self, theta):
         theta = numpy_to_torch(theta)
 
         # 1. θᵀg_k 
@@ -383,15 +418,15 @@ class CrossCorrelations2(CrossCorrelations1):
         exp_tilt = torch.exp(th_g - th_g_max)
         norm_const = torch.mean(exp_tilt)
         
-        if return_objective:
-            # To return 'true' normalization constant, we need to correct again for th_g_max
-            log_Z = torch.log(norm_const) + th_g_max
-            vals['objective'] = float(theta @ self.g_mean - log_Z)
+        return th_g_max, norm_const, exp_tilt
+    
 
+    # @theta_cache
+    def get_tilted_mean(self, theta):
+        if self.nsamples == 0:
+            return theta * float('nan')
 
-        if return_mean:
-            weights = exp_tilt / norm_const
-            tilted_g_mean = -torch.einsum('k,ki,kj->ij', weights, self.diffX, self.X1)  / self.nsamples
-            vals['tilted_mean'] = tilted_g_mean.flatten()
-
-        return vals
+        _, norm_const, exp_tilt = self._get_tilted_values(theta)
+        weights = exp_tilt / norm_const
+        tilted_g_mean = -torch.einsum('k,ki,kj->ij', weights, self.diffX, self.X1)  / self.nsamples
+        return tilted_g_mean.flatten()

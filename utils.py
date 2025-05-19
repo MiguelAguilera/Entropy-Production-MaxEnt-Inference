@@ -10,33 +10,26 @@ from config import DTYPE, USE_GPU   # Default data type for torch tensors
 
 # Helpful tensor processing functions
 
-def eye_like(A):    # Returns torch identity matrix with same dimensions, data type, and device as A
-    assert(A.ndim == 2 and A.shape[0] == A.shape[1])
-    return torch.eye(A.shape[0], dtype=A.dtype, device=A.device)
 
-def is_infnan(x): # return True if x is either infinite or NaN
-    x = float(x)
-    return np.isinf(x) or np.isnan(x)
-
-def remove_i(x, i):  # Helpful function to remove the i-th element from a 1d tensor x.
-    r = torch.cat((x[:i], x[i+1:]))
-    return r
-
-def numpy_to_torch(X):  # Convert numpy array to torch tensor if needed
+def numpy_to_torch(X, device=None):  # Convert numpy array to torch tensor if needed
     if not isinstance(X, torch.Tensor): 
         if isinstance(X, np.ndarray):
-            dtype  = X.dtype
-            device = torch.get_default_device()
+            dtype      = X.dtype
+            trg_device = torch.get_default_device() if device is None else device
             if dtype == np.dtype(DTYPE):
-                return torch.from_numpy(X              ).to(device).contiguous()
+                return torch.from_numpy(X              ).to(trg_device).contiguous()
             elif (np.issubdtype(dtype, np.integer) or np.issubdtype(dtype, np.bool_)):
                 # Convert on GPU if possible, its a bit faster
-                return torch.from_numpy(X              ).to(device).to(getattr(torch, DTYPE)).contiguous()
+                return torch.from_numpy(X              ).to(trg_device).to(getattr(torch, DTYPE)).contiguous()
             else:
-                return torch.from_numpy(X.astype(DTYPE)).to(device).contiguous()
+                return torch.from_numpy(X.astype(DTYPE)).to(trg_device).contiguous()
         else:
             raise Exception("Argument must be a torch tensor or numpy array")
-    return X
+    else:
+        if device is not None:
+            return X.to(device)
+        else:
+            return X
 
 
 def torch_to_numpy(X):  # Convert torch tensor to numpy array if needed

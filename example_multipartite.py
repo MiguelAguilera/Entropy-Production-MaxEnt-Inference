@@ -44,12 +44,6 @@ for i in tqdm(range(N), smoothing=0):
 
     data          = observables.Dataset(g_samples=g_samples)
 
-    # Multidimensional TUR
-    stime         = time.time()
-    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
-    time_MTUR    += time.time() - stime
-    sigma_MTUR   += p_i * spin_MTUR
-    
     # Create dataset with validation and test holdout data
     train, val, test = data.split_train_val_test()
 
@@ -60,16 +54,30 @@ for i in tqdm(range(N), smoothing=0):
     sigma_g     += p_i * spin_g 
     time_g      += time.time() - stime
 
+    # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
+    # Here is an example of how to use a different optimizer
+    stime        = time.time()
+    spin_g2, _   = ep_estimators.get_EP_Estimate(data, validation=val, test=test, optimizer='NewtonMethodTrustRegion')
+    sigma_g2    += p_i * spin_g2
+    time_g2     += time.time() - stime
+
     # 1 step of Newton
     stime        = time.time()
     spin_N1, _   = ep_estimators.get_EP_Newton1Step(data, validation=val, test=test) 
     time_N1     += time.time() - stime
     sigma_N1    += p_i * spin_N1
 
+    # Multidimensional TUR
+    stime         = time.time()
+    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
+    time_MTUR    += time.time() - stime
+    sigma_MTUR   += p_i * spin_MTUR
+    
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
-print(f"  Σ     (Empirical)             :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
-print(f"  Σ_g   (Full optimization)     :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
-print(f"  Σ̂_g   (1-step Newton)         :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
-print(f"  Σ_TUR (Multidimensional MTUR) :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
+print(f"  Σ     (Empirical)                        :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
+print(f"  Σ_g   (Full optimization, gradient asc.) :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
+print(f"  Σ_g   ( ... trust region Newton method)  :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
+print(f"  Σ̂_g   (1-step Newton method)             :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
+print(f"  Σ_TUR (Multidimensional TUR)             :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
 

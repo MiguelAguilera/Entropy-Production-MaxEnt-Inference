@@ -102,7 +102,7 @@ def ParallelGlauberStep(J, s, T=1):
 
 @njit(parallel=True, fastmath=True)
 def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_multiplier=1,
-                   num_restarts=1000, sequential=True, progressbar=True):
+                   num_restarts=1000, sequential=True, progressbar=True, seed=None):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
     By default, we use a thinning factor of N between samples
@@ -117,6 +117,7 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_mul
         num_restarts (int)          : Number of times to restart sampler
         sequential (bool)           : Whether to use sequential or parallel updates
         progressbar (bool)          : Whether to display progressbar during simulation
+        seed (int)                  : Random seed for reproducibility
 
     Returns:
         S: Nxsamples_per_spin int array : Samples of -1,1 state from stationary distribution
@@ -139,6 +140,9 @@ def run_simulation(beta, J, warmup=0.1, samples_per_spin=1_000_000, thinning_mul
         print("-"*100)
 
     for restart_ix in prange(num_restarts):
+        if seed is not None:
+            np.random.seed(seed + restart_ix)
+
         # Start from a random state, then warm up for N * warmup * samples_per_restart steps
         s = ((np.random.randint(0, 2, N) * 2) - 1).astype(DTYPE)
         if sequential:
