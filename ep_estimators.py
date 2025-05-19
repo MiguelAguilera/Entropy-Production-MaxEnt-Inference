@@ -71,11 +71,13 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, max_iter=None,
         ret_objective = o.objective
     return ret_objective, torch_to_numpy(o.x) 
 
-# TODO: Explain
+
 def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_args):
+    # Estimate EP using 1 step of Newton method
     optimizer = optimizers.NewtonMethod(verbose=verbose)
     return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, max_iter=1,
                            verbose=verbose, report_every=1, **optimize_args)
+
 
 def get_EP_GradientDescentBB(data, validation=None, test=None, verbose=0, **optimize_args):
     optimizer = optimizers.GradientDescentBB(verbose=verbose)

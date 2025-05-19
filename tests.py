@@ -13,7 +13,7 @@ import spin_model
 import ep_estimators
 import observables
 
-OPTIMIZE_VERBOSE=0
+OPTIMIZE_VERBOSE=2
 
 _cached_simulation = None
 def get_simulation_results():
@@ -45,13 +45,13 @@ def test_EP():
     beta, J, S, F = get_simulation_results()
     spin_model.get_empirical_EP(beta, J, S, F)
 
-def test_Newton():
+def test_NewtonVsDefault():
     beta, J, S, F = get_simulation_results()
     g_samples     = observables.get_g_observables(S, F, 0)
     data          = observables.Dataset(g_samples=g_samples)
-    v0, _ = ep_estimators.get_EP_Estimate(data, optimizer=optimizers.NewtonMethodTrustRegion(trust_radius=1/4), verbose=OPTIMIZE_VERBOSE)
-    v1, _ = ep_estimators.get_EP_Estimate(data, verbose=OPTIMIZE_VERBOSE)
-    assert(v0 > 1.6)
+    v0, _ = ep_estimators.get_EP_Estimate(data=data, optimizer=optimizers.NewtonMethodTrustRegion(trust_radius=1/4), verbose=OPTIMIZE_VERBOSE, report_every=1)
+    v1, _ = ep_estimators.get_EP_Estimate(data=data, verbose=OPTIMIZE_VERBOSE, report_every=1)
+    assert(v0 > 1.8)
     assert(abs(v0-v1) < 1e-1)
 
 def test_numpy_to_torch():
@@ -73,9 +73,10 @@ def test_constructor():
     theta = np.random.rand(data.nobservables)
 
     data.get_objective(theta)
-    data.get_tilted_statistics(theta, return_mean=True)
-    data.get_tilted_statistics(theta, return_objective=True)
-    data.get_tilted_statistics(theta, return_covariance=True)
+    data.get_gradient(theta)
+    data.get_hessian(theta)
+    data.get_objective(theta)
+    data.get_tilted_mean(theta)
 
     observables.Dataset(g_samples=utils.numpy_to_torch(g_samples))
     observables.Dataset(g_samples=utils.numpy_to_torch(g_samples), rev_g_samples=rev)
@@ -170,7 +171,7 @@ def test_inference_chunks():
     for num_chunks in [1, 10]:
         for do_rev in [True, False]:
             results2 = np.array( run_inference(beta, J, S, F, num_chunks=num_chunks, do_rev=do_rev) )
-            assert(np.allclose(results1 , results2 ))
+            assert(np.linalg.norm(results1 - results2 )<1e-5)
 
 
 
@@ -219,13 +220,11 @@ def test_consistency():
     theta = np.random.rand(data1.nobservables)
     assert((data1.g_mean - data2.g_mean).norm()<1e-5)
     assert(np.abs(data1.get_objective(theta)-data2.get_objective(theta))<1e-5)
-    assert((data1.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']-
-            data2.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']).norm()<1e-5)
+    assert((data1.get_tilted_mean(theta)-data2.get_tilted_mean(theta)).norm()<1e-5)
 
     assert((data1.g_mean - data3.g_mean).norm()<1e-5)
     assert(np.abs(data1.get_objective(theta)-data3.get_objective(theta))<1e-5)
-    assert((data1.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']-
-            data3.get_tilted_statistics(theta=theta, return_mean=True)['tilted_mean']).norm()<1e-5)
+    assert((data1.get_tilted_mean(theta)-data3.get_tilted_mean(theta)).norm()<1e-5)
 
 
 

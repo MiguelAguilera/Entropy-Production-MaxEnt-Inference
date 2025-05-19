@@ -467,11 +467,7 @@ def optimize(x0, objective, minimize=True, validation=None,
             if verbose: optimizer.msg(f"[Stopping] Invalid training objective {f_new_trn}", t)
             break
 
-        if t > 5 and ((minimize and f_best_trn < f_new_trn) or (not minimize and f_best_trn > f_new_trn)):
-            if verbose: optimizer.msg(f"[Best] Training objective not improving: {f_best_trn} better than {f_new_trn}", t)
-            break
-        else:
-            f_best_trn = f_new_trn
+        f_best_trn = f_new_trn
 
         if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
             new_time = time.time()
