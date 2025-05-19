@@ -7,7 +7,7 @@ import numpy as np
 
 import optimizers
 import linear_solvers
-from utils import eye_like, outer_product, numpy_to_torch, torch_to_numpy
+from utils import outer_product, numpy_to_torch, torch_to_numpy
 
 
 
@@ -16,8 +16,8 @@ from utils import eye_like, outer_product, numpy_to_torch, torch_to_numpy
 # Entropy production (EP) estimation methods
 # ============================================================
 
-
-def get_EP_Estimate(data, validation=None, test=None, verbose=0, **optimize_args):
+def get_EP_Estimate(data, validation=None, test=None, verbose=0, max_iter=None,
+                    optimizer='GradientDescentBB', optimizer_kwargs=None, **kwargs):
     # This is the main function used to estimate the EP from data
     #
     # Arguments:
@@ -28,7 +28,21 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, **optimize_args
     #               : that is used for evaluating the objective. 
     #               : If None, we evaluate the objective on the validation or training set
     #   verbose     : verbosity level (0 = no output, 1 = some output, 2 = all output)
-    #   optimize_args: additional arguments to pass to the optimizer
+    #   max_iter    : maximum number of iterations for the optimizer
+    #   optimizer   : optimizer to use for optimization. This can be either a string specifying a
+    #               : an instance of an Optimizer object, or a string specifying built-in optimizer 
+    #               : class from optimizers.py. Currently we suppose the following optimizers:
+    #               :   'GradientDescent'   - using first order gradient information and fixed learning rate
+    #               :   'GradientDescentBB' - using first order gradient information and Barzilai-Borwein step sizes
+    #               :   'Adam'              - Adam optimizer
+    #               :   'NewtonMethod'      - Newton-Raphson method using second order (Hessian) information 
+    #               :   'NewtonMethodTrustRegion' - Newton-Raphson method with trust region constraints
+    #               :   'TRON'              - Trust Region Newton method with adaptive trust region
+    #   optimizer_kwargs : additional arguments to pass to the optimizer constructor (if optimizer is a string)
+    #               :    see optimizers.py for details. Here is an example
+    #   kwargs      : any additional arguments to pass to the optimize function
+    #
+    #  > v, x = get_EP_Estimate(data, optimizer='Adam', optimizer_kwargs={'lr': 0.01,'beta2': 0.9})
     # Returns:
     #   (ep_estimate, theta): the estimated EP and the optimal parameter
 
@@ -45,8 +59,9 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, **optimize_args
         val_nsamples = None
 
     o = optimizers.optimize(x0=x0, 
-            objective=data, validation=validation, minimize=False, verbose=verbose, 
-            max_trn_objective=np.log(data.nsamples), max_val_objective=val_nsamples, **optimize_args)
+            objective=data, validation=validation, max_iter=max_iter, minimize=False, verbose=verbose, 
+            optimizer=optimizer, optimizer_kwargs=optimizer_kwargs,
+            max_trn_objective=np.log(data.nsamples), max_val_objective=val_nsamples, **kwargs)
     
     if test is not None: # Evaluate the objective on the test set
         ret_objective = test.get_objective(o.x)
@@ -58,14 +73,14 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, **optimize_args
 
 # TODO: Explain
 def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_args):
-    optimizer = optimizers.NewtonMethod(max_iter=1, verbose=verbose)
-    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, 
-                           verbose=verbose, report_every=1, skip_max_iter_warning=True, **optimize_args)
+    optimizer = optimizers.NewtonMethod(verbose=verbose)
+    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, max_iter=1,
+                           verbose=verbose, report_every=1, **optimize_args)
 
 def get_EP_GradientDescentBB(data, validation=None, test=None, verbose=0, **optimize_args):
     optimizer = optimizers.GradientDescentBB(verbose=verbose)
     return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, 
-                           verbose=verbose, report_every=1, skip_max_iter_warning=True, **optimize_args)
+                           verbose=verbose, report_every=1, **optimize_args)
 
 
 
@@ -87,11 +102,12 @@ def get_EP_MTUR(data, linsolve_eps=1e-4):
     combined_mean  = (data.g_mean + data.rev_g_mean)/2
 
     # Compute covariance of (p + ~p)/2
-    second_moment_forward = data.g_cov() + outer_product(data.g_mean, data.g_mean)
-    second_moment_reverse = data.rev_g_cov() + outer_product(data.rev_g_mean, data.rev_g_mean)
+    cov, rcov = data.get_covariance(return_forward=True, return_reverse=True)
+    second_moment_forward = cov  + outer_product(data.g_mean, data.g_mean)
+    second_moment_reverse = rcov + outer_product(data.rev_g_mean, data.rev_g_mean)
     combined_cov = (second_moment_forward + second_moment_reverse)/2 - outer_product(combined_mean, combined_mean)
     
-    x  = linear_solvers.solve_linear_psd(combined_cov + linsolve_eps*eye_like(combined_cov), mean_diff)
+    x  = linear_solvers.solve_linear_psd(combined_cov + linsolve_eps*linear_solvers.eye_like(combined_cov), mean_diff)
     objective = float(x @ mean_diff)/2
 
     return objective, torch_to_numpy(x)

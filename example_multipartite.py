@@ -44,12 +44,6 @@ for i in tqdm(range(N), smoothing=0):
 
     data          = observables.Dataset(g_samples=g_samples)
 
-    # Multidimensional TUR
-    stime         = time.time()
-    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
-    time_MTUR    += time.time() - stime
-    sigma_MTUR   += p_i * spin_MTUR
-    
     # Create dataset with validation and test holdout data
     train, val, test = data.split_train_val_test()
 
@@ -66,6 +60,12 @@ for i in tqdm(range(N), smoothing=0):
     time_N1     += time.time() - stime
     sigma_N1    += p_i * spin_N1
 
+    # Multidimensional TUR
+    stime         = time.time()
+    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
+    time_MTUR    += time.time() - stime
+    sigma_MTUR   += p_i * spin_MTUR
+    
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
 print(f"  Σ     (Empirical)             :    {sigma_emp :.6f}  ({time_emp :.3f}s)")

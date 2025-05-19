@@ -47,16 +47,22 @@ def get_g_observables_bin(S_bin, F, i):
 # based on samples of observables or state transitions. 
 
 # The DatasetBase class is the base class for all data-based objectives
-class DatasetBase(optimizers.Objective):
+# We use torch to speed up calculations, e.g., using GPUs
+class DatasetBase(optimizers.Objective): 
+    def __init__(self):
+        self.device = torch.get_default_device()  # Default device for torch operations
+
+    def initialize_parameters(self, theta):  # This method is used to initialize the parameters variable
+        return numpy_to_torch(theta, device=self.device)
+    
 
     # We should implement the following methods
     @functools.cached_property
-    def g_mean(self)     : raise NotImplementedError 
+    def g_mean(self)         : raise NotImplementedError 
 
     @functools.cached_property
-    def rev_g_mean(self): raise NotImplementedError 
-    def g_cov(self)     : raise NotImplementedError 
-    def rev_g_cov(self) : raise NotImplementedError 
+    def rev_g_mean(self)     : raise NotImplementedError 
+    def get_covariance(self) : raise NotImplementedError 
 
     def get_tilted_statistics(self, theta, **kwargs):
         raise NotImplementedError("get_tilted_statistics is not implemented")
@@ -91,7 +97,9 @@ class DatasetBase(optimizers.Objective):
     @staticmethod
     def get_trn_val_tst_indices(nsamples, val_fraction=0.1, test_fraction=0.1, shuffle=True, with_replacement=False):
         # Get indices for training and testing data
-        assert 0 <= test_fraction <= 1, "test_fraction must be between 0 and 1"
+        assert 0 <= test_fraction, "test_fraction must be between 0 and 1"
+        assert 0 <= val_fraction , "val_fraction  must be between 0 and 1"
+        assert val_fraction + test_fraction <= 1, "val_fraction + test_fraction must be less than 1"
         trn_nsamples = int(nsamples * (1 - val_fraction - test_fraction))
         val_nsamples = int(nsamples * val_fraction)
 
@@ -116,9 +124,44 @@ class DatasetBase(optimizers.Objective):
         raise NotImplementedError("split_train_val_test is not implemented")
 
 
+def get_secondmoments(samples, num_chunks=None, weighting=None):
+    # Compute the second moment matrix of the samples
+    # Arguments:
+    #   samples     : 2d tensor (nsamples x nobservables) containing samples of observables
+    #   num_chunks  : number of chunks to use for computing tilted statistics. This is useful
+    #                 for large datasets, where we want to reduce memory usage.
+    #   weighting   : 1d tensor (nsamples) containing weights for each sample. If None, all samples are
+    #                 weighted equally.
+    # Returns:
+    #   K          : second moment matrix of the samples, shape (nobservables, nobservables)
+    #                   K[i,j] = <g_i g_j> = (1/nsamples) sum_k g_i(x_k) g_j(x_k)
+    nsamples, nobservables = samples.shape
+    if num_chunks is None:
+        if weighting is None:
+            K = samples.T @ samples
+        else:
+            weighted_samples = weighting[:, None] * samples  # shape: (k, i)
+            K = weighted_samples.T @ samples
+    else: # chunked computation
+        K = torch.zeros((nobservables, nobservables), dtype=samples.dtype, device=samples.device)
+        chunk_size = (nsamples + num_chunks - 1) // num_chunks  # Ceiling division
+
+        for r in range(num_chunks):
+            start = r * chunk_size
+            end = min((r + 1) * chunk_size, nsamples)
+            g_chunk = samples[start:end]
+            if weighting is None:
+                K += g_chunk.T @ g_chunk
+            else:
+                weighted_chunk = weighting[start:end][:, None] * g_chunk
+                K += weighted_chunk.T @ g_chunk
+
+    return K / nsamples
+    
+
 # TODO: Cache intermediate results
 
-# This class implements an Objective using samples of observables
+# This class implements an Objective using samples of observables. We use torch to speed things up.
 class Dataset(DatasetBase):
     def __init__(self, g_samples, rev_g_samples=None, num_chunks=None):
         # Arguments:
@@ -154,16 +197,6 @@ class Dataset(DatasetBase):
     @functools.cached_property
     def g_mean(self):
         return self.g_samples.mean(axis=0)
-    
-    def g_cov(self): # Covariance of g_samples
-        return torch.cov(self.g_samples.T, correction=0)
-    
-    def rev_g_cov(self):
-        # Covariance of reverse samples
-        if self.rev_g_samples is None: # antisymmetric observables, so they have the same covariance matrix
-            return self.g_cov()
-        else:
-            return torch.cov(self.rev_g_samples.T, correction=0)
 
     @functools.cached_property
     def rev_g_mean(self):
@@ -173,6 +206,36 @@ class Dataset(DatasetBase):
             return self.rev_g_samples.mean(axis=0)
 
     
+    def get_covariance(self, return_forward=True, return_reverse=False): 
+        # Return covariance matrix of the forward and/or reverse samples
+        # Arguments:
+        #   return_forward : if True, return covariance matrix of forward samples
+        #   return_reverse : if True, return covariance matrix of reverse samples
+        #
+        # Returns:
+        #   cov           : covariance matrix of forward samples if only return_forward is True
+        #   rcov          : covariance matrix of reverse samples if only return_reverse is True
+        #   if both are True, return both covariance matrices as a tuple
+
+    
+        cov, rcov = None, None
+        if return_forward or (self.rev_g_samples is None and return_reverse):
+            cov = get_secondmoments(self.g_samples, num_chunks=self.num_chunks) - torch.outer(self.g_mean, self.g_mean)
+
+        if return_reverse:
+            if self.rev_g_samples is None: 
+                rcov = cov   # antisymmetric observables, so they have the same covariance matrix
+            else: 
+                rcov = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks) - torch.outer(self.rev_g_mean, self.rev_g_mean)
+
+        if   return_forward and not return_reverse : return cov
+        elif return_reverse and not return_forward : return rcov
+        elif return_forward and return_reverse     : return cov, rcov
+        else:
+            raise ValueError("Either return_forward or return_reverse must be True")
+
+
+
     def split_train_val_test(self, **split_opts):  # Split current data set into training, validation, and testing part
         trn_indices, val_indices, tst_indices = self.get_trn_val_tst_indices(nsamples=self.forward_nsamples, **split_opts)
 
@@ -194,8 +257,10 @@ class Dataset(DatasetBase):
         tst = self.__class__(g_samples=self.g_samples[tst_indices], rev_g_samples=rev_tst)
 
         return trn, val, tst
+    
 
 
+            
     def get_tilted_statistics(self, theta, return_mean=False, return_covariance=False, return_objective=False):
         # Compute tilted statistics under the reverse distribution titled by theta. This may include
         # the objective ( θᵀ<g> - ln(<exp(θᵀg)>_{~p}) ), the tilted mean, and the tilted covariance
@@ -226,35 +291,19 @@ class Dataset(DatasetBase):
                 vals['objective'] = float( theta @ self.g_mean - log_Z )
 
             if return_mean or return_covariance:
-                mean = exp_tilt @ self.rev_g_samples if use_rev else -(exp_tilt @ self.g_samples)
-                mean = mean / (self.nsamples * norm_const)
+                normed_tilt = exp_tilt / norm_const
+                if use_rev:
+                    mean = normed_tilt @ self.rev_g_samples / self.nsamples
+                else:
+                    mean = -normed_tilt @ self.g_samples / self.nsamples
                 vals['tilted_mean'] = mean
 
                 if return_covariance:
-                    num_chunks = self.num_chunks
-                    if num_chunks is None:
-                        if use_rev:
-                            weighted_rev_g = exp_tilt[:, None] * self.rev_g_samples  # shape: (k, i)
-                            K = weighted_rev_g.T @ self.rev_g_samples
-                        else:
-                            weighted_rev_g = exp_tilt[:, None] * self.g_samples
-                            K = weighted_rev_g.T @ self.g_samples
-                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
-
+                    if use_rev:
+                        K = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks, weighting=exp_tilt)
                     else:
-                        # Chunked computation, helps reduce memory usage for large datasets
-                        K = torch.zeros((self.nobservables, self.nobservables), dtype=theta.dtype, device=self.device)
-                        chunk_size = (self.nsamples + num_chunks - 1) // num_chunks  # Ceiling division
-
-                        for r in range(num_chunks):
-                            start = r * chunk_size
-                            end = min((r + 1) * chunk_size, self.nsamples)
-                            g_chunk = self.rev_g_samples[start:end] if use_rev else -self.g_samples[start:end]
-                            
-                            weighted_g = exp_tilt[start:end][:, None] * g_chunk
-                            K += weighted_g.T @ g_chunk
-
-                        vals['tilted_covariance'] = K / (self.nsamples * norm_const) - torch.outer(mean, mean)
+                        K = get_secondmoments(-self.g_samples, num_chunks=self.num_chunks, weighting=exp_tilt)
+                    vals['tilted_covariance'] = K - torch.outer(mean, mean)
 
         return vals
 

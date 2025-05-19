@@ -21,6 +21,12 @@ import torch
 from utils import *
 from linear_solvers import solve_linear_psd, steihaug_toint_cg
 
+
+def is_infnan(x): # return True if x is either infinite or NaN
+    x = float(x)
+    return np.isinf(x) or np.isnan(x)
+
+
 # ================================================================================
 # Dataset class
 # This class is used to store the data set of observables samples. It is also used
