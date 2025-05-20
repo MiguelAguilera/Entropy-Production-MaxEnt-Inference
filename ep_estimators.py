@@ -79,13 +79,6 @@ def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_a
                            verbose=verbose, report_every=1, **optimize_args)
 
 
-def get_EP_GradientDescentBB(data, validation=None, test=None, verbose=0, **optimize_args):
-    optimizer = optimizers.GradientDescentBB(verbose=verbose)
-    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, 
-                           verbose=verbose, report_every=1, **optimize_args)
-
-
-
 def get_EP_MTUR(data, linsolve_eps=1e-4):
     # Estimate EP using the multidimensional TUR method
     # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
