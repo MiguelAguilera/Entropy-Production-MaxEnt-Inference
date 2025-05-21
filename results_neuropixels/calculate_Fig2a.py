@@ -211,17 +211,16 @@ def calc(sizes, session_type, session_id, r):
             torch.cuda.manual_seed_all(args.seed)
 #            print("→ Torch seed {args.seed} set for CUDA.")
         
-        data = observables.Dataset(g_samples=g_samples, num_chunks=5)
         trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
         spike_avg = (tst.X0+1).mean()*N/2 # number of spikes in test set
 
         start_time = time.time()
         
         optimizer_kwargs={}
-        optimizer_kwargs['lr']=0.001
+        optimizer_kwargs['lr']=lr
         optimizer_kwargs['patience']=args.patience
         optimizer_kwargs['tol']=tol
-        EP_maxent_val, theta = ep_estimators.get_EP_Estimate(trn, validation=val, test=tst,optimizer='GradientDescentBB', optimizer_kwargs=optimizer_kwargs)
+        EP_maxent, theta = ep_estimators.get_EP_Estimate(trn, validation=val, test=tst,optimizer='GradientDescentBB', optimizer_kwargs=optimizer_kwargs)
 #        EP_maxent_val,theta,EP_maxent_trn = ep_estimators.get_EP_GradientAscent(data=trn,  validation_data=tst, test_data=tst,
 #                                                lr=lr, tol=tol, use_Adam=args.use_Adam,  use_BB=args.use_BB, patience=args.patience, 
 #                                                verbose=1,#,report_every=10, 
@@ -231,9 +230,9 @@ def calc(sizes, session_type, session_id, r):
         del S_t, S1_t, data, trn, tst, theta  # free up memory explicitly
         utils.empty_torch_cache()
 
-        EP[n] = EP_maxent_val
+        EP[n] = EP_maxent
         R[n] = spike_avg
-        print(f"  [Result took {time.time()-stime:3f}] EP val/trn: {EP_maxent_val:.5f} {EP_maxent_trn:.5f} | R: {R[n]:.5f} | EP val/R: {EP[n]/R[n]:.5f}")
+        print(f"  [Result took {time.time()-stime:3f}] EP: {EP_maxent:.5f} | R: {R[n]:.5f} | EP/R: {EP[n]/R[n]:.5f}")
 
 
 
