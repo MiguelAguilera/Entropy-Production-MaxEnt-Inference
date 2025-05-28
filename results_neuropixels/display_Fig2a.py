@@ -128,5 +128,5 @@ if __name__ == "__main__":
 
     IMG_DIR = 'img'
     os.makedirs(IMG_DIR, exist_ok=True)
-    plt.savefig(f'{IMG_DIR}/Fig1b.pdf', bbox_inches='tight')
+    plt.savefig(f'{IMG_DIR}/Fig2a.pdf', bbox_inches='tight')
     plt.show()
