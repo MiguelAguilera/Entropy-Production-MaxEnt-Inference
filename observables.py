@@ -213,34 +213,15 @@ class Dataset(DatasetBase):
             return self.rev_g_samples.mean(axis=0)
 
     
-    def get_covariance(self, return_forward=True, return_reverse=False): 
+    def get_covariance(self): 
         # Return covariance matrix of the forward and/or reverse samples
-        # Arguments:
-        #   return_forward : if True, return covariance matrix of forward samples
-        #   return_reverse : if True, return covariance matrix of reverse samples
         #
         # Returns:
-        #   cov           : covariance matrix of forward samples if only return_forward is True
-        #   rcov          : covariance matrix of reverse samples if only return_reverse is True
-        #   if both are True, return both covariance matrices as a tuple
-
-    
-        cov, rcov = None, None
-        if return_forward or (self.rev_g_samples is None and return_reverse):
-            cov = get_secondmoments(self.g_samples, num_chunks=self.num_chunks) - torch.outer(self.g_mean, self.g_mean)
-
-        if return_reverse:
-            if self.rev_g_samples is None: 
-                rcov = cov   # antisymmetric observables, so they have the same covariance matrix
-            else: 
-                rcov = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks) - torch.outer(self.rev_g_mean, self.rev_g_mean)
-
-        if   return_forward and not return_reverse : return cov
-        elif return_reverse and not return_forward : return rcov
-        elif return_forward and return_reverse     : return cov, rcov
-        else:
-            raise ValueError("Either return_forward or return_reverse must be True")
-
+        #   cov           : covariance matrix of forward samples
+        
+        cov = get_secondmoments(self.g_samples, num_chunks=self.num_chunks) - torch.outer(self.g_mean, self.g_mean)
+        
+        return cov
 
 
     def split_train_val_test(self, **split_opts):  # Split current data set into training, validation, and testing part

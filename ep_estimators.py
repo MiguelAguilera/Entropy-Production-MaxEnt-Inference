@@ -8,7 +8,7 @@ import numpy as np
 import optimizers
 import linear_solvers
 from utils import outer_product, numpy_to_torch, torch_to_numpy
-
+import torch
 
 
 
@@ -81,7 +81,7 @@ def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_a
 
 def get_EP_MTUR(data, linsolve_eps=1e-4):
     # Estimate EP using the multidimensional TUR method
-    # The MTUR is defined as (1/2) (<g>_(p - ~p))^T K^-1 (<g>_p - <g>_(p - ~p))
+    # The MTUR is defined as ln(1 + 2 <g>_p^T K^-1 <g>_p)
     # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
     # and K^-1 is covariance matrix of g under (p + ~p)/2.
     # 
@@ -92,18 +92,16 @@ def get_EP_MTUR(data, linsolve_eps=1e-4):
     if data.nsamples == 0:  # There is not enough data to estimate the objective
         return 0, numpy_to_torch(np.zeros(data.nobservables))
 
-    mean_diff      = data.g_mean - data.rev_g_mean
+    # Compute mean and covariance
+    mean_g = data.g_mean
+    cov = data.get_covariance()
 
-    combined_mean  = (data.g_mean + data.rev_g_mean)/2
+    # Regularized covariance inverse solve
+    reg_cov = cov + linsolve_eps * linear_solvers.eye_like(cov)
+    x = linear_solvers.solve_linear_psd(reg_cov, mean_g)
 
-    # Compute covariance of (p + ~p)/2
-    cov, rcov = data.get_covariance(return_forward=True, return_reverse=True)
-    second_moment_forward = cov  + outer_product(data.g_mean, data.g_mean)
-    second_moment_reverse = rcov + outer_product(data.rev_g_mean, data.rev_g_mean)
-    combined_cov = (second_moment_forward + second_moment_reverse)/2 - outer_product(combined_mean, combined_mean)
-    
-    x  = linear_solvers.solve_linear_psd(combined_cov + linsolve_eps*linear_solvers.eye_like(combined_cov), mean_diff)
-    objective = float(x @ mean_diff)/2
+    # Objective value based on quadratic form
+    objective = np.log(1 + 2 * float(mean_g @ x))
 
     return objective, torch_to_numpy(x)
 
