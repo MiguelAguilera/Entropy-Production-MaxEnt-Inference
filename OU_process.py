@@ -83,8 +83,8 @@ if __name__ == "__main__":
     parser.add_argument("--beta", type=float, default=1.0, help="Noise scale for B = beta*I")
     parser.add_argument("--seed", type=int, default=4222, help="RNG seed")
     parser.add_argument("--t_min", type=float, default=0.01, help="Minimum lag time")
-    parser.add_argument("--t_max", type=float, default=1.0, help="Maximum lag time")
-    parser.add_argument("--num_t", type=int, default=15, help="Number of lag times")
+    parser.add_argument("--t_max", type=float, default=2.0, help="Maximum lag time")
+    parser.add_argument("--num_t", type=int, default=11, help="Number of lag times")
     parser.add_argument("--estimate", action="store_true", default=False,
                         help="Overlay EP estimates using ep_estimators/observables")
     parser.add_argument("--T", type=int, default=1_000_000,
