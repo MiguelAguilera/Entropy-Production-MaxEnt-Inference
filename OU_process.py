@@ -83,8 +83,8 @@ if __name__ == "__main__":
     parser.add_argument("--beta", type=float, default=1.0, help="Noise scale for B = beta*I")
     parser.add_argument("--seed", type=int, default=4222, help="RNG seed")
     parser.add_argument("--t_min", type=float, default=0.01, help="Minimum lag time")
-    parser.add_argument("--t_max", type=float, default=2.0, help="Maximum lag time")
-    parser.add_argument("--num_t", type=int, default=11, help="Number of lag times")
+    parser.add_argument("--t_max", type=float, default=4.0, help="Maximum lag time")
+    parser.add_argument("--num_t", type=int, default=21, help="Number of lag times")
     parser.add_argument("--estimate", action="store_true", default=False,
                         help="Overlay EP estimates using ep_estimators/observables")
     parser.add_argument("--T", type=int, default=1_000_000,
@@ -121,6 +121,7 @@ if __name__ == "__main__":
     sigma_emp = np.zeros(Num_t)
     sigma_g = np.zeros(Num_t)
     sigma_hat_g = np.zeros(Num_t)
+    sigma_MTUR_g = np.zeros(Num_t)
 
     for i, t in enumerate(t_values):
         print()
@@ -150,15 +151,32 @@ if __name__ == "__main__":
 
         print(f"Calculating entropy production estimates")
 
-        g_samples = np.vstack([ Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] 
-                                for i in range(N) for j in range(i, N) ]).T
-        data     = observables.CrossCorrelations1(X0, Xt)
-        observable_desc = "Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] for i<j"
+        # g_samples = np.vstack([ Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] 
+        #                         for i in range(N) for j in range(i, N) ]).T
+        # data     = observables.CrossCorrelations1(X0, Xt)
+        # observable_desc = "Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] for i<j"
 
-
-
-        g_mean = g_samples.mean(axis=0)
+        g_samples_0 = np.vstack([ X0[:,i]*X0[:,j]
+                                for i in range(N) for j in range(i,N) ]).T
+        g_samples_0t = np.vstack([ X0[:,i]*Xt[:,j]
+                                for i in range(N) for j in range(N) ]).T
+        g_samples_t0 = np.vstack([ Xt[:,i]*X0[:,j]
+                                for i in range(N) for j in range(N) ]).T
+        g_samples_t = np.vstack([ Xt[:,i]*Xt[:,j]
+                                for i in range(N) for j in range(i,N) ]).T
+        # g_samples  = np.hstack([g_samples_0, g_samples_0t, g_samples_t])
+        # rev_g_samples = np.hstack([g_samples_t, g_samples_t0, g_samples_0])
+        # data             = observables.Dataset(g_samples=g_samples, rev_g_samples=rev_g_samples)
+        g_samples  = np.hstack([g_samples_t-g_samples_0, g_samples_0t-g_samples_t0])
         data             = observables.Dataset(g_samples=g_samples)
+        observable_desc = "FullCovariance"
+
+
+        Sigma00 = np.cov(X0.T, bias=False)
+        Sigma11 = np.cov(Xt.T, bias=False)
+        Sigma01 = (X0.T @ Xt) / (T - 1)
+
+        sigma_emp[i] = ep_gaussian(Sigma00, Sigma11, Sigma01)
 
         np.random.seed(42) # Set seed for reproducibility of holdout shuffles
         train, val, test = data.split_train_val_test()
@@ -172,13 +190,20 @@ if __name__ == "__main__":
         sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
         time_G_obs       = time.time() - stime
 
+        stime = time.time()
+        sigma_MTUR_obs, _ = ep_estimators.get_EP_MTUR(data)
+        time_MTUR_obs     = time.time() - stime
+
         print(f"Observables gᵢⱼ(x) = {observable_desc}")
         print(f"  Σ_g   (From observable samples, gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
         print(f"  Σ̂_g   (From observable samples, 1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
+        print(f"  Σ̂_g   (From observable samples, MTUR) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
 
-        sigma_emp[i] = sigma
+        # sigma_emp[i] = sigma
         sigma_g[i] = sigma_G_obs
-        sigma_hat_g[i] = sigma_N_obs    
+        sigma_hat_g[i] = sigma_N_obs   
+        sigma_MTUR_g[i] = sigma_MTUR_obs 
+        
 
     # -------------------------------
     # Plot Results
@@ -192,6 +217,7 @@ if __name__ == "__main__":
     plt.plot(t_values, sigma_emp / t_values, label='Empirical EP', marker='o')
     plt.plot(t_values, sigma_g / t_values, label='EP Estimate (Gradient Ascent)', marker='x')
     plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
+    plt.plot(t_values, sigma_MTUR_g / t_values, label='EP Estimate (MTUR)', marker='d')
     plt.xlabel(r'Lag Time $t$')
     plt.ylabel(r'EP / $t$')
     plt.legend()
