@@ -15,6 +15,13 @@ Note: Stationarity requires Re(eigs(A)) < 0.
 import numpy as np
 import scipy.linalg as sla
 
+import argparse
+import os
+import matplotlib.pyplot as plt
+
+import ep_estimators
+import observables  
+import time
 
 def lyapunov_continuous(A: np.ndarray, D: np.ndarray) -> np.ndarray:
     """
@@ -71,18 +78,35 @@ def ep_gaussian(Sigma00: np.ndarray,
 
 if __name__ == "__main__":
 
-    N=20
-    beta = 1
-    t = 1  # lag time
-    T=1_000_000    # Number of samples to draw
+    parser = argparse.ArgumentParser(description="OU EP vs lag time with optional estimators overlay")
+    parser.add_argument("--N", type=int, default=10, help="System size")
+    parser.add_argument("--beta", type=float, default=1.0, help="Noise scale for B = beta*I")
+    parser.add_argument("--seed", type=int, default=4222, help="RNG seed")
+    parser.add_argument("--t_min", type=float, default=0.01, help="Minimum lag time")
+    parser.add_argument("--t_max", type=float, default=1.0, help="Maximum lag time")
+    parser.add_argument("--num_t", type=int, default=15, help="Number of lag times")
+    parser.add_argument("--estimate", action="store_true", default=False,
+                        help="Overlay EP estimates using ep_estimators/observables")
+    parser.add_argument("--T", type=int, default=1_000_000,
+                        help="Samples to draw when --estimate is used")
+    parser.add_argument("--no_plot", action="store_true", default=False, help="Disable plt.show()")
+    args = parser.parse_args()
 
-    print(f"Generating {T} samples for N={N} of an Ornstein-Uhlenbeck process with lag time t={t}")
+    # RNG and lags
+    rng = np.random.default_rng(args.seed)
+    t_values = np.linspace(args.t_min, args.t_max, args.num_t)
+    Num_t = len(t_values)
+
+
+    N=args.N
+    beta = args.beta
+    T=args.T
 
     # Set random seed for reproducibility
-    seed = 4222
+    seed = args.seed
     rng = np.random.default_rng(seed)
 
-    A = -np.eye(N) + rng.standard_normal((N, N)) * 0.1# Random matrix
+    A = -np.eye(N) + rng.standard_normal((N, N)) * 0.2 # Random matrix
     B = np.eye(N)* beta   # Identity matrix as noise term
     
 
@@ -90,60 +114,86 @@ if __name__ == "__main__":
     eigs = np.linalg.eigvals(A)
     if np.max(np.real(eigs)) >= 0:
         raise ValueError("The system is not stable, largest eigenvalue is non-negative.")   
-    
+
+
     Sigma_inf = stationary_covariance(A, B)
-    F = sla.expm(A * t)            # F = e^{At}
-    C_t0 = F @ Sigma_inf           # Σ(t,0) = e^{At} Σ
 
-    Q = Sigma_inf - F @ Sigma_inf @ F.T
-    
-    # Sample x0
-    L0 = np.linalg.cholesky(Sigma_inf)
-    Z0 = rng.standard_normal((T, N))
-    X0 = Z0 @ L0.T
+    sigma_emp = np.zeros(Num_t)
+    sigma_g = np.zeros(Num_t)
+    sigma_hat_g = np.zeros(Num_t)
 
-    # Conditional for xt | x0
-    LQ = np.linalg.cholesky(Q)
-    Zt = rng.standard_normal((T, N))
-    Xt = (X0 @ F.T) + Zt @ LQ.T
+    for i, t in enumerate(t_values):
+        print()
+        print(f"Generating {T} samples for N={N} of an Ornstein-Uhlenbeck process with lag time t={t}")
+        
+        F = sla.expm(A * t)            # F = e^{At}
+        C_t0 = F @ Sigma_inf           # Σ(t,0) = e^{At} Σ
+
+        Q = Sigma_inf - F @ Sigma_inf @ F.T
+        
+        # Sample x0
+        L0 = np.linalg.cholesky(Sigma_inf)
+        Z0 = rng.standard_normal((T, N))
+        X0 = Z0 @ L0.T
+
+        # Conditional for xt | x0
+        LQ = np.linalg.cholesky(Q)
+        Zt = rng.standard_normal((T, N))
+        Xt = (X0 @ F.T) + Zt @ LQ.T
 
 
-    sigma = ep_gaussian(Sigma_inf, Sigma_inf, C_t0)
-    print("Empirical entropy production (KL forward || time-swapped):", sigma)
-
-
-    import ep_estimators
-    import observables  
-    import time
-
-    print()
-    print(f"Calculating entropy production estimates")
-
-    g_samples = np.vstack([ Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] 
-                            for i in range(N) for j in range(i+1, N) ]).T
-    data     = observables.CrossCorrelations1(X0, Xt)
-    observable_desc = "Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] for i<j"
+        sigma = ep_gaussian(Sigma_inf, Sigma_inf, C_t0)
+        print("Empirical entropy production (KL forward || time-swapped):", sigma)
 
 
 
-    g_mean = g_samples.mean(axis=0)
-    data             = observables.Dataset(g_samples=g_samples)
 
-    np.random.seed(42) # Set seed for reproducibility of holdout shuffles
-    train, val, test = data.split_train_val_test()
+        print(f"Calculating entropy production estimates")
 
-    stime            = time.time()
-    sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
-    time_N_obs       = time.time() - stime
-
-
-    stime = time.time()
-    sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
-    time_G_obs       = time.time() - stime
-    
+        g_samples = np.vstack([ Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] 
+                                for i in range(N) for j in range(i, N) ]).T
+        data     = observables.CrossCorrelations1(X0, Xt)
+        observable_desc = "Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] for i<j"
 
 
 
-    print(f"Observables gᵢⱼ(x) = {observable_desc}")
-    print(f"  Σ_g   (From observable samples, gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
-    print(f"  Σ̂_g   (From observable samples, 1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
+        g_mean = g_samples.mean(axis=0)
+        data             = observables.Dataset(g_samples=g_samples)
+
+        np.random.seed(42) # Set seed for reproducibility of holdout shuffles
+        train, val, test = data.split_train_val_test()
+
+        stime            = time.time()
+        sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
+        time_N_obs       = time.time() - stime
+
+
+        stime = time.time()
+        sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
+        time_G_obs       = time.time() - stime
+
+        print(f"Observables gᵢⱼ(x) = {observable_desc}")
+        print(f"  Σ_g   (From observable samples, gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
+        print(f"  Σ̂_g   (From observable samples, 1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
+
+        sigma_emp[i] = sigma
+        sigma_g[i] = sigma_G_obs
+        sigma_hat_g[i] = sigma_N_obs    
+
+    # -------------------------------
+    # Plot Results
+    # -------------------------------
+    plt.rc('text', usetex=True)
+    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
+    plt.rc('legend', fontsize=20)
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(t_values, sigma_emp / t_values, label='Empirical EP', marker='o')
+    plt.plot(t_values, sigma_g / t_values, label='EP Estimate (Gradient Ascent)', marker='x')
+    plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
+    plt.xlabel(r'Lag Time $t$')
+    plt.ylabel(r'EP / $t$')
+    plt.legend()
+    plt.tight_layout()  
+    plt.show() if not args.no_plot else None
