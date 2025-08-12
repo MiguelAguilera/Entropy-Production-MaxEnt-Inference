@@ -185,7 +185,6 @@ if __name__ == "__main__":
         sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
         time_N_obs       = time.time() - stime
 
-
         stime = time.time()
         sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
         time_G_obs       = time.time() - stime
@@ -195,9 +194,9 @@ if __name__ == "__main__":
         time_MTUR_obs     = time.time() - stime
 
         print(f"Observables gᵢⱼ(x) = {observable_desc}")
-        print(f"  Σ_g   (From observable samples, gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
-        print(f"  Σ̂_g   (From observable samples, 1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
-        print(f"  Σ̂_g   (From observable samples, MTUR) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
+        print(f"  Σ_g   (gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
+        print(f"  Σ̂_g   (1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
+        print(f"  Σ̂_g   (MTUR) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
 
         # sigma_emp[i] = sigma
         sigma_g[i] = sigma_G_obs
