@@ -17,9 +17,12 @@ parser.add_argument("--k", type=int, default=6, help="Avg number of neighbors in
 parser.add_argument("--beta", type=float, default=2.0, help="Inverse temperature")
 parser.add_argument("--samples_per_spin", type=int, default=100000, help="Samples per spin")
 parser.add_argument("--NEEP", action="store_true", default=False, help="Use NEEP objective")
+parser.add_argument("--no_trust_region", action="store_true", default=False, help="Disable Newtons trust region method")
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 parser.add_argument("--obs_subset", type=int, default=0, help="Number of observables per spin to use (0 for all)")
 args = parser.parse_args()
+
+INDEPENDENT_TEST_SET = True
 
 if args.NEEP:
     import NEEP
@@ -55,6 +58,11 @@ J    = spin_model.get_couplings_random(N=args.N, k=args.k)                      
 S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin                                      # Total spin-flip attempts
+
+if INDEPENDENT_TEST_SET:
+    S2, F2 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
+    S3, F3 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
+
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
 
 # The following allows torch to use GPU for computation, if available
@@ -64,7 +72,10 @@ utils.set_default_torch_device()
 
 # Ground truth estimate of EP based on empirical statistics
 stime = time.time()
-sigma_emp = spin_model.get_empirical_EP(args.beta, J, S, F)
+if INDEPENDENT_TEST_SET:
+    sigma_emp = spin_model.get_empirical_EP(args.beta, J, S3, F3)
+else:
+    sigma_emp = spin_model.get_empirical_EP(args.beta, J, S, F)
 time_emp  = time.time() - stime
 
 # Running sums to keep track of EP estimates
@@ -77,37 +88,41 @@ time_g  = time_g2 = time_N1 = time_MTUR = 0.0
 for i in tqdm(range(N), smoothing=0):
     p_i           =  F[:,i].sum()/total_flips               # frequency of spin i flips
 
-    # Calculate samples of g observables for states in which spin i changes state
-    g_samples     = get_g_observables_restricted(S, F, i, k=args.obs_subset)
-
-    data          = dataset_class(g_samples=g_samples)
-
     # Create dataset with validation and test holdout data
-    train, val, test = data.split_train_val_test()
+    if INDEPENDENT_TEST_SET:
+        train = dataset_class(g_samples=observables.get_g_observables(S, F, i))
+        val   = dataset_class(g_samples=observables.get_g_observables(S2, F2, i))
+        test  = dataset_class(g_samples=observables.get_g_observables(S2, F2, i))
+    else:
+        data = dataset_class(g_samples=observables.get_g_observables(S, F, i))
+        train, val, test = data.split_train_val_test(shuffle=False)
+        del data
 
     # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
     # By default, we use gradient ascent with Barzilai-Borwein step sizes
+
     stime        = time.time()
-    spin_g, _    = ep_estimators.get_EP_Estimate(data, validation=val, test=test)
+    spin_g, _    = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
     sigma_g     += p_i * spin_g 
     time_g      += time.time() - stime
 
-    # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
-    # Here is an example of how to use a different optimizer
-    stime        = time.time()
-    spin_g2, _   = ep_estimators.get_EP_Estimate(data, validation=val, test=test, optimizer='NewtonMethodTrustRegion')
-    sigma_g2    += p_i * spin_g2
-    time_g2     += time.time() - stime
+    if not args.no_trust_region:
+        # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
+        # Here is an example of how to use a different optimizer
+        stime        = time.time()
+        spin_g2, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test, optimizer='NewtonMethodTrustRegion')
+        sigma_g2    += p_i * spin_g2
+        time_g2     += time.time() - stime
 
     # 1 step of Newton
     stime        = time.time()
-    spin_N1, _   = ep_estimators.get_EP_Newton1Step(data, validation=val, test=test) 
+    spin_N1, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test) 
     time_N1     += time.time() - stime
     sigma_N1    += p_i * spin_N1
 
     # Multidimensional TUR
     stime         = time.time()
-    spin_MTUR, _  = ep_estimators.get_EP_MTUR(data)
+    spin_MTUR, _  = ep_estimators.get_EP_MTUR(train)
     time_MTUR    += time.time() - stime
     sigma_MTUR   += p_i * spin_MTUR
     
@@ -115,7 +130,8 @@ for i in tqdm(range(N), smoothing=0):
 print(f"\nEntropy production estimates (N={args.N}, k={args.k}, β={args.beta})")
 print(f"  Σ     (Empirical)                        :    {sigma_emp :.6f}  ({time_emp :.3f}s)")
 print(f"  Σ_g   (Full optimization, gradient asc.) :    {sigma_g   :.6f}  ({time_g   :.3f}s)")
-print(f"  Σ_g   ( ... trust region Newton method)  :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
+if not args.no_trust_region:
+    print(f"  Σ_g   ( ... trust region Newton method)  :    {sigma_g2  :.6f}  ({time_g2  :.3f}s)")
 print(f"  Σ̂_g   (1-step Newton method)             :    {sigma_N1  :.6f}  ({time_N1  :.3f}s)")
 print(f"  Σ_TUR (Multidimensional TUR)             :    {sigma_MTUR:.6f}  ({time_MTUR:.3f}s)")
 

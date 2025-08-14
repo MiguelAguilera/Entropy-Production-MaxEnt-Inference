@@ -15,15 +15,15 @@ Note: Stationarity requires Re(eigs(A)) < 0.
 import numpy as np
 import scipy.linalg as sla
 
+import os, sys, time
 import argparse
-import os, sys
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, '..')
 
 import ep_estimators
 import observables  
-import time
+import NEEP
 
 def lyapunov_continuous(A: np.ndarray, D: np.ndarray) -> np.ndarray:
     """
@@ -80,35 +80,33 @@ def ep_gaussian(Sigma00: np.ndarray,
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="OU EP vs lag time with optional estimators overlay")
+    parser = argparse.ArgumentParser(description="OU EP vs lag time with optional estimators overlay",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--N", type=int, default=10, help="System size")
     parser.add_argument("--beta", type=float, default=1.0, help="Noise scale for B = beta*I")
-    parser.add_argument("--seed", type=int, default=4222, help="RNG seed")
+    parser.add_argument("--seed", type=int, default=4222, help="RNG seed (-1 for no seed)")
     parser.add_argument("--t_min", type=float, default=0.01, help="Minimum lag time")
     parser.add_argument("--t_max", type=float, default=4.0, help="Maximum lag time")
     parser.add_argument("--num_t", type=int, default=21, help="Number of lag times")
-    parser.add_argument("--estimate", action="store_true", default=False,
-                        help="Overlay EP estimates using ep_estimators/observables")
-    parser.add_argument("--T", type=int, default=1_000_000,
-                        help="Samples to draw when --estimate is used")
+    #parser.add_argument("--estimate", action="store_true", default=False,
+    #                    help="Overlay EP estimates using ep_estimators/observables")
+    parser.add_argument("--T", type=int, default=1_000_000, help="Samples to draw")
     parser.add_argument("--no_plot", action="store_true", default=False, help="Disable plt.show()")
-    parser.add_argument("--NEEP", action="store_true", default=False, help="Use NEEP objective")
+    #parser.add_argument("--NEEP", action="store_true", default=False, help="Use NEEP objective")
     parser.add_argument("--Newton", action="store_true", default=False, help="Run Newtons method")
     parser.add_argument("--partial", action="store_true", default=False, help="Only use subset of antisymmetric observables")
 
     args = parser.parse_args()
 
-    if args.NEEP:
-        print("Using NEEP")
-        from NEEP import DatasetNEEP
-        dataset_class = DatasetNEEP
-    else:
-        dataset_class = observables.Dataset
+    # if args.NEEP:
+    #     print("Using NEEP")
+    #     from NEEP import DatasetNEEP
+    #     dataset_class = DatasetNEEP
+    # else:
+    #     dataset_class = observables.Dataset
 
 
 
-    # RNG and lags
-    rng = np.random.default_rng(args.seed)
     t_values = np.linspace(args.t_min, args.t_max, args.num_t)
     Num_t = len(t_values)
 
@@ -117,11 +115,21 @@ if __name__ == "__main__":
     beta = args.beta
     T=args.T
 
+    # RNG and lags
     # Set random seed for reproducibility
-    seed = args.seed
-    rng = np.random.default_rng(seed)
+    if args.seed != -1:
+        seed = args.seed
+        rng = np.random.default_rng(seed)
+        np.random.seed(args.seed)
+    else:
+        rng = np.random.default_rng()
 
-    A = -np.eye(N) + rng.standard_normal((N, N)) * 0.2 # Random matrix
+    off_diag = rng.standard_normal((N, N)) * 0.2 # Random matrix
+    if False:
+        off_diag = np.sign(off_diag)*0.25
+        #off_diag[np.random.random((N,N))>.1]=0
+        np.fill_diagonal(off_diag, 0)  # Zero diagonal
+    A = -np.eye(N) + off_diag 
     B = np.eye(N)* beta   # Identity matrix as noise term
     
 
@@ -135,6 +143,7 @@ if __name__ == "__main__":
 
     sigma_emp = np.zeros(Num_t)
     sigma_g = np.zeros(Num_t)
+    sigma_g_neep = np.zeros(Num_t)
     sigma_hat_g = np.zeros(Num_t)
     sigma_MTUR_g = np.zeros(Num_t)
 
@@ -191,8 +200,9 @@ if __name__ == "__main__":
             observable_desc = "<x_i(0)x_j(t)-x_i(t)x_j(0)>,<x_i(0)x_j(0)-x_i(t)x_j(t)>"
 
 
-        data             = dataset_class(g_samples=g_samples)
-
+        #g_samples = np.tanh(g_samples)*g_samples**2
+        data             = observables.Dataset(g_samples=g_samples)
+        dataN            = NEEP.DatasetNEEP(g_samples=g_samples)
 
         Sigma00 = np.cov(X0.T, bias=False)
         Sigma11 = np.cov(Xt.T, bias=False)
@@ -201,7 +211,8 @@ if __name__ == "__main__":
         sigma_emp[i] = ep_gaussian(Sigma00, Sigma11, Sigma01)
 
         np.random.seed(42) # Set seed for reproducibility of holdout shuffles
-        train, val, test = data.split_train_val_test()
+        train , val , test  = data.split_train_val_test()
+        trainN, valN, testN = dataN.split_train_val_test()
 
         if args.Newton:
             stime            = time.time()
@@ -215,34 +226,40 @@ if __name__ == "__main__":
         sigma_g[i] = sigma_G_obs
 
         stime = time.time()
+        sigma_G_NEEP_obs, _   = ep_estimators.get_EP_Estimate(trainN, validation=valN, test=testN, verbose=True, optimizer_kwargs={'tol':1e-30})
+        time_G_NEEP_obs       = time.time() - stime
+        sigma_g_neep[i] = sigma_G_NEEP_obs
+
+        stime = time.time()
         sigma_MTUR_obs, _ = ep_estimators.get_EP_MTUR(data)
         time_MTUR_obs     = time.time() - stime
         sigma_MTUR_g[i] = sigma_MTUR_obs 
 
         print(f"Observables gᵢⱼ(x) = {observable_desc}")
         print(f"  Σ_g   (gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
+        print(f"  Σ_g   (grad. asc. NEEP) :    {sigma_G_NEEP_obs :.6f}  ({time_G_NEEP_obs    :.3f}s)")
         if args.Newton:
             print(f"  Σ̂_g   (1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
-        print(f"  Σ̂_g   (MTUR) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
+        print(f"  Σ̂_g   (MTUR           ) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
 
         
+    if not args.no_plot:
+        # -------------------------------
+        # Plot Results
+        # -------------------------------
+        plt.rc('text', usetex=True)
+        plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
+        plt.rc('legend', fontsize=20)
+        plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
 
-    # -------------------------------
-    # Plot Results
-    # -------------------------------
-    plt.rc('text', usetex=True)
-    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-    plt.rc('legend', fontsize=20)
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(t_values, sigma_emp / t_values, label='Empirical EP', marker='o')
-    plt.plot(t_values, sigma_g / t_values, label='EP Estimate (Gradient Ascent)', marker='x')
-    if args.Newton:
-        plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
-    plt.plot(t_values, sigma_MTUR_g / t_values, label='EP Estimate (MTUR)', marker='d')
-    plt.xlabel(r'Lag Time $t$')
-    plt.ylabel(r'EP / $t$')
-    plt.legend()
-    plt.tight_layout()  
-    plt.show() if not args.no_plot else None
+        plt.figure(figsize=(10, 6))
+        plt.plot(t_values, sigma_emp / t_values, label='Empirical EP', marker='o')
+        plt.plot(t_values, sigma_g / t_values, label='EP Estimate (Gradient Ascent)', marker='x')
+        if args.Newton:
+            plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
+        plt.plot(t_values, sigma_MTUR_g / t_values, label='EP Estimate (MTUR)', marker='d')
+        plt.xlabel(r'Lag Time $t$')
+        plt.ylabel(r'EP / $t$')
+        plt.legend()
+        plt.tight_layout()  
+        plt.show()

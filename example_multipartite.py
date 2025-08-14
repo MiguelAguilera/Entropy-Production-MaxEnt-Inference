@@ -20,7 +20,7 @@ beta = 2.0   # inverse temperature
 np.random.seed(42)                                                          # Set seed for reproducibility
 stime = time.time()
 J    = spin_model.get_couplings_random(N=N, k=k)                            # Generate coupling matrix
-S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)    # Run Monte Carlo simulation
+S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=1000000)    # Run Monte Carlo simulation
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin                                      # Total spin-flip attempts
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
