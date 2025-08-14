@@ -2,13 +2,11 @@
 # Entropy production (EP) estimation methods
 # ============================================================
 
-import os
 import numpy as np
 
 import optimizers
 import linear_solvers
-from utils import outer_product, numpy_to_torch, torch_to_numpy
-import torch
+from utils import numpy_to_torch, torch_to_numpy
 
 
 

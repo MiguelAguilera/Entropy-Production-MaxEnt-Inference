@@ -3,31 +3,33 @@ import numpy as np
 
 import spin_model
 import ep_estimators
-import utils
 import observables
 
-# The following allows torch to use GPU for computation
-utils.set_default_torch_device()                
+# The following allows torch to use GPU for computation, if available
+# However, for small examples, it can be faster to use CPU
+# import utils
+# utils.set_default_torch_device()
+
 
 # Setup model parameters for the nonequilibrium spin model (asymmetric kinetic Ising model)
-N    = 10     # system size
+N    = 20     # system size
 k    = 6      # avg number of neighbors in sparse coupling matrix
 beta = 2      # inverse temperature
 
 
+np.random.seed(42)                                                          # Set seed for reproducibility
 
 stime = time.time()
 J    = spin_model.get_couplings_random(N=N, k=k)
 S, F = spin_model.run_simulation(beta=beta, J=J, samples_per_spin=10000)
 N    = J.shape[0]
+X0, X1 = spin_model.convert_to_nonmultipartite(S, F)
+print(f"Ran Monte Carlo in {time.time()-stime:.3f}s, get {X0.shape[0]} samples")
 
 # Empirical estimate 
 stime     = time.time()
 sigma_emp = spin_model.get_empirical_EP(beta, J, S, F)
 time_emp  = time.time() - stime
-
-X0, X1 = spin_model.convert_to_nonmultipartite(S, F)
-print(f"Ran Monte Carlo in {time.time()-stime:.3f}s, get {X0.shape[0]} samples")
 
 print(f"\nEntropy production estimates (N={N}, k={k}, β={beta})")
 print(f"  Σ     (Empirical)                                :    {sigma_emp      :.6f}  ({time_emp      :.3f}s)")
