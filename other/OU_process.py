@@ -79,7 +79,7 @@ def ep_gaussian(Sigma00: np.ndarray,
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="OU EP vs lag time with optional estimators overlay")
-    parser.add_argument("--N", type=int, default=10, help="System size")
+    parser.add_argument("--N", type=int, default=20, help="System size")
     parser.add_argument("--beta", type=float, default=1.0, help="Noise scale for B = beta*I")
     parser.add_argument("--seed", type=int, default=4222, help="RNG seed")
     parser.add_argument("--t_min", type=float, default=0.01, help="Minimum lag time")
