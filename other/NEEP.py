@@ -10,7 +10,7 @@ class DatasetNEEP(observables.Dataset):
 
         theta = numpy_to_torch(theta)
         th_g_max, norm_const, _ = self._get_tilted_values(theta)
-        Z                   = norm_const * torch.exp( th_g_max ) 
+        Z                   = norm_const * torch.exp( th_g_max )
         return float( theta @ self.g_mean - Z + 1 )
 
     def get_gradient(self, theta):
