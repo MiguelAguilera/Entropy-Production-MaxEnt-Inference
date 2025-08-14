@@ -16,8 +16,10 @@ import numpy as np
 import scipy.linalg as sla
 
 import argparse
-import os
+import os, sys
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, '..')
 
 import ep_estimators
 import observables  
@@ -90,7 +92,20 @@ if __name__ == "__main__":
     parser.add_argument("--T", type=int, default=1_000_000,
                         help="Samples to draw when --estimate is used")
     parser.add_argument("--no_plot", action="store_true", default=False, help="Disable plt.show()")
+    parser.add_argument("--NEEP", action="store_true", default=False, help="Use NEEP objective")
+    parser.add_argument("--Newton", action="store_true", default=False, help="Run Newtons method")
+    parser.add_argument("--partial", action="store_true", default=False, help="Only use subset of antisymmetric observables")
+
     args = parser.parse_args()
+
+    if args.NEEP:
+        print("Using NEEP")
+        from NEEP import DatasetNEEP
+        dataset_class = DatasetNEEP
+    else:
+        dataset_class = observables.Dataset
+
+
 
     # RNG and lags
     rng = np.random.default_rng(args.seed)
@@ -156,20 +171,27 @@ if __name__ == "__main__":
         # data     = observables.CrossCorrelations1(X0, Xt)
         # observable_desc = "Xt[:,i]*X0[:,j] - X0[:,i]*Xt[:,j] for i<j"
 
-        g_samples_0 = np.vstack([ X0[:,i]*X0[:,j]
-                                for i in range(N) for j in range(i,N) ]).T
         g_samples_0t = np.vstack([ X0[:,i]*Xt[:,j]
                                 for i in range(N) for j in range(N) ]).T
         g_samples_t0 = np.vstack([ Xt[:,i]*X0[:,j]
                                 for i in range(N) for j in range(N) ]).T
-        g_samples_t = np.vstack([ Xt[:,i]*Xt[:,j]
-                                for i in range(N) for j in range(i,N) ]).T
         # g_samples  = np.hstack([g_samples_0, g_samples_0t, g_samples_t])
         # rev_g_samples = np.hstack([g_samples_t, g_samples_t0, g_samples_0])
         # data             = observables.Dataset(g_samples=g_samples, rev_g_samples=rev_g_samples)
-        g_samples  = np.hstack([g_samples_t-g_samples_0, g_samples_0t-g_samples_t0])
-        data             = observables.Dataset(g_samples=g_samples)
-        observable_desc = "FullCovariance"
+
+        if args.partial:
+            g_samples  = np.hstack([g_samples_0t-g_samples_t0])
+            observable_desc = "<x_i(0)x_j(t)-x_i(t)x_j(0)>"
+        else:
+            g_samples_0 = np.vstack([ X0[:,i]*X0[:,j]
+                                    for i in range(N) for j in range(i,N) ]).T
+            g_samples_t = np.vstack([ Xt[:,i]*Xt[:,j]
+                                    for i in range(N) for j in range(i,N) ]).T
+            g_samples  = np.hstack([g_samples_t-g_samples_0, g_samples_0t-g_samples_t0])
+            observable_desc = "<x_i(0)x_j(t)-x_i(t)x_j(0)>,<x_i(0)x_j(0)-x_i(t)x_j(t)>"
+
+
+        data             = dataset_class(g_samples=g_samples)
 
 
         Sigma00 = np.cov(X0.T, bias=False)
@@ -181,27 +203,28 @@ if __name__ == "__main__":
         np.random.seed(42) # Set seed for reproducibility of holdout shuffles
         train, val, test = data.split_train_val_test()
 
-        stime            = time.time()
-        sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
-        time_N_obs       = time.time() - stime
+        if args.Newton:
+            stime            = time.time()
+            sigma_N_obs, _   = ep_estimators.get_EP_Newton1Step(train, validation=val, test=test)
+            time_N_obs       = time.time() - stime
+            sigma_hat_g[i] = sigma_N_obs   
 
         stime = time.time()
         sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
         time_G_obs       = time.time() - stime
+        sigma_g[i] = sigma_G_obs
 
         stime = time.time()
         sigma_MTUR_obs, _ = ep_estimators.get_EP_MTUR(data)
         time_MTUR_obs     = time.time() - stime
+        sigma_MTUR_g[i] = sigma_MTUR_obs 
 
         print(f"Observables gᵢⱼ(x) = {observable_desc}")
         print(f"  Σ_g   (gradient ascent) :    {sigma_G_obs :.6f}  ({time_G_obs    :.3f}s)")
-        print(f"  Σ̂_g   (1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
+        if args.Newton:
+            print(f"  Σ̂_g   (1-step Newton  ) :    {sigma_N_obs :.6f}  ({time_N_obs    :.3f}s)")
         print(f"  Σ̂_g   (MTUR) :    {sigma_MTUR_obs :.6f}  ({time_MTUR_obs    :.3f}s)")
 
-        # sigma_emp[i] = sigma
-        sigma_g[i] = sigma_G_obs
-        sigma_hat_g[i] = sigma_N_obs   
-        sigma_MTUR_g[i] = sigma_MTUR_obs 
         
 
     # -------------------------------
@@ -215,7 +238,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 6))
     plt.plot(t_values, sigma_emp / t_values, label='Empirical EP', marker='o')
     plt.plot(t_values, sigma_g / t_values, label='EP Estimate (Gradient Ascent)', marker='x')
-    plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
+    if args.Newton:
+        plt.plot(t_values, sigma_hat_g / t_values, label='EP Estimate (1-step Newton)', marker='s')
     plt.plot(t_values, sigma_MTUR_g / t_values, label='EP Estimate (MTUR)', marker='d')
     plt.xlabel(r'Lag Time $t$')
     plt.ylabel(r'EP / $t$')
