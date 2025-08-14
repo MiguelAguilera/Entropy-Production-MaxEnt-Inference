@@ -76,11 +76,10 @@ if __name__ == "__main__":
 
     # Linear function
     def f(x, theta): 
-        return theta * x  # bounded, smooth
-    # Shifted tanh function
+        return theta * x 
+    # Nonlinear function
     def f1(x, theta): 
-        return np.sin(theta*x)  # bounded, smooth
-#        return np.tanh(theta*x)  # bounded, smooth
+        return np.sin(theta*x)
 
 
     theta = np.linspace(args.theta_min, args.theta_max, args.num_theta, args.Nint)
