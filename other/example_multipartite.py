@@ -10,7 +10,8 @@ import ep_estimators
 from utils import numpy_to_torch
 
 import argparse
-parser = argparse.ArgumentParser(description="Nonequilibrium spin model")
+# Also show default values for the options
+parser = argparse.ArgumentParser(description="Nonequilibrium spin model", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("--N", type=int, default=10, help="System size")
 parser.add_argument("--k", type=int, default=6, help="Avg number of neighbors in sparse coupling matrix")
 parser.add_argument("--beta", type=float, default=2.0, help="Inverse temperature")
