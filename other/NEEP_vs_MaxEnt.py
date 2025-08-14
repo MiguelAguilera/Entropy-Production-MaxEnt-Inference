@@ -213,14 +213,14 @@ def objective_theta(f, theta, mu, sigma, Nint=4096, zmax=8.0):
     X  = x[:, None]                               # (N,1)
     TH = theta[None, :]                           # (1,T)
     fvals = np.asarray(f(X, TH))             # (N,T) via broadcasting
+    neg_fvals = np.asarray(f(-X, TH))             # (N,T) via broadcasting
 
     # First term: E[f(theta X, theta)] over z
     Ef = np.sum(eff[:, None] * fvals, axis=0)     # (T,)
 
     # Second term: log E[exp(-f(theta X, theta))] via log-sum-exp along z
-    g = -fvals                                    # (N,T)
-    m = np.max(g, axis=0, keepdims=True)          # (1,T) pivot for stability
-    logEexp = np.log(np.sum(eff[:, None] * np.exp(g - m), axis=0)) + m.squeeze(0)  # (T,)
+    m = np.max(neg_fvals, axis=0, keepdims=True)          # (1,T) pivot for stability
+    logEexp = np.log(np.sum(eff[:, None] * np.exp(neg_fvals - m), axis=0)) + m.squeeze(0)  # (T,)
 
     U = Ef - logEexp
     return U if U.ndim else U.item()
@@ -245,7 +245,8 @@ if __name__ == "__main__":
         return theta * x  # bounded, smooth
     # Shifted tanh function
     def f1(x, theta): 
-        return np.tanh(theta*x-1)  # bounded, smooth
+        return np.sin(theta*x)  # bounded, smooth
+#        return np.tanh(theta*x)  # bounded, smooth
 
 
     theta = np.linspace(args.theta_min, args.theta_max, args.num_theta, args.Nint)
@@ -253,10 +254,18 @@ if __name__ == "__main__":
     U1 = objective_theta(f1, theta, args.mu, args.sigma)
 #    U-=np.max(U)
 #    U1-=np.max(U1)
-    # Plot
+
+    # -------------------------------
+    # Plot Results
+    # -------------------------------
+    plt.rc('text', usetex=True)
+    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
+    plt.rc('legend', fontsize=20)
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+    
     plt.figure()
     plt.plot(theta, U, linewidth=2,label=r'$f(x)=\theta x$')
-    plt.plot(theta, U1, linewidth=2,label=r'$f(x)=\tanh(\theta x-1)$')
+    plt.plot(theta, U1, linewidth=2,label=r'$f(x)=\sin(\theta x)$')
     plt.xlabel(r"$\theta$")
     plt.ylabel(r"$\theta\mu - \log Z(\theta)$")
     plt.legend()
@@ -272,14 +281,11 @@ if __name__ == "__main__":
     # Draw Gaussian samples
     X_samples = np.random.normal(args.mu, args.sigma, size=Nmc)
 
-    # Compute f(X, theta) for all samples
-    f_vals = f1(X_samples, theta_test)
-
     # First term: E[f(theta X)]
-    Ef = np.mean(f_vals)
+    Ef = np.mean(f1(X_samples, theta_test))
 
     # Second term: log E[exp(-f(theta X))]
-    logEexp = np.log(np.mean(np.exp(-f_vals)))
+    logEexp = np.log(np.mean(np.exp(f1(-X_samples, theta_test))))
 
     # Final result
     U = Ef - logEexp
