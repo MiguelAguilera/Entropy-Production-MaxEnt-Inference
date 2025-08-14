@@ -42,7 +42,7 @@ def save_data(file_name, J, S, F, beta, args):
 parser = argparse.ArgumentParser(description="Run spin model simulations with varying beta values.")
 parser.add_argument("--rep", type=int, default=1_000_000,
                     help="Number of repetitions for the simulation (default: 1000000).")
-parser.add_argument("--trials", type=int, default=1,
+parser.add_argument("--trials", type=int, default=1000,
                     help="Number of restarts (default: 1).")
 parser.add_argument("--N", type=int, default=100,
                     help="System size (default: 100).")
