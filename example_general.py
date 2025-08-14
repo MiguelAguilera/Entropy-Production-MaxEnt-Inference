@@ -48,8 +48,6 @@ for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'�
         X1 = X1.astype(np.float32)
         dataS     = observables.CrossCorrelations2(X0, X1)
 
-
-    g_mean = g_samples.mean(axis=0)
     data             = observables.Dataset(g_samples=g_samples)
 
     np.random.seed(42) # Set seed for reproducibility of holdout shuffles
@@ -65,7 +63,7 @@ for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'�
     stime = time.time()
     sigma_G_obs, _   = ep_estimators.get_EP_Estimate(train, validation=val, test=test)
     time_G_obs       = time.time() - stime
-    
+       
 
     # Estimate EP using gradient ascent method , from state samples
     stime = time.time()
