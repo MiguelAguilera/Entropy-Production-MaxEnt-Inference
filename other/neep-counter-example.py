@@ -92,7 +92,7 @@ sns.set(style='white', font_scale=1.2)
 plt.rc('text', usetex=True)
 plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
 plt.rc('legend', fontsize=12)
-#plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 
 plt.figure(figsize=(5,4), layout='constrained')
