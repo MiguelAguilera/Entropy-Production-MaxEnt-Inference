@@ -56,16 +56,17 @@ if True:  # sweep across driving strengths (asymmetry parameters)
     SEMILOG=False
     XLABEL = r'Driving strength $\lambda$'
     #l_vals = np.logspace(-20,0,100)
-    l_vals = np.arange(2, 30)
+    l_vals = np.linspace(0, 20, 100, endpoint=True)
     for l in l_vals:
         r=np.exp(-l)
-        a=1/(1+r)/2
-        b=r/(1+r)/2
+        a=1/(1+r)*.9
+        b=r/(1+r)*.9
         P, R = get_P(a,b)
         obs = A + 1.5*S
         vals_ours.append( f(P, R, obs, method=0) )
         vals_NEEP.append( f(P, R, obs, method=1) )
         vals_ep.append( kl(P,R) )
+        #print(2.5*a+0.5*b, (obs*P).sum())
 
 
 
@@ -96,9 +97,9 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 
 plt.figure(figsize=(4,3), layout='constrained')
-var_bound = np.log(27)/2-1
-var_bound = 5*np.log(5)/2-2
-
+#var_bound = np.log(27)/2-1
+var_bound = (5*np.log(5)-4)*.9
+print(var_bound)
 plt.plot(l_vals, vals_ep, label=r'$\Sigma$', c='k')
 
 plt.plot(l_vals, vals_ours, label=r'$\Sigma_g$')
@@ -110,8 +111,23 @@ plt.plot(l_vals, l_vals*0+var_bound, c='k',ls=':', #ls='none',marker='o', lw=1,m
 plt.legend()
 plt.xlabel(XLABEL)
 plt.xlim(l_vals.min(), l_vals.max())
+plt.ylim(0, 1.1*max(vals_ep.max(), vals_ours.max(), vals_NEEP.max()))
 plt.ylabel('Entropy production')
 plt.savefig('vs-neep.pdf')
 
 import os
 os.system('pdfcrop vs-neep')
+
+
+# # Mathematica code to solve optimization
+
+# f[\[Theta]_, \[Alpha]_, \[Beta]_] := \[Theta]  (5  \[Alpha] + \
+# \[Beta])/2 + \[Alpha] + \[Beta] - \[Beta]  Exp[
+#     5  \[Theta]/2] - \[Alpha]  Exp[\[Theta]/2]
+# v = kk;
+# (*Solve for \[Theta] that maximizes f*)
+# sol = Solve[D[f[\[Theta], v, 0], \[Theta]] == 0, \[Theta], Reals]
+
+# (*Evaluate the maximum value*)
+# maxValue = FullSimplify[f[\[Theta], v, 0] /. sol]
+# N[maxValue]
