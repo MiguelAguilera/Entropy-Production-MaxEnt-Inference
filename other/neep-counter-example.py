@@ -95,7 +95,7 @@ plt.rc('legend', fontsize=12)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 
-plt.figure(figsize=(5,4), layout='constrained')
+plt.figure(figsize=(4,3), layout='constrained')
 var_bound = np.log(27)/2-1
 var_bound = 5*np.log(5)/2-2
 
