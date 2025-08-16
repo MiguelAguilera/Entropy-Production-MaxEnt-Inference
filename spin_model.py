@@ -122,7 +122,7 @@ def ParallelGlauberStepAnneal(J, beta_values, s, T=1):
 
 @njit(parallel=True, fastmath=True)
 def run_simulation(beta, J, warmup_fraction=0.1, 
-                   warmup_steps=100, samples_per_spin=1_000_000, warmup_anneal=True,
+                   warmup_steps=100, samples_per_spin=1_000_000, warmup_anneal=False,
                    thinning_multiplier=1,
                    num_restarts=1000, sequential=True, progressbar=True, seed=None):
     """
