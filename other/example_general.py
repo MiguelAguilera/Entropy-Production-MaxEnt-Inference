@@ -29,7 +29,7 @@ else:
 
 stime = time.time()
 J    = spin_model.get_couplings_random(N=args.N, k=args.k)
-S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)
+S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed)
 N    = J.shape[0]
 X0, X1 = spin_model.convert_to_nonmultipartite(S, F)
 print(f"Ran Monte Carlo in {time.time()-stime:.3f}s, get {X0.shape[0]} samples")

@@ -55,13 +55,12 @@ def get_g_observables_restricted(S, F, i, k):
 np.random.seed(args.seed)
 stime = time.time()
 J    = spin_model.get_couplings_random(N=args.N, k=args.k)                                       # Generate coupling matrix
-S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
+S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed)    # Run Monte Carlo simulation
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin                                      # Total spin-flip attempts
-
 if INDEPENDENT_TEST_SET:
-    S2, F2 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
-    S3, F3 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin)    # Run Monte Carlo simulation
+    S2, F2 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed+args.N+1)    # Run Monte Carlo simulation
+    S3, F3 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed+args.N+2)    # Run Monte Carlo simulation
 
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
 
