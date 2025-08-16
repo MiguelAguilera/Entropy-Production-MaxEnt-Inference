@@ -71,7 +71,6 @@ simulation_args = dict(beta=args.beta, J=J,
                        )
 
 S, F = spin_model.run_simulation(**simulation_args, seed=args.seed)    # Run Monte Carlo simulation
-print(S.sum())
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin                                      # Total spin-flip attempts
 if INDEPENDENT_TEST_SET:
