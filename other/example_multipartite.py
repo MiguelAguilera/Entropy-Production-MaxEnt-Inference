@@ -9,6 +9,9 @@ import observables
 import ep_estimators
 from utils import numpy_to_torch
 
+
+
+
 import argparse
 # Also show default values for the options
 parser = argparse.ArgumentParser(description="Nonequilibrium spin model", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -16,13 +19,16 @@ parser.add_argument("--N", type=int, default=10, help="System size")
 parser.add_argument("--k", type=int, default=6, help="Avg number of neighbors in sparse coupling matrix")
 parser.add_argument("--beta", type=float, default=2.0, help="Inverse temperature")
 parser.add_argument("--samples_per_spin", type=int, default=100000, help="Samples per spin")
+parser.add_argument("--warmup_steps", type=int, default=0, help="Minimum number of warmup steps")
+parser.add_argument("--num_restarts", type=int, default=1000, help="Number of restarts for the simulation")
 parser.add_argument("--NEEP", action="store_true", default=False, help="Use NEEP objective")
+parser.add_argument("--anneal", action="store_true", default=False, help="Use annealing schedule")
 parser.add_argument("--no_trust_region", action="store_true", default=False, help="Disable Newtons trust region method")
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 parser.add_argument("--obs_subset", type=int, default=0, help="Number of observables per spin to use (0 for all)")
 args = parser.parse_args()
 
-INDEPENDENT_TEST_SET = True
+INDEPENDENT_TEST_SET = False
 
 if args.NEEP:
     import NEEP
@@ -55,12 +61,22 @@ def get_g_observables_restricted(S, F, i, k):
 np.random.seed(args.seed)
 stime = time.time()
 J    = spin_model.get_couplings_random(N=args.N, k=args.k)                                       # Generate coupling matrix
-S, F = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed)    # Run Monte Carlo simulation
+simulation_args = dict(beta=args.beta, J=J, 
+                       samples_per_spin=args.samples_per_spin, 
+                       num_restarts=args.num_restarts, 
+                       warmup_steps=args.warmup_steps, 
+                       warmup_anneal=args.anneal,
+                       #warmup_fraction=0,
+                       #thinning_multiplier=0 # 10000 # 10000, 
+                       )
+
+S, F = spin_model.run_simulation(**simulation_args, seed=args.seed)    # Run Monte Carlo simulation
+print(S.sum())
 num_samples_per_spin, N = S.shape
 total_flips = N * num_samples_per_spin                                      # Total spin-flip attempts
 if INDEPENDENT_TEST_SET:
-    S2, F2 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed+args.N+1)    # Run Monte Carlo simulation
-    S3, F3 = spin_model.run_simulation(beta=args.beta, J=J, samples_per_spin=args.samples_per_spin, seed=args.seed+args.N+2)    # Run Monte Carlo simulation
+    S2, F2 = spin_model.run_simulation(**simulation_args, seed=args.seed+args.N+1)    # Run Monte Carlo simulation
+    S3, F3 = spin_model.run_simulation(**simulation_args, seed=args.seed+args.N+2)    # Run Monte Carlo simulation
 
 print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
 
@@ -69,23 +85,21 @@ print(f"Sampled {total_flips} transitions in {time.time()-stime:.3f}s")
 import utils
 utils.set_default_torch_device()
 
-# Ground truth estimate of EP based on empirical statistics
-stime = time.time()
-if INDEPENDENT_TEST_SET:
-    sigma_emp = spin_model.get_empirical_EP(args.beta, J, S3, F3)
-else:
-    sigma_emp = spin_model.get_empirical_EP(args.beta, J, S, F)
-time_emp  = time.time() - stime
 
 # Running sums to keep track of EP estimates
-sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
+sigma_emp = sigma_g = sigma_g2 = sigma_N1 = sigma_MTUR = 0.0
 
 # Running sums to keep track of time taken for each estimator
-time_g  = time_g2 = time_N1 = time_MTUR = 0.0
+time_emp  = time_g  = time_g2 = time_N1 = time_MTUR = 0.0
 
 # Because system and observables are multipartite, we can separately estimate EP for each spin
+
+frequencies = F.sum(axis=0)/total_flips      # frequency of spin i flips
+
+
+
 for i in tqdm(range(N), smoothing=0):
-    p_i           =  F[:,i].sum()/total_flips               # frequency of spin i flips
+    p_i  = frequencies[i] 
 
     # Create dataset with validation and test holdout data
     if INDEPENDENT_TEST_SET:
@@ -96,6 +110,12 @@ for i in tqdm(range(N), smoothing=0):
         data = dataset_class(g_samples=observables.get_g_observables(S, F, i))
         train, val, test = data.split_train_val_test(shuffle=False)
         del data
+
+    # Ground truth estimate of EP based on empirical statistics
+    stime = time.time()
+    sigma_emp += p_i * spin_model.get_spin_empirical_EP(args.beta, J, i, test.g_mean)
+    time_emp  = time.time() - stime
+
 
     # Full optimization with validation dataset (for early stopping) and test set (for evaluating the objective)
     # By default, we use gradient ascent with Barzilai-Borwein step sizes
