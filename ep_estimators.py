@@ -61,11 +61,9 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, max_iter=None,
             optimizer=optimizer, optimizer_kwargs=optimizer_kwargs,
             max_trn_objective=np.log(data.nsamples), max_val_objective=val_nsamples, **kwargs)
     
-    if test is not None: # Evaluate the objective on the test set
-        ret_objective = test.get_objective(o.x)
-        # !!!!
-	# if ret_objective > np.log(test.nsamples):
-        #     ret_objective = np.log(test.nsamples)  # cap the objective at the maximum value
+    if test is not None and test.nsamples > 0: # Evaluate the objective on the test set
+        # cap the objective at the maximum value
+        ret_objective = min(test.get_objective(o.x), np.log(test.nsamples))
     elif validation is not None:
         ret_objective = o.val_objective
     else:

@@ -439,7 +439,7 @@ def optimize(x0, objective, minimize=True, validation=None,
 
     x = objective.initialize_parameters(x0)
 
-    f_cur_trn = f_new_trn = f_best_trn = np.nan
+    f_cur_trn = f_new_trn = np.nan
     if validation is not None:
         f_new_val = f_best_val = np.nan
         best_val_x       = x + 0 # make a copy
@@ -449,6 +449,7 @@ def optimize(x0, objective, minimize=True, validation=None,
     old_time         = time.time()
 
     for t in range(run_max_iter):
+        pfx = f"[t={t} trn={f_cur_trn:6.3f}" + (f" val={f_best_val:6.3f}" if validation is not None else "") + "]"
         r = optimizer.get_update(t=t, objective=objective, x=x)
         
         # get_update can return either new_x or (new_x, f_new_trn)
@@ -460,42 +461,40 @@ def optimize(x0, objective, minimize=True, validation=None,
                 f_new_trn  = objective.get_objective(x) 
 
         if new_x is None:
-            if verbose: optimizer.msg(f"[Stopping] Invalid update, x={x}", t)
+            if verbose: optimizer.msg(f"{pfx} [Stopping] Invalid update, x={x}")
             break
 
         if is_infnan(f_new_trn):
-            if verbose: optimizer.msg(f"[Stopping] Invalid training objective {f_new_trn}", t)
+            if verbose: optimizer.msg(f"{pfx} [Stopping] Invalid training objective {f_new_trn}")
             break
-
-        f_best_trn = f_new_trn
 
         if verbose and verbose > 1 and report_every > 0 and t % report_every == 0:
             new_time = time.time()
-            optimizer.msg(f'{(new_time - old_time)/report_every:4.2f}s/iter | f_cur_trn={f_cur_trn: 14.10f}' + 
-                (f' f_new_val={f_new_val: 14.10f} f_best_val={f_best_val: 14.10f} patience_counter={patience_counter}' if validation is not None else '') , t)
+            optimizer.msg(f'{(new_time - old_time)/report_every:4.2f}s/iter | f_new_trn={f_new_trn: 14.10f}' + 
+                (f' f_new_val={f_new_val: 14.10f} f_best_val={f_best_val: 14.10f} patience_counter={patience_counter}' if validation is not None else '') )
             old_time = new_time
 
         if validation is not None:
             f_new_val = validation.get_objective(new_x) 
             if is_infnan(f_new_val):
-                if verbose: optimizer.msg(f"[Stopping] Invalid validation objective {f_new_val}", t)
+                if verbose: optimizer.msg(f"{pfx} [Stopping] Invalid validation objective {f_new_val}")
                 break
 
         x = new_x
 
         if max_trn_objective is not None and f_new_trn > max_trn_objective:
             f_cur_trn = max_trn_objective
-            if verbose: optimizer.msg(f"[Clipping] f_new_trn > max_trn_objective, ‖x‖∞={l1norm(x):3.2f}", t)
+            if verbose: optimizer.msg(f"{pfx} [Clipping] f_new_trn > max_trn_objective, ‖x‖∞={l1norm(x):3.2f}")
             break 
 
         if min_trn_objective is not None and f_new_trn < min_trn_objective:
             f_cur_trn = min_trn_objective
-            if verbose: optimizer.msg(f"[Clipping] f_new_trn < min_trn_objective, ‖x‖∞={l1norm(x):3.2f}", t)
+            if verbose: optimizer.msg(f"{pfx} [Clipping] f_new_trn < min_trn_objective, ‖x‖∞={l1norm(x):3.2f}")
             break 
 
         if abs(f_new_trn - f_cur_trn) < optimizer.tol:
             f_cur_trn = f_new_trn
-            if verbose: optimizer.msg(f"[Converged] Training objective change below tol={optimizer.tol}", t)
+            if verbose: optimizer.msg(f"{pfx}[Converged] Training objective change below tol={optimizer.tol}")
             break 
 
         f_cur_trn = f_new_trn
@@ -504,19 +503,19 @@ def optimize(x0, objective, minimize=True, validation=None,
             if max_val_objective is not None and f_new_val > max_val_objective:
                 f_best_val = max_val_objective
                 best_val_x = x
-                if verbose: optimizer.msg(f"[Clipping] f_new_val > max_val_objective, ‖x‖∞={l1norm(x):3.2f}", t)
+                if verbose: optimizer.msg(f"{pfx} [Clipping] f_new_val > max_val_objective, ‖x‖∞={l1norm(x):3.2f}")
                 break
 
             if min_val_objective is not None and f_new_val < min_val_objective:
                 f_best_val = min_val_objective
                 best_val_x = x
-                if verbose: optimizer.msg(f"[Clipping] f_new_val < min_val_objective, ‖x‖∞={l1norm(x):3.2f}", t)
+                if verbose: optimizer.msg(f"{pfx} [Clipping] f_new_val < min_val_objective, ‖x‖∞={l1norm(x):3.2f}")
                 break
 
             improved = is_infnan(f_best_val) or (f_new_val < f_best_val if minimize else f_new_val > f_best_val)
             if improved:
                 if verbose > 1 and t-best_val_iter>1: 
-                    optimizer.msg(f"[Patience] Resetting patience counter, last improvement {t-best_val_iter} steps ago", t)
+                    optimizer.msg(f"{pfx} [Patience] Resetting patience counter, last improvement {t-best_val_iter} steps ago")
                 f_best_val       = f_new_val
                 best_val_x       = x.clone()
                 patience_counter = 0
@@ -524,7 +523,7 @@ def optimize(x0, objective, minimize=True, validation=None,
 
             elif patience_counter >= patience:
                 if verbose:
-                    optimizer.msg(f"[Stopping] Validation objective did not improve for {patience} steps (last improvement {t-best_val_iter} steps ago)", t)
+                    optimizer.msg(f"{pfx} [Stopping] Validation objective did not improve for {patience} steps (last improvement {t-best_val_iter} steps ago)")
                 break
             
             else:

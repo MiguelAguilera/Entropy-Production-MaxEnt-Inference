@@ -59,7 +59,6 @@ for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'�
                                 for i in range(N) for j in range(i+1, N) ]).T
         #dataS     = observables.CrossCorrelations1(X0, X1)
     else:
-        continue
         # Calculate samples of g observables for states in which spin i changes state
         g_samples = np.vstack([ (X1[:,i] - X0[:,i])*X0[:,j] 
                                 for i in range(N) for j in range(N) if i != j]).T
