@@ -62,12 +62,13 @@ for observable_ix, observable_desc in enumerate(["x'ᵢxⱼ−xⱼ'xᵢ", "(x'�
         # Calculate samples of g observables for states in which spin i changes state
         g_samples = np.vstack([ (X1[:,i] - X0[:,i])*X0[:,j] 
                                 for i in range(N) for j in range(N) if i != j]).T
+
         #X0 = X0.astype(np.float32)
         #X1 = X1.astype(np.float32)
         #dataS     = observables.CrossCorrelations2(X0, X1)
 
     data             = dataset_class(g_samples=g_samples)
-    
+
     #np.random.seed(42) # Set seed for reproducibility of holdout shuffles
     #trainS, valS, testS = dataS.split_train_val_test()
     np.random.seed(42) # Set seed for reproducibility of holdout shuffles

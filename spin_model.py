@@ -99,31 +99,10 @@ def ParallelGlauberStep(betaJ, s, T=1):
             s[i] = GlauberStep(betaJ[i, :], s_p)
     return s
 
-@njit(f'{DTYPE}[:]({DTYPE}[:,::1], {DTYPE}[::1], {DTYPE}[::1], int32)', inline='always')
-def ParallelGlauberStepAnneal(J, beta_values, s, T=1):
-    """
-    Parallel Glauber dynamics: all spins are updated simultaneously.
-
-    Args:
-        J (matrix): Coupling matrix.
-        s (array): Initial spin state.
-        T (int): Number of Monte Carlo sweeps.
-
-    Returns:
-        array: Final spin configuration.
-    """
-    size = len(s)
-    for t in range(T):
-        s_p = s.copy()
-        for i in range(size):
-            s[i] = GlauberStep(J[i, :] * beta_values[t*size + i], s_p)
-    return s
-
 
 @njit(parallel=True, fastmath=True)
 def run_simulation(beta, J, warmup_fraction=0.1, 
-                   warmup_steps=100, samples_per_spin=1_000_000, warmup_anneal=False,
-                   thinning_multiplier=1,
+                   warmup_steps=100, samples_per_spin=1_000_000, thinning_multiplier=1,
                    num_restarts=1000, sequential=True, progressbar=True, seed=None):
     """
     Monte Carlo sampling of nonequilibrium spin model using Glauber dynamics.
@@ -134,7 +113,6 @@ def run_simulation(beta, J, warmup_fraction=0.1,
         J (2d np.array)             : NxN matrix of coupling coefficients
         warmup_fraction (float)     : Fraction of Monte Carlo steps in the warm-up at the beginning of each restart
         warmup_steps (int)          : N*warmup_steps is minimum number of MC steps that will be taken for warmup
-        warmup_anneal (bool)        : Whether to use annealing schedule during warmup
         samples_per_spin (int)      : Number of samples per spin to return
         thinning_multiplier (int)   : In between these samples, we reduce correlations by discarding 
                                        thinning_multiplier * number of samples
@@ -166,15 +144,6 @@ def run_simulation(beta, J, warmup_fraction=0.1,
         print("-"*100)
 
     use_warmup_steps = int(max(warmup_fraction * samples_per_restart, warmup_steps))
-    if warmup_anneal:
-        tail_frac = 0.2
-        n_tail = int(N * use_warmup_steps * tail_frac)
-        n_ramp = N * use_warmup_steps - n_tail
-        ramp = np.linspace(0, beta, n_ramp)
-        tail = [beta,]* n_tail
-        anneal_betas = np.array(list(ramp) + tail, dtype=DTYPE)
-    else:
-        anneal_betas = (np.ones(N * use_warmup_steps)*beta).astype(DTYPE)
 
     for restart_ix in prange(num_restarts):
         if seed is not None:
@@ -185,17 +154,10 @@ def run_simulation(beta, J, warmup_fraction=0.1,
 
         if sequential:
             spin_indices = np.random.randint(0, N, N * use_warmup_steps)
-            if warmup_anneal:
-                for ix, spin in enumerate(spin_indices):
-                    s[spin] = GlauberStep(J[spin, :]*anneal_betas[ix], s)
-            else:
-                for spin in spin_indices:
-                    s[spin] = GlauberStep(betaJ[spin, :], s)
+            for spin in spin_indices:
+                s[spin] = GlauberStep(betaJ[spin, :], s)
         else:
-            if warmup_anneal:
-                s = ParallelGlauberStepAnneal(J, anneal_betas, s, T=use_warmup_steps)
-            else:
-                s = ParallelGlauberStep(betaJ, s, T=use_warmup_steps)
+            s = ParallelGlauberStep(betaJ, s, T=use_warmup_steps)
 
 
         # Now draw samples from steady state
