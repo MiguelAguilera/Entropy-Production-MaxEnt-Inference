@@ -1,7 +1,9 @@
-import time, os, gc, random
+import time, os, gc, random, sys
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
+
+sys.path.insert(0, '..')
 
 import spin_model
 import observables
@@ -9,6 +11,7 @@ import ep_estimators
 import utils
 
 from tqdm import tqdm
+
 
 # ============================================================
 # Config
@@ -22,14 +25,13 @@ Ns = [10, 15, 20, 25, 30, 35, 40]
 Ss = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000]
 
 
-Ss = [10000]
 Ns = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 k = 6            # avg number of neighbors in sparse coupling matrix
 beta = 2.0       # inverse temperature
 N_for_Ss = 40    # N used in the S-sweep
 
-R = 20            # <-- number of repeats per case (change as you like)
+R = 100            # <-- number of repeats per case
 BASE_SEED = 1234 # base seed; per-repeat seeds are derived as BASE_SEED + r
 
 # ============================================================
@@ -113,19 +115,59 @@ def run_single_experiment(N: int, samples_per_spin: int, beta: float, k: int):
 
     return sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp
 
-def summarize_over_repeats(results_RxM):
+def summarize_over_repeats(results_RxM, error_mode="std"):
     """
     results_RxM: np.array shape (R, M)
-    Returns mean (M,), std (M,)
+    Returns mean (M,), error (M,) where error is std or sem.
+    
+    error_mode: "std" or "sem"
     """
     mean = results_RxM.mean(axis=0)
-    std = results_RxM.std(axis=0, ddof=1) if results_RxM.shape[0] > 1 else np.zeros(results_RxM.shape[1])
-    return mean, std
+    if results_RxM.shape[0] > 1:
+        std = results_RxM.std(axis=0, ddof=1)
+        if error_mode == "std":
+            err = std
+        elif error_mode == "sem":
+            err = std / np.sqrt(results_RxM.shape[0])
+        else:
+            raise ValueError(f"Unknown error_mode={error_mode}, must be 'std' or 'sem'")
+    else:
+        err = np.zeros(results_RxM.shape[1])
+    return mean, err
 
-def plot_with_fill(x, y_mean, y_std, label, use_fill):
+def plot_with_fill(x, y_mean, y_err, label, use_fill):
     plt.plot(x, y_mean, 'o-', label=label)
-    if use_fill and np.any(y_std > 0):
-        plt.fill_between(x, y_mean - y_std, y_mean + y_std, alpha=0.2)
+    if use_fill and np.any(y_err > 0):
+        plt.fill_between(x, y_mean - y_err, y_mean + y_err, alpha=0.2)
+
+# -------------------------------
+# Plot styling helpers
+# -------------------------------
+def setup_matplotlib_style():
+    plt.rc('text', usetex=True)
+    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
+    plt.rc('legend', fontsize=20)
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+
+def style_axes(ax, xlabel, ylabel, ypad=20):
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel, labelpad=ypad)
+    ax.legend(
+        ncol=1,
+        columnspacing=0.25,
+        handlelength=1.0,
+        handletextpad=0.25,
+        labelspacing=0.25,
+        loc='best'
+    )
+
+def plot_series(ax, x, y_mean, y_err, label, color=None, lw=2, marker=None, fill=True):
+    line, = ax.plot(x, y_mean, label=label, lw=lw, marker=marker, color=color)
+    if fill and (y_err is not None) and np.any(y_err > 0):
+        ax.fill_between(x, y_mean - y_err, y_mean + y_err, alpha=0.2, color=line.get_color())
+    return line
+
+
 
 # ============================================================
 # Sweep 1: vary N (fixed samples_per_spin)
@@ -155,34 +197,52 @@ for idx in tqdm(range(R * len(Ns)), desc="Sweep over N"):
     tmp_RxM[r, j]  = t_mp
     tnmp_RxM[r, j] = t_nmp
 
-emp_mean, emp_std   = summarize_over_repeats(emp_RxM)
-mp_mean, mp_std     = summarize_over_repeats(mp_RxM)
-nmp_mean, nmp_std   = summarize_over_repeats(nmp_RxM)
-tmp_mean, tmp_std   = summarize_over_repeats(tmp_RxM)
-tnmp_mean, tnmp_std = summarize_over_repeats(tnmp_RxM)
+# choose error measure globally
+ERROR_MODE = "sem"   # or "std"
 
-plt.rc('text', usetex=True)
-plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-plt.rc('legend', fontsize=20)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+emp_mean, emp_err   = summarize_over_repeats(emp_RxM, error_mode=ERROR_MODE)
+mp_mean, mp_err     = summarize_over_repeats(mp_RxM,  error_mode=ERROR_MODE)
+nmp_mean, nmp_err   = summarize_over_repeats(nmp_RxM, error_mode=ERROR_MODE)
+tmp_mean, tmp_err   = summarize_over_repeats(tmp_RxM,  error_mode=ERROR_MODE)
+tnmp_mean, tnmp_err = summarize_over_repeats(tnmp_RxM, error_mode=ERROR_MODE)
+
+# ============================================================
+# Styled plots + saving (after computing means/stds)
+# ============================================================
+setup_matplotlib_style()
+cmap = plt.get_cmap('inferno_r')
+colors = [cmap(0.5), cmap(0.75)]  # two estimator curves
+
+# 1) EP vs N
+fig, ax = plt.subplots(figsize=(5, 2))
+# Empirical (thick dashed black)
+ax.plot(Ns, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$')
+# Estimators
+plot_series(ax, Ns, mp_mean,  mp_err,  r'multipartite', color=colors[0], lw=2, fill=(R > 1))
+plot_series(ax, Ns, nmp_mean, nmp_err, r'regular',      color=colors[1], lw=2, fill=(R > 1))
+# Re-plot empirical on top for emphasis
+ax.plot(Ns, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3)
+ax.set_xlim([Ns[0], Ns[-1]])
+ax.set_ylim([0, 1.05 * max(np.max(emp_mean), np.max(mp_mean), np.max(nmp_mean))])
+style_axes(ax, r'$N$', 'EP')
+#plt.tight_layout()
+
+# Save
+os.makedirs('img', exist_ok=True)
+plt.savefig('img/Fig_N_EP.pdf', bbox_inches='tight', pad_inches=0.1)
+
+# 2) Time vs N
+fig, ax = plt.subplots(figsize=(5, 2))
+# No empirical time; plot the two estimators
+plot_series(ax, Ns, tmp_mean,  tmp_err,  r'multipartite', color=colors[0], lw=2, fill=(R > 1))
+plot_series(ax, Ns, tnmp_mean, tnmp_err, r'regular',      color=colors[1], lw=2, fill=(R > 1))
+ax.set_xlim([Ns[0], Ns[-1]])
+ax.set_ylim([0, 1.05 * max(np.max(tmp_mean), np.max(tnmp_mean))])
+style_axes(ax, r'$N$', 'Time (s)', ypad=12)
+#plt.tight_layout()
+plt.savefig('img/Fig_N_Time.pdf', bbox_inches='tight', pad_inches=0.1)
 
 
-plt.figure(figsize=(10, 6))
-plot_with_fill(Ns, emp_mean,  emp_std,  'Empirical EP',              use_fill=(R > 1))
-plot_with_fill(Ns, mp_mean,   mp_std,   'Multipartite EP',           use_fill=(R > 1))
-plot_with_fill(Ns, nmp_mean,  nmp_std,  'Non-multipartite EP',       use_fill=(R > 1))
-plt.xlabel('Number of spins (N)')
-plt.ylabel(r'Entropy production ($\Sigma$)')
-plt.legend()
-plt.tight_layout()
-
-plt.figure(figsize=(10, 6))
-plot_with_fill(Ns, tmp_mean,   tmp_std,   'Multipartite EP Time',     use_fill=(R > 1))
-plot_with_fill(Ns, tnmp_mean,  tnmp_std,  'Non-multipartite EP Time', use_fill=(R > 1))
-plt.xlabel('Number of spins (N)')
-plt.ylabel('Time (seconds)')
-plt.legend()
-plt.tight_layout()
 
 # ============================================================
 # Sweep 2: vary samples_per_spin (fixed N)
@@ -208,27 +268,42 @@ for idx in tqdm(range(R * len(Ss)), desc="Sweep over S"):
     tmp_RxM[r, j]  = t_mp
     tnmp_RxM[r, j] = t_nmp
 
-emp_mean, emp_std   = summarize_over_repeats(emp_RxM)
-mp_mean, mp_std     = summarize_over_repeats(mp_RxM)
-nmp_mean, nmp_std   = summarize_over_repeats(nmp_RxM)
-tmp_mean, tmp_std   = summarize_over_repeats(tmp_RxM)
-tnmp_mean, tnmp_std = summarize_over_repeats(tnmp_RxM)
+emp_mean, emp_err   = summarize_over_repeats(emp_RxM)
+mp_mean, mp_err     = summarize_over_repeats(mp_RxM)
+nmp_mean, nmp_err   = summarize_over_repeats(nmp_RxM)
+tmp_mean, tmp_err   = summarize_over_repeats(tmp_RxM)
+tnmp_mean, tnmp_err = summarize_over_repeats(tnmp_RxM)
 
-plt.figure(figsize=(10, 6))
-plot_with_fill(Ss, emp_mean,  emp_std,  'Empirical EP',              use_fill=(R > 1))
-plot_with_fill(Ss, mp_mean,   mp_std,   'Multipartite EP',           use_fill=(R > 1))
-plot_with_fill(Ss, nmp_mean,  nmp_std,  'Non-multipartite EP',       use_fill=(R > 1))
-plt.xlabel('Number of samples per spin (S)')
-plt.ylabel(r'Entropy production ($\Sigma$)')
-plt.legend()
-plt.tight_layout()
 
-plt.figure(figsize=(10, 6))
-plot_with_fill(Ss, tmp_mean,   tmp_std,   'Multipartite EP Time',     use_fill=(R > 1))
-plot_with_fill(Ss, tnmp_mean,  tnmp_std,  'Non-multipartite EP Time', use_fill=(R > 1))
-plt.xlabel('Number of samples per spin (S)')
-plt.ylabel('Time (seconds)')
-plt.legend()
-plt.tight_layout()
+
+# ============================================================
+# Styled plots + saving (after computing means/stds)
+# ============================================================
+setup_matplotlib_style()
+cmap = plt.get_cmap('inferno_r')
+colors = [cmap(0.5), cmap(0.75)]  # two estimator curves
+
+# 3) EP vs S
+fig, ax = plt.subplots(figsize=(5, 2))
+ax.plot(Ss, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$')
+plot_series(ax, Ss, mp_mean,  mp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ss, nmp_mean, nmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
+ax.plot(Ss, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3)
+ax.set_xlim([Ss[0], Ss[-1]])
+ax.set_ylim([0, 1.05 * max(np.max(emp_mean), np.max(mp_mean), np.max(nmp_mean))])
+style_axes(ax, r'$S$', 'EP')
+#plt.tight_layout()
+plt.savefig('img/Fig_S_EP.pdf', bbox_inches='tight', pad_inches=0.1)
+
+# 4) Time vs S
+fig, ax = plt.subplots(figsize=(5, 2))
+plot_series(ax, Ss, tmp_mean,  tmp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ss, tnmp_mean, tnmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
+ax.set_xlim([Ss[0], Ss[-1]])
+ax.set_ylim([0, 1.05 * max(np.max(tmp_mean), np.max(tnmp_mean))])
+style_axes(ax, r'$S$', 'Time (s)', ypad=12)
+#plt.tight_layout()
+plt.savefig('img/Fig_S_Time.pdf', bbox_inches='tight', pad_inches=0.1)
+
 
 plt.show()
