@@ -28,10 +28,11 @@ args = parser.parse_args()
 # -------------------------------
 # Plot Configuration
 # -------------------------------
+import seaborn as sns
+sns.set(style='white', font_scale=1.4)
 plt.rc('text', usetex=True)
-plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
-plt.rc('legend', fontsize=12)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+plt.rc('font', size=12, family='serif', serif=['latin modern roman'])
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 # -------------------------------
 # Helper Functions

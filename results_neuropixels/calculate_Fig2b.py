@@ -77,7 +77,6 @@ if __name__ == "__main__":
                 torch.device("cuda") if torch.cuda.is_available() else
                 torch.device("cpu")
              )
-    S = S[inds, :]
     S_t = torch.from_numpy(S[:, 1:].T).to(device).float() * 2 - 1
     S1_t = torch.from_numpy(S[:, :-1].T).to(device).float() * 2 - 1
 
@@ -155,17 +154,18 @@ if __name__ == "__main__":
     # -------------------------------
     # Plot Theta Matrix
     # -------------------------------
+    import seaborn as sns
+    sns.set(style='white', font_scale=1.4)
     plt.rc('text', usetex=True)
-    plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
-    plt.rc('legend', fontsize=12)
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+    plt.rc('font', size=12, family='serif', serif=['latin modern roman'])
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
     norm = mcolors.SymLogNorm(linthresh=0.02, linscale=0.1,
                                vmin=-np.max(np.abs(th)), vmax=np.max(np.abs(th)))
 
     plt.figure(figsize=(5, 4))
     plt.imshow(th, cmap='seismic', aspect='equal', interpolation='nearest', norm=norm)
-    plt.text(-0.28, 0.5, r'$\\theta_{ij}^*$', fontsize=20, va='center', ha='center',
+    plt.text(-0.28, 0.5, r'$\theta_{ij}^*$', fontsize=20, va='center', ha='center',
              rotation=0, transform=plt.gca().transAxes)
 
     for idx in area_start[1:]:
@@ -177,8 +177,8 @@ if __name__ == "__main__":
     plt.tick_params(axis='both', which='major', labelsize=14)
 
     cbar = plt.colorbar(shrink=0.85)
-    cbar.set_ticks([-0.06, -0.03, -0.015, 0, 0.015, 0.03, 0.06])
-    cbar.set_ticklabels([r'$-0.06$', r'$-0.03$', r'$-0.015$', r'$0$', r'$0.015$', r'$0.03$', r'$0.06$'])
+    cbar.set_ticks([-0.08, -0.04, -0.02, 0, 0.02, 0.04, 0.08])
+    cbar.set_ticklabels([r'$-0.08$', r'$-0.04$', r'$-0.02$', r'$0$', r'$0.02$', r'$0.04$', r'$0.08$'])
     cbar.ax.tick_params(length=6, width=1.5)
     cbar.ax.minorticks_off()
 

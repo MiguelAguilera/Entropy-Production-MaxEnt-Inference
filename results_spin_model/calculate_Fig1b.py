@@ -14,10 +14,11 @@ from get_spin_EP import *
 # -------------------------------
 # Matplotlib settings for LaTeX rendering
 # -------------------------------
+import seaborn as sns
+sns.set(style='white', font_scale=1.8)
 plt.rc('text', usetex=True)
-plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-plt.rc('legend', fontsize=20)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 
 # -------------------------------
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--J0", type=float, default=0.0)
     parser.add_argument("--DJ", type=float, default=1.0)
     parser.add_argument("--patterns", type=int, default=None)
-    parser.add_argument("--num_neighbors", type=int, default=None)
+    parser.add_argument("--num_neighbors", type=int, default=6)
     parser.add_argument("--overwrite", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=0,
                         help="Random seed (default: 0)")
@@ -176,7 +177,7 @@ if __name__ == "__main__":
         print(f'Creating image directory: {IMG_DIR}')
         os.makedirs(IMG_DIR)
 
-    plt.savefig(f'{IMG_DIR}/Fig1b.pdf')
+    plt.savefig(f'{IMG_DIR}/Fig1b.pdf', bbox_inches='tight', pad_inches=0.1)
 
     # Show if not disabled
     if not args.no_plot:

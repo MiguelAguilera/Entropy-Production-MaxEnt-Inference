@@ -25,10 +25,10 @@ if __name__ == "__main__":
                         help="Base directory to store simulation results (default: '~/MaxEntData')")
     parser.add_argument("--beta_min", type=float, default=0,
                         help="Minimum beta value (default: 0)")
-    parser.add_argument("--beta_max", type=float, default=3,
-                        help="Maximum beta value (default: 3)")
-    parser.add_argument("--num_beta", type=int, default=101,
-                        help="Number of beta values to simulate (default: 101)")
+    parser.add_argument("--beta_max", type=float, default=4,
+                        help="Maximum beta value (default: 4)")
+    parser.add_argument("--num_beta", type=int, default=26,
+                        help="Number of beta values to simulate (default: 26)")
     parser.add_argument("--J0", type=float, default=0.0,
                         help="Mean interaction coupling (default: 0.0)")
     parser.add_argument("--DJ", type=float, default=1.0,
@@ -38,8 +38,8 @@ if __name__ == "__main__":
     parser.add_argument("--patterns", type=int, default=None,
                         help="Hopfield pattern density (default: None)")
     parser.add_argument("--overwrite", action="store_true", default=False,
-                        help="Overwrite existing output files (default: False)")
-    parser.add_argument("--num_neighbors", type=int, default=None,
+                        help="Overwrite existing output files (default: 6)")
+    parser.add_argument("--num_neighbors", type=int, default=6,
                         help="Number of neighbors for sparse connectivity (default: None)")
     parser.add_argument("--seed", type=int, default=0,
                         help="Random seed for reproducibility (default: 0)")
@@ -88,10 +88,11 @@ if __name__ == "__main__":
     # -------------------------------
     # Plot Results
     # -------------------------------
+    import seaborn as sns
+    sns.set(style='white', font_scale=1.8)
     plt.rc('text', usetex=True)
-    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-    plt.rc('legend', fontsize=20)
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+    plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
     labels = [
         r'$\Sigma$',                   # Empirical EP
