@@ -2,6 +2,7 @@ import time, os, gc, random, sys
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
+import h5py
 
 sys.path.insert(0, '..')
 
@@ -18,12 +19,19 @@ from tqdm import tqdm
 # ============================================================
 utils.set_default_torch_device()
 
+DATA_DIR = 'data'
+IMG_DIR  = 'img'
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(IMG_DIR, exist_ok=True)
+
+H5_PATH = os.path.join(DATA_DIR, 'results.h5')
+OVERWRITE = False  # set True to force recompute for matching entries
+
 # Sweep over system size
 Ns = [10, 15, 20, 25, 30, 35, 40]
 
 # Sweep over samples per spin
 Ss = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000]
-
 
 Ns = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
@@ -32,7 +40,8 @@ beta = 2.0       # inverse temperature
 N_for_Ss = 40    # N used in the S-sweep
 
 R = 100            # <-- number of repeats per case
-BASE_SEED = 1234 # base seed; per-repeat seeds are derived as BASE_SEED + r
+BASE_SEED = 1234   # base seed; per-repeat seeds are derived as BASE_SEED + r
+
 
 # ============================================================
 # Helpers
@@ -49,6 +58,68 @@ def seed_everything(seed: int):
             torch.backends.cudnn.benchmark = False
     except Exception:
         pass
+
+def _trial_path(N: int, samples_per_spin: int, beta: float, k: int, seed: int) -> str:
+    """
+    Unique HDF5 group path for a single trial, keyed by all inputs + seed (so repeats don't collide).
+    """
+    return f"/trials/N={int(N)}/S={int(samples_per_spin)}/beta={float(beta)}/k={int(k)}/seed={int(seed)}"
+
+def _trial_complete(g: h5py.Group) -> bool:
+    """Check that the trial group has all required scalar datasets."""
+    required = ("sigma_emp", "sigma_mp", "sigma_nmp", "t_mp", "t_nmp")
+    for k_ in required:
+        if k_ not in g:
+            return False
+        if getattr(g[k_], "shape", None) != ():
+            return False
+    return True
+
+def get_or_run(N: int, samples_per_spin: int, beta: float, k: int, seed: int, overwrite: bool=False):
+    """
+    If a matching trial exists in results.h5 and overwrite=False -> load it.
+    Else run the experiment, write it, and return the values.
+    """
+    path = _trial_path(N, samples_per_spin, beta, k, seed)
+    with h5py.File(H5_PATH, "a") as h5:
+        if (not overwrite) and path in h5:
+            g = h5[path]
+            if isinstance(g, h5py.Group) and _trial_complete(g):
+                # Load
+                sigma_emp  = float(g["sigma_emp"][()])
+                sigma_mp   = float(g["sigma_mp"][()])
+                sigma_nmp  = float(g["sigma_nmp"][()])
+                t_mp       = float(g["t_mp"][()])
+                t_nmp      = float(g["t_nmp"][()])
+                print(f"[load] {path}")
+                return sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp
+            else:
+                print(f"[recompute:incomplete] {path}")
+
+        # Compute
+        print(f"[compute] {path}")
+        vals = run_single_experiment(N=N, samples_per_spin=samples_per_spin, beta=beta, k=k)
+
+        # Write scalars (replace any stale children)
+        g = h5.require_group(path)
+        for name in list(g.keys()):
+            del g[name]
+        sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp = vals
+        g.create_dataset("sigma_emp", data=np.array(sigma_emp))
+        g.create_dataset("sigma_mp",  data=np.array(sigma_mp))
+        g.create_dataset("sigma_nmp", data=np.array(sigma_nmp))
+        g.create_dataset("t_mp",      data=np.array(t_mp))
+        g.create_dataset("t_nmp",     data=np.array(t_nmp))
+        # annotate
+        g.attrs["N"] = int(N)
+        g.attrs["samples_per_spin"] = int(samples_per_spin)
+        g.attrs["beta"] = float(beta)
+        g.attrs["k"] = int(k)
+        g.attrs["seed"] = int(seed)
+        g.attrs["created"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        return vals
+
 
 def run_single_experiment(N: int, samples_per_spin: int, beta: float, k: int):
     """
@@ -119,8 +190,6 @@ def summarize_over_repeats(results_RxM, error_mode="std"):
     """
     results_RxM: np.array shape (R, M)
     Returns mean (M,), error (M,) where error is std or sem.
-    
-    error_mode: "std" or "sem"
     """
     mean = results_RxM.mean(axis=0)
     if results_RxM.shape[0] > 1:
@@ -144,10 +213,12 @@ def plot_with_fill(x, y_mean, y_err, label, use_fill):
 # Plot styling helpers
 # -------------------------------
 def setup_matplotlib_style():
+    import seaborn as sns
+    sns.set(style='white', font_scale=1.8)
     plt.rc('text', usetex=True)
-    plt.rc('font', size=22, family='serif', serif=['latin modern roman'])
-    plt.rc('legend', fontsize=20)
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm}')
+    plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+
 
 def style_axes(ax, xlabel, ylabel, ypad=20):
     ax.set_xlabel(xlabel)
@@ -181,15 +252,15 @@ nmp_RxM   = np.zeros((R, M))
 tmp_RxM   = np.zeros((R, M))  # time mp
 tnmp_RxM  = np.zeros((R, M))  # time nmp
 
-
 for idx in tqdm(range(R * len(Ns)), desc="Sweep over N"):
     r = idx // len(Ns)
     j = idx % len(Ns)
     N = Ns[j]
-    seed_everything(BASE_SEED + r*1000 + j)
+    seed = BASE_SEED + r*1000 + j
+    seed_everything(seed)
 
-    sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp = run_single_experiment(
-        N=N, samples_per_spin=samples_per_spin_fixed, beta=beta, k=k
+    sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp = get_or_run(
+        N=N, samples_per_spin=samples_per_spin_fixed, beta=beta, k=k, seed=seed, overwrite=OVERWRITE
     )
     emp_RxM[r, j]  = sigma_emp
     mp_RxM[r, j]   = sigma_mp
@@ -198,7 +269,7 @@ for idx in tqdm(range(R * len(Ns)), desc="Sweep over N"):
     tnmp_RxM[r, j] = t_nmp
 
 # choose error measure globally
-ERROR_MODE = "sem"   # or "std"
+ERROR_MODE = "std"   # "sem" or "std"
 
 emp_mean, emp_err   = summarize_over_repeats(emp_RxM, error_mode=ERROR_MODE)
 mp_mean, mp_err     = summarize_over_repeats(mp_RxM,  error_mode=ERROR_MODE)
@@ -214,33 +285,28 @@ cmap = plt.get_cmap('inferno_r')
 colors = [cmap(0.5), cmap(0.75)]  # two estimator curves
 
 # 1) EP vs N
-fig, ax = plt.subplots(figsize=(5, 2))
+fig, ax = plt.subplots(figsize=(4, 4))
 # Empirical (thick dashed black)
 ax.plot(Ns, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$')
 # Estimators
-plot_series(ax, Ns, mp_mean,  mp_err,  r'multipartite', color=colors[0], lw=2, fill=(R > 1))
-plot_series(ax, Ns, nmp_mean, nmp_err, r'regular',      color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ns, mp_mean,  mp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ns, nmp_mean, nmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
 # Re-plot empirical on top for emphasis
 ax.plot(Ns, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3)
 ax.set_xlim([Ns[0], Ns[-1]])
 ax.set_ylim([0, 1.05 * max(np.max(emp_mean), np.max(mp_mean), np.max(nmp_mean))])
-style_axes(ax, r'$N$', 'EP')
-#plt.tight_layout()
-
-# Save
-os.makedirs('img', exist_ok=True)
-plt.savefig('img/Fig_N_EP.pdf', bbox_inches='tight', pad_inches=0.1)
+style_axes(ax, r'Number of spins', 'EP')
+plt.savefig(os.path.join(IMG_DIR, 'Fig_N_EP.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 # 2) Time vs N
-fig, ax = plt.subplots(figsize=(5, 2))
+fig, ax = plt.subplots(figsize=(4, 4))
 # No empirical time; plot the two estimators
-plot_series(ax, Ns, tmp_mean,  tmp_err,  r'multipartite', color=colors[0], lw=2, fill=(R > 1))
-plot_series(ax, Ns, tnmp_mean, tnmp_err, r'regular',      color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ns, tmp_mean,  tmp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
+plot_series(ax, Ns, tnmp_mean, tnmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
 ax.set_xlim([Ns[0], Ns[-1]])
 ax.set_ylim([0, 1.05 * max(np.max(tmp_mean), np.max(tnmp_mean))])
-style_axes(ax, r'$N$', 'Time (s)', ypad=12)
-#plt.tight_layout()
-plt.savefig('img/Fig_N_Time.pdf', bbox_inches='tight', pad_inches=0.1)
+style_axes(ax, r'Number of spins', 'Time (s)', ypad=12)
+plt.savefig(os.path.join(IMG_DIR, 'Fig_N_Time.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 
 
@@ -258,9 +324,11 @@ for idx in tqdm(range(R * len(Ss)), desc="Sweep over S"):
     r = idx // len(Ss)
     j = idx % len(Ss)
     Nsamples = Ss[j]
-    seed_everything(BASE_SEED + 10_000 + r*1000 + j)
-    sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp = run_single_experiment(
-        N=N_for_Ss, samples_per_spin=Nsamples, beta=beta, k=k
+    seed = BASE_SEED + 10_000 + r*1000 + j
+    seed_everything(seed)
+
+    sigma_emp, sigma_mp, sigma_nmp, t_mp, t_nmp = get_or_run(
+        N=N_for_Ss, samples_per_spin=Nsamples, beta=beta, k=k, seed=seed, overwrite=OVERWRITE
     )
     emp_RxM[r, j]  = sigma_emp
     mp_RxM[r, j]   = sigma_mp
@@ -284,26 +352,24 @@ cmap = plt.get_cmap('inferno_r')
 colors = [cmap(0.5), cmap(0.75)]  # two estimator curves
 
 # 3) EP vs S
-fig, ax = plt.subplots(figsize=(5, 2))
+fig, ax = plt.subplots(figsize=(4, 4))
 ax.plot(Ss, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$')
 plot_series(ax, Ss, mp_mean,  mp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
 plot_series(ax, Ss, nmp_mean, nmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
 ax.plot(Ss, emp_mean, 'k', linestyle=(0, (2, 3)), lw=3)
 ax.set_xlim([Ss[0], Ss[-1]])
 ax.set_ylim([0, 1.05 * max(np.max(emp_mean), np.max(mp_mean), np.max(nmp_mean))])
-style_axes(ax, r'$S$', 'EP')
-#plt.tight_layout()
-plt.savefig('img/Fig_S_EP.pdf', bbox_inches='tight', pad_inches=0.1)
+style_axes(ax, r'Number of samples', 'EP')
+plt.savefig(os.path.join(IMG_DIR, 'Fig_S_EP.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 # 4) Time vs S
-fig, ax = plt.subplots(figsize=(5, 2))
+fig, ax = plt.subplots(figsize=(4, 4))
 plot_series(ax, Ss, tmp_mean,  tmp_err,  r'multipartite', color=colors[1], lw=2, fill=(R > 1))
 plot_series(ax, Ss, tnmp_mean, tnmp_err, r'regular',      color=colors[0], lw=2, fill=(R > 1))
 ax.set_xlim([Ss[0], Ss[-1]])
 ax.set_ylim([0, 1.05 * max(np.max(tmp_mean), np.max(tnmp_mean))])
-style_axes(ax, r'$S$', 'Time (s)', ypad=12)
-#plt.tight_layout()
-plt.savefig('img/Fig_S_Time.pdf', bbox_inches='tight', pad_inches=0.1)
-
+style_axes(ax, r'Number of samples', 'Time (s)', ypad=12)
+plt.savefig(os.path.join(IMG_DIR, 'Fig_S_Time.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 plt.show()
+
