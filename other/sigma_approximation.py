@@ -69,7 +69,7 @@ print(r'values of σ(x):')
 print(np.log(P/R))
 print(r'approximation σ(x) ≈ θ·x:')
 print(obs*theta)
-print(r'approximation σ(x) ≈ θ·x-ln(Z):')
+print(r'approximation σ(x) ≈ θ·x - ln(Z):')
 print(obs*theta - np.log(np.sum(R*np.exp(obs*theta))))
 
 sigma=np.log(P/R)
