@@ -60,11 +60,10 @@ b=r/(1+r)*.9
 P, R = get_P(a,b)
 obs = A + 1.5*S
 
-ep, theta = f(P, R, obs, method=0)
+epg, theta = f(P, R, obs, method=0)
 
-print(ep,  kl(P,R))
-
-print(np.sum(P*obs)*theta - np.log(np.sum(R*np.exp(obs*theta))))
+print('Average EP, Σ:', kl(P,R))
+print('Estimated EP, Σ_g:', np.sum(P*obs)*theta - np.log(np.sum(R*np.exp(obs*theta))))
 
 print(r'values of σ(x):')
 print(np.log(P/R))
@@ -82,4 +81,4 @@ P_nodiag[range(3),range(3)]=0
 
 print('Mean squared errors          :', np.sum(P*(sigma-sigma1)**2), np.sum(P*(sigma-sigma2)**2))
 print('Mean squared errors (no diag):', np.sum(P_nodiag*(sigma-sigma1)**2), np.sum(P_nodiag*(sigma-sigma2)**2))
-
+print(P)
