@@ -53,7 +53,7 @@ vals_ours = []
 vals_NEEP = []
 vals_ep   = []
 
-l=4
+l=2
 r=np.exp(-l)
 a=1/(1+r)*.9
 b=r/(1+r)*.9
@@ -79,6 +79,41 @@ sigma2=obs*theta - np.log(np.sum(R*np.exp(obs*theta)))
 P_nodiag = P.copy()
 P_nodiag[range(3),range(3)]=0
 
+
 print('Mean squared errors          :', np.sum(P*(sigma-sigma1)**2), np.sum(P*(sigma-sigma2)**2))
 print('Mean squared errors (no diag):', np.sum(P_nodiag*(sigma-sigma1)**2), np.sum(P_nodiag*(sigma-sigma2)**2))
-print(P)
+
+
+N=1001
+X=np.linspace(0,2,N)
+e1=np.zeros(N)
+e2=np.zeros(N)
+for i,x in enumerate(X):
+    sigmax=obs*theta - x*np.log(np.sum(R*np.exp(obs*theta)))
+    e1[i] = np.sum(P*(sigma-sigmax)**2)
+    e2[i] = np.sum(P_nodiag*(sigma-sigmax)**2)
+
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set(style='white', font_scale=1)
+plt.rc('text', usetex=True)
+plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
+#plt.rc('legend', fontsize=12)
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+
+cmap = plt.get_cmap('inferno_r')
+colors = [cmap(0.5), cmap(0.75)]
+
+i1=np.argmin(e1)
+i2=np.argmin(e2)
+
+plt.figure()
+plt.plot(X,e1, color=colors[0], label='MSE')
+plt.plot(X[i1],e1[i1], '*', color=colors[0])
+plt.plot(X,e2, color=colors[1], label='MSE (no diag)')
+plt.plot(X[i2],e2[i2], '*', color=colors[1])
+plt.xlabel(r'$\gamma$,\quad ($\sigma(x) \approx \theta g(x) - \gamma \ln Z$)') 
+plt.legend()
+plt.show()
