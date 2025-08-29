@@ -99,8 +99,8 @@ def calc_spin(i_args, flip_threshold=100):
     
     # Default zero outputs
     MTUR = time_tur = EP_hat_g = time_hat_g = EP_g = time_g = Emp = 0.0
-    theta_hat_g = np.zeros(N)
-    theta_g = np.zeros(N)
+    theta_hat_g = np.zeros(N-1)
+    theta_g = np.zeros(N-1)
     
     if g_samples.shape[0] >= flip_threshold:
 
