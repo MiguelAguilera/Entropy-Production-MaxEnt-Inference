@@ -4,6 +4,11 @@ import os, functools
 import numpy as np
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"]='1'
+import os
+
+# Must be set before importing torch
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import torch
 
 from utils import numpy_to_torch
@@ -223,6 +228,17 @@ class Dataset(DatasetBase):
         
         return cov
 
+    def get_rev_covariance(self): 
+        # Return covariance matrix of the forward and/or reverse samples
+        #
+        # Returns:
+        #   cov           : covariance matrix of forward samples
+        if self.rev_g_samples is None: # antisymmetric observables
+            return self.get_covariance()
+        else:
+            cov = get_secondmoments(self.rev_g_samples, num_chunks=self.num_chunks) - torch.outer(self.rev_g_mean, self.rev_g_mean)
+        
+        return cov
 
     def split_train_val_test(self, **split_opts):  # Split current data set into training, validation, and testing part
         trn_indices, val_indices, tst_indices = self.get_trn_val_tst_indices(nsamples=self.forward_nsamples, **split_opts)
