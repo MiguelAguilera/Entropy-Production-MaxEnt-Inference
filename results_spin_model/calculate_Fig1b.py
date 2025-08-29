@@ -66,6 +66,11 @@ if __name__ == "__main__":
     # -------------------------------
     # Argument Parsing
     # -------------------------------
+    def int_or_none(v):
+        if v.lower() == "none":
+            return None
+        return int(v)
+        
     parser = argparse.ArgumentParser(description="Estimate EP and MaxEnt parameters for the spin model.")
 
     parser.add_argument("--rep", type=int, default=1_000_000)
@@ -75,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument("--J0", type=float, default=0.0)
     parser.add_argument("--DJ", type=float, default=1.0)
     parser.add_argument("--patterns", type=int, default=None)
-    parser.add_argument("--num_neighbors", type=int, default=6)
+    parser.add_argument("--num_neighbors", type=int_or_none, default=6)
     parser.add_argument("--overwrite", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=0,
                         help="Random seed (default: 0)")
@@ -150,7 +155,7 @@ if __name__ == "__main__":
     # -------------------------------
     # Plotting
     # -------------------------------
-    fig, ax = plt.subplots(figsize=(4, 4))
+    fig, ax = plt.subplots(figsize=(4, 4), layout='constrained')
     cmap = plt.get_cmap('inferno_r')
 
     sns.scatterplot(

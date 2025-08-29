@@ -39,29 +39,33 @@ def save_data(file_name, J, S, F, beta, args):
 # -------------------------------
 # Argument Parsing
 # -------------------------------
+def int_or_none(v):
+    if v.lower() == "none":
+        return None
+    return int(v)
 parser = argparse.ArgumentParser(description="Run spin model simulations with varying beta values.")
 parser.add_argument("--rep", type=int, default=1_000_000,
                     help="Number of repetitions for the simulation (default: 1000000).")
 parser.add_argument("--trials", type=int, default=1000,
-                    help="Number of restarts (default: 1).")
+                    help="Number of restarts (default: 1000).")
 parser.add_argument("--N", type=int, default=100,
                     help="System size (default: 100).")
 parser.add_argument("--BASE_DIR", type=str, default="~/MaxEntData",
                     help="Base directory to store simulation results (default: '~/MaxEntData').")
 parser.add_argument("--beta_min", type=float, default=0,
                     help="Minimum beta value (default: 0).")
-parser.add_argument("--beta_max", type=float, default=3,
-                    help="Maximum beta value (default: 3).")
-parser.add_argument("--num_beta", type=int, default=101,
-                    help="Number of beta values to simulate (default: 101).")
+parser.add_argument("--beta_max", type=float, default=4,
+                    help="Maximum beta value (default: 4).")
+parser.add_argument("--num_beta", type=int, default=26,
+                    help="Number of beta values to simulate (default: 26).")
 parser.add_argument("--J0", type=float, default=0.0,
                     help="Mean interaction coupling (default: 0.0).")
 parser.add_argument("--DJ", type=float, default=1.0,
                     help="Variance of the quenched disorder (default: 1.0).")
 parser.add_argument("--patterns", type=int, default=None,
                     help="Hopfield pattern density (default: None).")
-parser.add_argument("--num_neighbors", type=int, default=None,
-                    help="Number of neighbors for sparse connectivity (default: None).")
+parser.add_argument("--num_neighbors", type=int_or_none, default=6,
+                    help="Number of neighbors for sparse connectivity (default: 6).")
 parser.add_argument("--warmup", type=float, default=0.1,
                     help="Fraction of Monte Carlo steps in the warm-up at the beginning of each restart (default 0.1).")
 parser.add_argument("--thinning_multiplier", type=int, default=1,
@@ -160,7 +164,7 @@ for beta_ix, beta in enumerate(betas):
         samples_per_spin=args.rep, 
         num_restarts=args.trials, 
         sequential=args.sequential,
-        warmup=args.warmup,
+        warmup_fraction=args.warmup,
     )
 
     print(f'Sampled {S.shape[0]} states, {F.shape[0]*F.shape[1]} transitions, {(F==1).sum()} flips in  {time.time()-start_time:.3f}s')
