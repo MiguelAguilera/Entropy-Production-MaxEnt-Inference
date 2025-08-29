@@ -89,57 +89,63 @@ def load_results_from_file(file_name_out, N, return_parameters=False):
 # Estimation Core Function
 # -------------------------------
 
-def calc_spin(i_args):
+def calc_spin(i_args, flip_threshold=100):
     """
     Performs entropy production estimation for a single spin.
     Saves intermediate results to HDF5 file.
     """
     (i, N, beta, rep, T, file_name, file_name_out,
      g_samples, J_i_t, nflips, seed) = i_args
+    
+    # Default zero outputs
+    MTUR = time_tur = EP_hat_g = time_hat_g = EP_g = time_g = Emp = 0.0
+    theta_hat_g = np.zeros(N)
+    theta_g = np.zeros(N)
+    
+    if g_samples.shape[0] >= flip_threshold:
 
-    if g_samples.shape[0] <= 100:
+        Pi = nflips / T
+        J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
+
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+        # Empirical EP estimate
+        g_mean = torch.mean(g_samples, axis=0)
+        spin_emp = beta * (J_without_i @ g_mean).item()
+        
+        data = observables.Dataset(g_samples=g_samples, num_chunks=5)
+        trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
+
+
+        # MTUR estimation
+        t0 = time.time()
+        sig_MTUR, _ = ep_estimators.get_EP_MTUR(trn)
+        MTUR = Pi * sig_MTUR
+        time_tur = time.time() - t0
+
+        # One-step Newton estimation
+        t0 = time.time()
+        sig_hat_g, theta_hat_g = ep_estimators.get_EP_Newton1Step(trn, validation=val, test=tst)
+        EP_hat_g = Pi * sig_hat_g
+        time_hat_g = time.time() - t0
+
+        # Gradient descent (Barzilai-Borwein)
+        t0 = time.time()
+        optimizer_kwargs={}
+        optimizer_kwargs['lr']=0.001
+        optimizer_kwargs['patience']=10
+        optimizer_kwargs['tol']=1e-8
+        sig_g, theta_g = ep_estimators.get_EP_Estimate(trn, validation=val, test=tst,optimizer='GradientDescentBB', optimizer_kwargs=optimizer_kwargs)
+        EP_g = Pi * sig_g
+        time_g = time.time() - t0
+        
+
+        Emp = Pi * spin_emp
+
+    else:
         print(f"[Warning] Skipping spin {i}: insufficient spin flips")
-        return
-
-    Pi = nflips / T
-    J_without_i = torch.cat((J_i_t[:i], J_i_t[i+1:]))
-
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-    # Empirical EP estimate
-    g_mean = torch.mean(g_samples, axis=0)
-    spin_emp = beta * (J_without_i @ g_mean).item()
-    
-    data = observables.Dataset(g_samples=g_samples, num_chunks=5)
-    trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
-
-
-    # MTUR estimation
-    t0 = time.time()
-    sig_MTUR, _ = ep_estimators.get_EP_MTUR(trn)
-    MTUR = Pi * sig_MTUR
-    time_tur = time.time() - t0
-
-    # One-step Newton estimation
-    t0 = time.time()
-    sig_hat_g, theta_hat_g = ep_estimators.get_EP_Newton1Step(trn, validation=val, test=tst)
-    EP_hat_g = Pi * sig_hat_g
-    time_hat_g = time.time() - t0
-
-    # Gradient descent (Barzilai-Borwein)
-    t0 = time.time()
-    optimizer_kwargs={}
-    optimizer_kwargs['lr']=0.001
-    optimizer_kwargs['patience']=10
-    optimizer_kwargs['tol']=1e-8
-    sig_g, theta_g = ep_estimators.get_EP_Estimate(trn, validation=val, test=tst,optimizer='GradientDescentBB', optimizer_kwargs=optimizer_kwargs)
-    EP_g = Pi * sig_g
-    time_g = time.time() - t0
-    
-
-    Emp = Pi * spin_emp
 
     # Free memory
     del g_samples, J_i_t
