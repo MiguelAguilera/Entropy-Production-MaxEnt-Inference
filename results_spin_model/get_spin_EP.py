@@ -20,9 +20,6 @@ sys.path.insert(0, '..')
 import ep_estimators
 import observables
 
-#from ep_multipartite import EPEstimators
-#from ep_estimators_bak import Dataset, get_EP_MTUR, get_EP_Newton, get_EP_GradientAscent
-
 # -------------------------------
 # Utility Functions
 # -------------------------------
@@ -54,7 +51,6 @@ def get_spin_data(i, file_name, cap=None):
         S_i = S_i[:cap, :]
     X = compute_spin_differences(S_i, i)
     return X, J_i, nflips
-
 
 def load_results_from_file(file_name_out, N, return_parameters=False):
     """
@@ -122,7 +118,7 @@ def calc_spin(i_args):
 
     # MTUR estimation
     t0 = time.time()
-    sig_MTUR, _ = ep_estimators.get_EP_MTUR(data)
+    sig_MTUR, _ = ep_estimators.get_EP_MTUR(trn)
     MTUR = Pi * sig_MTUR
     time_tur = time.time() - t0
 
@@ -141,60 +137,7 @@ def calc_spin(i_args):
     sig_g, theta_g = ep_estimators.get_EP_Estimate(trn, validation=val, test=tst,optimizer='GradientDescentBB', optimizer_kwargs=optimizer_kwargs)
     EP_g = Pi * sig_g
     time_g = time.time() - t0
-#    
     
-    
-#    ep = EPEstimators(g_samples, num_chunks=5)
-#    
-#    # MTUR estimation
-#    t0 = time.time()
-#    sol_MTUR = ep.get_EP_MTUR()
-#    MTUR = Pi * sol_MTUR.objective
-#    time_tur = time.time() - t0
-
-#    # One-step Newton estimation (if you implement get_EP_Newton1Step, otherwise call get_EP_Newton with max_iter=1)
-#    t0 = time.time()
-#    sol_hat_g = ep.get_EP_Newton(max_iter=1)  # or ep.get_EP_Newton1Step() if you wrap it
-#    EP_hat_g = Pi * sol_hat_g.objective
-#    theta_hat_g = sol_hat_g.theta.detach().cpu().numpy()
-#    time_hat_g = time.time() - t0
-
-#    # Gradient descent with BB (now using internal val/test split, default 70/20/10)
-#    t0 = time.time()
-#    sol_g = ep.get_EP_GradientAscent()  # Defaults: use_BB=True, split=(0.7,0.2,0.1)
-#    EP_g = Pi * sol_g.objective
-#    theta_g = sol_g.theta.detach().cpu().numpy()
-#    time_g = time.time() - t0
-
-
-#    # 1. Create Dataset
-#    data = Dataset(g_samples)  # if you have rev_g_samples, add rev_g_samples=...
-
-#    # 2. Split data into train/val/test
-#    trn, val, tst = data.split_train_val_test(val_fraction=0.2, test_fraction=0.1)
-
-#    # 3. MTUR estimation
-#    t0 = time.time()
-#    sol_MTUR = get_EP_MTUR(data=trn)  # use training data
-#    MTUR = Pi * sol_MTUR.objective
-#    time_tur = time.time() - t0
-
-#    # 4. Newton estimation
-#    t0 = time.time()
-#    sol_hat_g = get_EP_Newton(data=trn, validation_data=val, test_data=tst, max_iter=1)
-#    EP_hat_g = Pi * sol_hat_g.objective
-#    theta_hat_g = sol_hat_g.theta.detach().cpu().numpy()
-#    time_hat_g = time.time() - t0
-
-#    # 5. Gradient descent (BB by default)
-#    t0 = time.time()
-#    sol_g = get_EP_GradientAscent(data=trn, validation_data=val, test_data=tst,
-#                                   use_BB=True, use_Adam=False)
-#    EP_g = Pi * sol_g.objective
-#    theta_g = sol_g.theta.detach().cpu().numpy()
-#    time_g = time.time() - t0
-
-
 
     Emp = Pi * spin_emp
 
