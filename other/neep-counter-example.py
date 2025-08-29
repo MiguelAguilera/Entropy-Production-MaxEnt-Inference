@@ -5,8 +5,6 @@ import cvxpy as cp
 def kl(p,q): # KL divergence
     return np.sum(slp.kl_div(p,q))
 
-
-
 def get_P(a,b):
     # construct a 3x3 steady-state joint probability matrix
     # Here we consider a uniform unicyclic system, with backward rate r
@@ -38,7 +36,8 @@ def f(P, R, obs, method): # Optimize variational expression
     else:           # NEEP
         objective = cp.Maximize(x * expectation - cp.sum(cp.multiply(R, cp.exp(x * obs))) + 1)
     prob = cp.Problem(objective)
-    return prob.solve(solver=cp.CLARABEL)
+    ep = prob.solve(solver=cp.CLARABEL)
+    return ep, x.value
 
 # Create observables
 M =np.array([[ 0, 1, 0],
@@ -47,10 +46,13 @@ M =np.array([[ 0, 1, 0],
 A = M-M.T  # antisymmetric part
 S = M+M.T  # symmetric     part
 
+kappa = 0.9
 
 vals_ours = []
 vals_NEEP = []
 vals_ep   = []
+
+logZs = []
 
 if True:  # sweep across driving strengths (asymmetry parameters)
     SEMILOG=False
@@ -59,13 +61,16 @@ if True:  # sweep across driving strengths (asymmetry parameters)
     l_vals = np.linspace(0, 20, 100, endpoint=True)
     for l in l_vals:
         r=np.exp(-l)
-        a=1/(1+r)*.9
-        b=r/(1+r)*.9
+        a=1/(1+r)*kappa
+        b=r/(1+r)*kappa
         P, R = get_P(a,b)
-        obs = A + 1.5*S
-        vals_ours.append( f(P, R, obs, method=0) )
-        vals_NEEP.append( f(P, R, obs, method=1) )
+        obs = A + 1
+        ep_ours, theta = f(P, R, obs, method=0)
+        ep_NEEP, _ = f(P, R, obs, method=1)
+        vals_ours.append(ep_ours)
+        vals_NEEP.append(ep_NEEP)
         vals_ep.append( kl(P,R) )
+        logZs.append( np.log(np.sum(R*np.exp(obs*theta))))
         #print(2.5*a+0.5*b, (obs*P).sum())
 
 
@@ -89,34 +94,43 @@ vals_ep   = np.array(vals_ep)
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-sns.set(style='white', font_scale=1)
+sns.set(style='white', font_scale=1.4)
 plt.rc('text', usetex=True)
 plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
 #plt.rc('legend', fontsize=12)
 plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
+cmap = plt.get_cmap('inferno_r')
 
-plt.figure(figsize=(4,3), layout='constrained')
+plt.figure(figsize=(4,3))#, layout='constrained')
 #var_bound = np.log(27)/2-1
-var_bound = (5*np.log(5)-4)*.9
+var_bound = (5*np.log(5)-4)*kappa
+var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
 print(var_bound)
-plt.plot(l_vals, vals_ep, label=r'$\Sigma$', c='k')
+plt.plot(l_vals, vals_ep, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$', zorder=10)
 
-plt.plot(l_vals, vals_ours, label=r'$\Sigma_g$')
+plt.plot(l_vals, vals_ours, label=r'$\Sigma_g$', c=cmap(0.75))
 if SEMILOG:
     plt.semilogx()
-plt.plot(l_vals, vals_NEEP, label=r'$\Sigma_g^\prime$')
-plt.plot(l_vals, l_vals*0+var_bound, c='k',ls=':', #ls='none',marker='o', lw=1,markersize=3,
-         label=r'$\Sigma_g^\prime \;\;(\lambda \to \infty)$')
+plt.plot(l_vals, vals_NEEP, label=r'$\Sigma_g^{\text{KO}}$', c=cmap(0.45))
+plt.plot(l_vals, l_vals*0+var_bound, c='k',ls=':'),
+#         label=r'$\Sigma_g^\prime \;\;(\lambda \to \infty)$')
+
 plt.legend()
 plt.xlabel(XLABEL)
 plt.xlim(l_vals.min(), l_vals.max())
 plt.ylim(0, 1.1*max(vals_ep.max(), vals_ours.max(), vals_NEEP.max()))
-plt.ylabel('Entropy production')
-plt.savefig('vs-neep.pdf')
+plt.ylabel('EP', rotation=0, labelpad=15)
+plt.savefig('img/vs-neep.pdf', bbox_inches='tight', pad_inches=0.1)
 
-import os
-os.system('pdfcrop vs-neep')
+plt.figure(figsize=(4,3))
+plt.plot(l_vals, logZs)
+plt.ylabel('$\ln Z$', rotation=0, labelpad=15)
+plt.xlabel(XLABEL)
+plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
+plt.show()
+#import os
+#os.system('pdfcrop vs-neep')
 
 
 # # Mathematica code to solve optimization
