@@ -70,37 +70,81 @@ def get_EP_Estimate(data, validation=None, test=None, verbose=0, max_iter=None,
         ret_objective = o.objective
     return ret_objective, torch_to_numpy(o.x) 
 
-
-def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_args):
+def get_EP_Newton1Step(data, validation=None, test=None):
     # Estimate EP using 1 step of Newton method
-    optimizer = optimizers.NewtonMethod(verbose=verbose)
-    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, max_iter=1,
-                           verbose=verbose, report_every=1, **optimize_args)
+    return TUR(data, validation, test, method='GTUR')
+    
 
-
-def get_EP_MTUR(data, linsolve_eps=1e-4):
-    # Estimate EP using the multidimensional TUR method
-    # The MTUR is defined as ln(1 + 2 <g>_p^T K^-1 <g>_p)
-    # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
-    # and K^-1 is covariance matrix of g under (p + ~p)/2.
-    # 
-    # Optional arguments
-    #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
-    #                               numerical stability of linear solvers
-
+def get_EP_MTUR(data):
+    # Estimate EP using 1 step of Newton method
+    return TUR(data, None, None, method='MTUR')
+    
+    
+def TUR(data, validation=None, test=None, linsolve_eps=1e-4, method='MTUR'):
+    # Estimate EP using the MTUR or the Gaussian TUR
     if data.nsamples == 0:  # There is not enough data to estimate the objective
         return 0, numpy_to_torch(np.zeros(data.nobservables))
 
     # Compute mean and covariance
     mean_g = data.g_mean
-    cov = data.get_covariance()
-
+    if method == 'MTUR' or data.rev_g_samples is None:
+        mean_2g = 2 * mean_g
+        cov = data.get_covariance()
+    else:
+        mean_2g = data.g_mean - data.rev_g_mean
+        cov = data.get_ref_covariance()
+    
     # Regularized covariance inverse solve
     reg_cov = cov + linsolve_eps * linear_solvers.eye_like(cov)
-    x = linear_solvers.solve_linear_psd(reg_cov, mean_g)
+    x = linear_solvers.solve_linear_psd(reg_cov, mean_2g)
 
-    # Objective value based on quadratic form
-    objective = np.log(1 + 2 * float(mean_g @ x))
+    if method=='MTUR':
+        objective = np.log(1 + float(mean_g @ x))
+    elif method=='GTUR':
+        if validation is None: # Objective value on validation if provided, else on data
+            objective = data.get_objective(x)
+        else:
+            objective = validation.get_objective(x)
+    else: 
+        raise NotImplementedError 
 
+    if objective < 0 or objective > np.log(data.nsamples) or np.isnan(objective):
+        return 0, numpy_to_torch(np.zeros(data.nobservables))
+    
     return objective, torch_to_numpy(x)
+
+
+#def get_EP_Newton1Step(data, validation=None, test=None, verbose=0, **optimize_args):
+#    # Estimate EP using 1 step of Newton method
+#    optimizer = optimizers.NewtonMethod(verbose=verbose)
+#    return get_EP_Estimate(data, validation=validation, test=test, optimizer=optimizer, max_iter=1,
+#                           verbose=verbose, report_every=1, **optimize_args)
+
+
+#def get_EP_MTUR(data, linsolve_eps=1e-4):
+#    # Estimate EP using the multidimensional TUR method
+#    # The MTUR is defined as ln(1 + 2 <g>_p^T K^-1 <g>_p)
+#    # where μ = (p + ~p)/2 is the mixture of the forward and reverse distributions
+#    # and K^-1 is covariance matrix of g under (p + ~p)/2.
+#    # 
+#    # Optional arguments
+#    #   linsolve_eps (float)     : regularization parameter for covariance matrices, used to improve
+#    #                               numerical stability of linear solvers
+
+#    if data.nsamples == 0:  # There is not enough data to estimate the objective
+#        return 0, numpy_to_torch(np.zeros(data.nobservables))
+
+#    # Compute mean and covariance
+#    mean_g = data.g_mean
+#    cov = data.get_covariance()
+
+#    # Regularized covariance inverse solve
+#    reg_cov = cov + linsolve_eps * linear_solvers.eye_like(cov)
+#    x = linear_solvers.solve_linear_psd(reg_cov, mean_g)
+
+#    # Objective value based on quadratic form
+#    objective = np.log(1 + 2 * float(mean_g @ x))
+#    objective = np.clip(objective, 0, np.log(data.nsamples))
+
+#    return objective, torch_to_numpy(x)
 
