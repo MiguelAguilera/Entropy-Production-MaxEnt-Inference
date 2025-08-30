@@ -132,6 +132,7 @@ if __name__ == "__main__":
     dbetaJ = beta * (J - J.T)
 
     # Expand off-diagonal estimates
+    print(theta_N1.shape)
     theta_N1 = expand_offdiag(theta_N1)
     theta_N2 = expand_offdiag(theta_N2)
 
@@ -150,7 +151,7 @@ if __name__ == "__main__":
     r2_N1 = R2(dtheta_N1[filtered_indices], dbetaJ[filtered_indices])
     r2_N2 = R2(dtheta_N2[filtered_indices], dbetaJ[filtered_indices])
     print(f"R² (dbetaJ vs. dtheta_Gaussian): {r2_N1:.4f}")
-    print(f"R² (dbetaJ vs. dtheta_Newton)  : {r2_N2:.4f}")
+    print(f"R² (dbetaJ vs. dtheta_MaxEnt)  : {r2_N2:.4f}")
 
     # -------------------------------
     # Plotting
@@ -165,7 +166,7 @@ if __name__ == "__main__":
     )
 
     # Identity line for reference
-    dbetaJ_min, dbetaJ_max = np.min(dtheta_N2), np.max(dtheta_N2)
+    dbetaJ_min, dbetaJ_max = np.min(dbetaJ), np.max(dbetaJ)
     plt.plot([dbetaJ_min, dbetaJ_max], [dbetaJ_min, dbetaJ_max], 'k', linestyle='dashed')
     plt.axis([dbetaJ_min, dbetaJ_max, dbetaJ_min, dbetaJ_max])
 
