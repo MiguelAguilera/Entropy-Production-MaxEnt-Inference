@@ -59,6 +59,8 @@ vals_ep   = []
 
 logZs = []
 
+ANTISYMMETRIC_OBSERVABLE = False
+
 if True:  # sweep across driving strengths (asymmetry parameters)
     SEMILOG=False
     XLABEL = r'Driving strength $\lambda$'
@@ -69,15 +71,20 @@ if True:  # sweep across driving strengths (asymmetry parameters)
         a=1/(1+r)*kappa
         b=r/(1+r)*kappa
         P, R = get_P(a,b)
-        obs = A
+        if ANTISYMMETRIC_OBSERVABLE:
+            obs = A.copy()
+            obs[1,0] =  .2
+            obs[0,1] = -.2
+            assert(np.allclose(A,-A.T))
+        else:
+            obs = A + 1
+
         ep_ours, theta = f(P, R, obs, method=0)
         ep_NEEP, _ = f(P, R, obs, method=1)
         vals_ours.append(ep_ours)
         vals_NEEP.append(ep_NEEP)
         vals_ep.append( kl(P,R) )
         logZs.append( np.log(np.sum(R*np.exp(obs*theta))))
-        #print(2.5*a+0.5*b, (obs*P).sum())
-
 
 
 else:     # sweep across degrees of asymmetry
@@ -107,7 +114,11 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 cmap = plt.get_cmap('inferno_r')
 
+<<<<<<< HEAD
 fig, ax = plt.subplots(figsize=(4, 4))
+=======
+plt.figure(figsize=(4.5,3.25), layout='constrained')
+>>>>>>> 6121261243da3a96ac96ee0636f01fe896d0b95b
 #var_bound = np.log(27)/2-1
 var_bound = (5*np.log(5)-4)*kappa
 var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
@@ -126,16 +137,22 @@ plt.xlabel(XLABEL)
 plt.xlim(l_vals.min(), l_vals.max())
 plt.ylim(0, 1.1*max(vals_ep.max(), vals_ours.max(), vals_NEEP.max()))
 plt.ylabel('EP', rotation=0, labelpad=15)
-plt.savefig('img/vs-neep.pdf', bbox_inches='tight', pad_inches=0.1)
 
-plt.figure(figsize=(4,3))
-plt.plot(l_vals, logZs)
-plt.ylabel('$\ln Z$', rotation=0, labelpad=15)
-plt.xlabel(XLABEL)
-plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
+fname = 'img/vs-neep' + ('-as' if ANTISYMMETRIC_OBSERVABLE else '')
+plt.savefig(fname + '.pdf', bbox_inches='tight', pad_inches=0.1)
+import os
+os.system('pdfcrop ' + fname)
+
 plt.show()
-#import os
-#os.system('pdfcrop vs-neep')
+
+
+if False:
+    plt.figure(figsize=(4,3))
+    plt.plot(l_vals, logZs)
+    plt.ylabel(r'$\ln Z$', rotation=0, labelpad=15)
+    plt.xlabel(XLABEL)
+    plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
+    plt.show()
 
 
 # # Mathematica code to solve optimization
