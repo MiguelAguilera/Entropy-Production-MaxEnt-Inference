@@ -114,11 +114,11 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 cmap = plt.get_cmap('inferno_r')
 
-<<<<<<< HEAD
+#<<<<<<< HEAD
 fig, ax = plt.subplots(figsize=(4, 4))
-=======
-plt.figure(figsize=(4.5,3.25), layout='constrained')
->>>>>>> 6121261243da3a96ac96ee0636f01fe896d0b95b
+#=======
+#plt.figure(figsize=(4.5,3.25), layout='constrained')
+#>>>>>>> 6121261243da3a96ac96ee0636f01fe896d0b95b
 #var_bound = np.log(27)/2-1
 var_bound = (5*np.log(5)-4)*kappa
 var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
