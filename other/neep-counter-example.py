@@ -43,6 +43,11 @@ def f(P, R, obs, method): # Optimize variational expression
 M =np.array([[ 0, 1, 0],
              [ 0, 0, 1],
              [ 1, 0, 0]], dtype='float') 
+             
+# Create observables
+M =np.array([[ 0, -0.2, 0],
+             [ 0, 0, 1],
+             [ 1, 0, 0]], dtype='float') 
 A = M-M.T  # antisymmetric part
 S = M+M.T  # symmetric     part
 
@@ -64,7 +69,7 @@ if True:  # sweep across driving strengths (asymmetry parameters)
         a=1/(1+r)*kappa
         b=r/(1+r)*kappa
         P, R = get_P(a,b)
-        obs = A + 1
+        obs = A
         ep_ours, theta = f(P, R, obs, method=0)
         ep_NEEP, _ = f(P, R, obs, method=1)
         vals_ours.append(ep_ours)
@@ -94,7 +99,7 @@ vals_ep   = np.array(vals_ep)
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-sns.set(style='white', font_scale=1.4)
+sns.set(style='white', font_scale=1.8)
 plt.rc('text', usetex=True)
 plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
 #plt.rc('legend', fontsize=12)
@@ -102,7 +107,7 @@ plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
 
 cmap = plt.get_cmap('inferno_r')
 
-plt.figure(figsize=(4,3))#, layout='constrained')
+fig, ax = plt.subplots(figsize=(4, 4))
 #var_bound = np.log(27)/2-1
 var_bound = (5*np.log(5)-4)*kappa
 var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
