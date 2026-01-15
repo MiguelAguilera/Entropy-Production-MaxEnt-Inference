@@ -97,7 +97,7 @@ if __name__ == "__main__":
     sns.set(style='white', font_scale=1.8)
     plt.rc('text', usetex=True)
     plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext,newtxmath}')
 
     labels = [
         r'$\Sigma$',                   # Empirical EP
