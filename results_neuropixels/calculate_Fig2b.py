@@ -158,7 +158,7 @@ if __name__ == "__main__":
     sns.set(style='white', font_scale=1.4)
     plt.rc('text', usetex=True)
     plt.rc('font', size=12, family='serif', serif=['latin modern roman'])
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext,newtxmath}')
 
     norm = mcolors.SymLogNorm(linthresh=0.02, linscale=0.1,
                                vmin=-np.max(np.abs(th)), vmax=np.max(np.abs(th)))
