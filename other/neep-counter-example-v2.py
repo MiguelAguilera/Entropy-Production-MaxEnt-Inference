@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.special as slp
-import cvxpy as cp
 
 def kl(p,q): # KL divergence
     return np.sum(slp.kl_div(p,q))
@@ -58,20 +57,6 @@ def dv_neep_objectives(P, R, obs, method, bounds=(-50, 50)):
     return -res.fun, res.x
 
 
-def f(P, R, obs, method): # Optimize variational expression
-
-    assert(np.allclose(R.sum(), 1))
-    x = cp.Variable()
-    expectation = cp.sum(cp.multiply(P, obs))
-    log_term = cp.log_sum_exp(x * obs + cp.log(R))
-    if method == 0: # Donsker-Varadhan
-        objective = x * expectation - log_term
-    else:           # NEEP
-        objective = x * expectation - cp.exp(log_term) + 1
-    prob = cp.Problem(cp.Maximize(objective))
-    ep = prob.solve(solver=cp.MOSEK)
-    return ep, x.value
-
 # Create observables
 M =np.array([[ 0, 1, 0],
              [ 0, 0, 1],
@@ -88,7 +73,7 @@ sns.set(style='white', font_scale=1.3)
 plt.rc('text', usetex=True)
 plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
 #plt.rc('legend', fontsize=12)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext,newtxmath}')
 
 cmap = plt.get_cmap('inferno_r')
 
@@ -160,7 +145,7 @@ for sndx, ANTISYMMETRIC_OBSERVABLE in enumerate([True,False]):
 
     if sndx == 0:
         plt.legend(handlelength=1.2)
-        plt.ylabel('EP')
+        plt.ylabel('EP', rotation=0, labelpad=15)
 
     if ANTISYMMETRIC_OBSERVABLE:
         plt.title('Antisymmetric')
@@ -175,13 +160,13 @@ os.system('pdfcrop ' + fname)
 plt.show()
 
 
-if False:
-    plt.figure(figsize=(4,3))
-    plt.plot(l_vals, logZs)
-    plt.ylabel(r'$\ln Z$', rotation=0, labelpad=15)
-    plt.xlabel(XLABEL)
-    plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
-    plt.show()
+# if False:
+#     plt.figure(figsize=(4,3))
+#     plt.plot(l_vals, logZs)
+#     plt.ylabel(r'$\ln Z$', rotation=0, labelpad=15)
+#     plt.xlabel(XLABEL)
+#     plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
+#     plt.show()
 
 
 # # Mathematica code to solve optimization
