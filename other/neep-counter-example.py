@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.special as slp
-import cvxpy as cp
 
 def kl(p,q): # KL divergence
     return np.sum(slp.kl_div(p,q))
@@ -9,7 +8,9 @@ def get_P(a,b):
     # construct a 3x3 steady-state joint probability matrix
     # Here we consider a uniform unicyclic system, with backward rate r
     d = 1-a-b # probability of staying on same state
-    assert(d >= 0)
+    assert(d >= -1e-10)
+    if d <= 0: 
+        d=0
     T = np.array([
         [d, a, b],
         [b, d, a],
@@ -25,52 +26,78 @@ def get_P(a,b):
     P = T * pi[:,None]
     R = P.T
 
+    assert(np.allclose(P.sum(axis=0), 1/3))  
+    assert(np.allclose(P.sum(axis=1), 1/3))  
+
     return P, R
 
+from scipy.optimize import minimize_scalar
 
-def f(P, R, obs, method): # Optimize variational expression
-    x = cp.Variable()
-    expectation = cp.sum(cp.multiply(P, obs))
-    if method == 0: # Donsker-Varadhan
-        objective = cp.Maximize(x * expectation - cp.log_sum_exp(x * obs + cp.log(R)))
-    else:           # NEEP
-        objective = cp.Maximize(x * expectation - cp.sum(cp.multiply(R, cp.exp(x * obs))) + 1)
-    prob = cp.Problem(objective)
-    ep = prob.solve(solver=cp.CLARABEL)
-    return ep, x.value
+def dv_neep_objectives(P, R, obs, method, bounds=(-50, 50)):
+    """
+    Optimize DV or NEEP objective using SciPy.
+    
+    P, R: probability distributions (1D arrays, sum to 1)
+    obs: observation values (same length as P, R)
+    method: 0 = DV, 1 = NEEP
+    """
+    
+    expectation = np.sum(P * obs)
+    
+    def dv_obj(x):
+        return -(x * expectation - np.log(np.sum(R * np.exp(x * obs))))
+    
+    def neep_obj(x):
+        return -(x * expectation - np.sum(R * np.exp(x * obs)) + 1)
+    
+    obj = dv_obj if method == 0 else neep_obj
+    
+    res = minimize_scalar(obj, method="bounded", bounds=bounds)
+    #print(method, res.x, 'dv:', -dv_obj(res.x), 'neep:', -neep_obj(res.x))
+    return -res.fun, res.x
+
 
 # Create observables
 M =np.array([[ 0, 1, 0],
-             [ 0, 0, 1],
-             [ 1, 0, 0]], dtype='float') 
-             
-# Create observables
-M =np.array([[ 0, -0.2, 0],
              [ 0, 0, 1],
              [ 1, 0, 0]], dtype='float') 
 A = M-M.T  # antisymmetric part
 S = M+M.T  # symmetric     part
 
 kappa = 0.9
+MAX_LAMBDA = 20
 
-vals_ours = []
-vals_NEEP = []
-vals_ep   = []
+import matplotlib.pyplot as plt
+import seaborn as sns
+sns.set(style='white', font_scale=1.3)
+plt.rc('text', usetex=True)
+plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
+#plt.rc('legend', fontsize=12)
+plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext,newtxmath}')
 
-logZs = []
+cmap = plt.get_cmap('inferno_r')
 
-ANTISYMMETRIC_OBSERVABLE = False
+plt.figure(figsize=(5,2.5), layout='constrained')
+#var_bound = np.log(27)/2-1
 
-if True:  # sweep across driving strengths (asymmetry parameters)
+for sndx, ANTISYMMETRIC_OBSERVABLE in enumerate([True,False]):
+
+    vals_ours = []
+    vals_NEEP = []
+    vals_ep   = []
+
+    logZs = []
+
     SEMILOG=False
     XLABEL = r'Driving strength $\lambda$'
     #l_vals = np.logspace(-20,0,100)
-    l_vals = np.linspace(0, 20, 100, endpoint=True)
+    l_vals = np.linspace(0, MAX_LAMBDA, 100, endpoint=True)
     for l in l_vals:
         r=np.exp(-l)
         a=1/(1+r)*kappa
         b=r/(1+r)*kappa
         P, R = get_P(a,b)
+        
         if ANTISYMMETRIC_OBSERVABLE:
             obs = A.copy()
             obs[1,0] =  .2
@@ -79,66 +106,53 @@ if True:  # sweep across driving strengths (asymmetry parameters)
         else:
             obs = A + 1
 
-        ep_ours, theta = f(P, R, obs, method=0)
-        ep_NEEP, _ = f(P, R, obs, method=1)
+        if False:
+            ep_ours, theta = f(P, R, obs, method=0)
+            ep_NEEP, _ = f(P, R, obs, method=1)
+        else:
+            ep_ours = dv_neep_objectives(P, R, obs, 0)[0]
+            ep_NEEP = dv_neep_objectives(P, R, obs, 1)[0]
+            assert(ep_ours >= ep_NEEP-1e-5)
+
         vals_ours.append(ep_ours)
         vals_NEEP.append(ep_NEEP)
         vals_ep.append( kl(P,R) )
-        logZs.append( np.log(np.sum(R*np.exp(obs*theta))))
+
+        # logZs.append( np.log(np.sum(R*np.exp(obs*theta))))
 
 
-else:     # sweep across degrees of asymmetry
-    SEMILOG=True
-    XLABEL = r'Asymmetric-symmetric mixing coefficient $l$'
-    l_vals = np.logspace(-.5,1.5,500)
-    P, R = get_P(r=1e-5)
-    true_ep = kl(P,R)
-    for l in l_vals:
-        obs = A + l * S
-        vals_ours.append( f(P, R, obs, method=0) )
-        vals_NEEP.append( f(P, R, obs, method=1) )
-        vals_ep.append(true_ep )
 
+    vals_ours = np.array(vals_ours)
+    vals_NEEP = np.array(vals_NEEP)
+    vals_ep   = np.array(vals_ep)
 
-vals_ours = np.array(vals_ours)
-vals_NEEP = np.array(vals_NEEP)
-vals_ep   = np.array(vals_ep)
+    plt.subplot(1,2,sndx + 1)
+    var_bound = (5*np.log(5)-4)*kappa
+    var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
+    print(var_bound)
+    plt.plot(l_vals, vals_ep, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$', zorder=10)
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set(style='white', font_scale=1.8)
-plt.rc('text', usetex=True)
-plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
-#plt.rc('legend', fontsize=12)
-plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+    plt.plot(l_vals, vals_ours, label=r'$\Sigma_g$', c=cmap(0.75))
+    if SEMILOG:
+        plt.semilogx()
+    plt.plot(l_vals, vals_NEEP, label=r'$\Sigma_g^{\text{KO}}$', c=cmap(0.45))
+    plt.plot(l_vals, l_vals*0+var_bound, c='k',ls=':'),
+    #         label=r'$\Sigma_g^\prime \;\;(\lambda \to \infty)$')
 
-cmap = plt.get_cmap('inferno_r')
+    plt.xlabel(XLABEL)
+    plt.xlim(l_vals.min(), l_vals.max())
+    plt.ylim(0, 1.1*max(vals_ep.max(), vals_ours.max(), vals_NEEP.max()))
 
-#<<<<<<< HEAD
-fig, ax = plt.subplots(figsize=(4, 4))
-#=======
-#plt.figure(figsize=(4.5,3.25), layout='constrained')
-#>>>>>>> 6121261243da3a96ac96ee0636f01fe896d0b95b
-#var_bound = np.log(27)/2-1
-var_bound = (5*np.log(5)-4)*kappa
-var_bound = -2*kappa + 2*(1+kappa)*np.arctanh(kappa)
-print(var_bound)
-plt.plot(l_vals, vals_ep, 'k', linestyle=(0, (2, 3)), lw=3, label=r'$\Sigma$', zorder=10)
+    if sndx == 0:
+        plt.legend(handlelength=1.2)
+        plt.ylabel('EP', rotation=0, labelpad=15)
 
-plt.plot(l_vals, vals_ours, label=r'$\Sigma_g$', c=cmap(0.75))
-if SEMILOG:
-    plt.semilogx()
-plt.plot(l_vals, vals_NEEP, label=r'$\Sigma_g^{\text{KO}}$', c=cmap(0.45))
-plt.plot(l_vals, l_vals*0+var_bound, c='k',ls=':'),
-#         label=r'$\Sigma_g^\prime \;\;(\lambda \to \infty)$')
+    if ANTISYMMETRIC_OBSERVABLE:
+        plt.title('Antisymmetric')
+    else:
+        plt.title('Non-antisymmetric')
 
-plt.legend()
-plt.xlabel(XLABEL)
-plt.xlim(l_vals.min(), l_vals.max())
-plt.ylim(0, 1.1*max(vals_ep.max(), vals_ours.max(), vals_NEEP.max()))
-plt.ylabel('EP', rotation=0, labelpad=15)
-
-fname = 'img/vs-neep' + ('-as' if ANTISYMMETRIC_OBSERVABLE else '')
+fname = 'img/vs-neep-v2'
 plt.savefig(fname + '.pdf', bbox_inches='tight', pad_inches=0.1)
 import os
 os.system('pdfcrop ' + fname)
@@ -146,13 +160,13 @@ os.system('pdfcrop ' + fname)
 plt.show()
 
 
-if False:
-    plt.figure(figsize=(4,3))
-    plt.plot(l_vals, logZs)
-    plt.ylabel(r'$\ln Z$', rotation=0, labelpad=15)
-    plt.xlabel(XLABEL)
-    plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
-    plt.show()
+# if False:
+#     plt.figure(figsize=(4,3))
+#     plt.plot(l_vals, logZs)
+#     plt.ylabel(r'$\ln Z$', rotation=0, labelpad=15)
+#     plt.xlabel(XLABEL)
+#     plt.savefig('img/vs-neep-logZ.pdf', bbox_inches='tight', pad_inches=0.1)
+#     plt.show()
 
 
 # # Mathematica code to solve optimization
