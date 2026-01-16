@@ -256,7 +256,7 @@ def setup_matplotlib_style():
     sns.set(style='white', font_scale=1.8)
     plt.rc('text', usetex=True)
     plt.rc('font', size=14, family='serif', serif=['latin modern roman'])
-    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext}')
+    plt.rc('text.latex', preamble=r'\usepackage{amsmath,bm,newtxtext,newtxmath}')
 
 def style_axes(ax, xlabel, ylabel, ypad=20, legend=False):
     ax.set_xlabel(xlabel)
@@ -371,7 +371,7 @@ def plot_dual_over_N(res_mp, res_nmp, fname_suffix=""):
     ymax = 1.05 * max(np.max(res_mp["emp_mean"]), np.max(res_nmp["emp_mean"]),
                       np.max(res_mp["est_mean"]), np.max(res_nmp["est_mean"]))
     ax.set_ylim([0, ymax])
-    style_axes(ax, r'\# of spins', 'EP')
+    style_axes(ax, r'Number of spins', 'EP')
     plt.savefig(os.path.join(IMG_DIR, f'Fig_N_EP{fname_suffix}.pdf'), bbox_inches='tight', pad_inches=0.1)
 
     # Time vs N (both)
@@ -381,7 +381,7 @@ def plot_dual_over_N(res_mp, res_nmp, fname_suffix=""):
     ax.set_xlim([min(res_mp["x"][0], res_nmp["x"][0]), max(res_mp["x"][-1], res_nmp["x"][-1])])
     ymax_t = 1.05 * max(np.max(res_mp["t_mean"]), np.max(res_nmp["t_mean"]))
     ax.set_ylim([0, ymax_t])
-    style_axes(ax, r'\# of spins', 'Time (s)', ypad=12)
+    style_axes(ax, r'Number of spins', 'Time (s)', ypad=12)
     plt.savefig(os.path.join(IMG_DIR, f'Fig_N_Time{fname_suffix}.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 
@@ -401,7 +401,12 @@ def plot_dual_over_S(res_mp, res_nmp, fname_suffix=""):
     ymax = 1.05 * max(np.max(res_mp["emp_mean"]), np.max(res_nmp["emp_mean"]),
                       np.max(res_mp["est_mean"]), np.max(res_nmp["est_mean"]))
     ax.set_ylim([0, ymax])
-    style_axes(ax, r'\# of samples', 'EP')
+    style_axes(ax, r'Number of samples', 'EP')
+    # move the offset text
+    ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    off = ax.xaxis.get_offset_text()
+    off.set_x(1.1)     # push to the right (axes coords)
+#    off.set_y(-0.12)    # push downward; tweak (-0.08 .. -0.2)
     plt.savefig(os.path.join(IMG_DIR, f'Fig_S_EP{fname_suffix}.pdf'), bbox_inches='tight', pad_inches=0.1)
 
     # Time vs S (both)
@@ -411,7 +416,12 @@ def plot_dual_over_S(res_mp, res_nmp, fname_suffix=""):
     ax.set_xlim([min(res_mp["x"][0], res_nmp["x"][0]), max(res_mp["x"][-1], res_nmp["x"][-1])])
     ymax_t = 1.05 * max(np.max(res_mp["t_mean"]), np.max(res_nmp["t_mean"]))
     ax.set_ylim([0, ymax_t])
-    style_axes(ax, r'\# of samples', 'Time (s)', ypad=12, legend=True)
+    style_axes(ax, r'Number of samples', 'Time (s)', ypad=12, legend=True)
+    # move the offset text
+    ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    off = ax.xaxis.get_offset_text()
+    off.set_x(1.1)     # push to the right (axes coords)
+#    off.set_y(-0.12)    # push downward; tweak (-0.08 .. -0.2)
     plt.savefig(os.path.join(IMG_DIR, f'Fig_S_Time{fname_suffix}.pdf'), bbox_inches='tight', pad_inches=0.1)
 
 
