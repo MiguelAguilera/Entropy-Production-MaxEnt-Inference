@@ -1,8 +1,8 @@
 # Inferring Entropy Production in Many-Body Systems Using Nonequilibrium Maximum Entropy
 
-The repository contains code to generate data and estimate entropy production (EP) for high-dimensional systems. It accompanies the manuscript:
+The repository contains code to generate data and estimate entropy production (EP) for high-dimensional systems. It accompanies the following paper:
 
-* Miguel Aguilera, Sosuke Ito, and Artemy Kolchinsky, "Inferring Entropy Production in Many-Body Systems Using Nonequilibrium Maximum Entropy", *Physical Review Letters*, *in press*. [arXiv:2505.10444](https://arxiv.org/abs/2505.10444)
+* Miguel Aguilera, Sosuke Ito, and Artemy Kolchinsky, "Inferring Entropy Production in Many-Body Systems Using Nonequilibrium Maximum Entropy", *Physical Review Letters*, 136, 077101 (2026). [link](https://journals.aps.org/prl/abstract/10.1103/xgkj-dxzh)
 
 The code uses `numpy`, `numba`, and `torch` for acceleration (taking advantage of GPU if available). 
 
